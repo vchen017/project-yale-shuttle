@@ -1,4 +1,4 @@
-"""Django settings for the Yale Shuttle app (team cold-flower).
+"""Django settings for the Yale Shuttle app.
 
 Everything that differs between environments comes from environment variables
 (12-factor); README.md lists them. For local development, DJANGO_DEBUG=1 uses

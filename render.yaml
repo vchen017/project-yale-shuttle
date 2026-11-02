@@ -3,7 +3,7 @@
 # sync: false. The Python version comes from .python-version.
 services:
   - type: web
-    name: cold-flower-staging
+    name: yale-shuttle-staging
     runtime: python
     plan: free
     region: ohio  # the same region as the Neon database (AWS us-east-2)

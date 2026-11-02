@@ -1,4 +1,4 @@
-# Yale Shuttle (team cold-flower)
+# Yale Shuttle
 
 Shuttle arrival predictions for Yale riders, built on the recorded history of
 the live Downtowner feeds. MGT 656 team project: Django and PostgreSQL, with
