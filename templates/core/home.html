@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="py-3">
+  <h1 class="display-6">Yale Shuttle</h1>
+  <p class="lead">Shuttle arrival predictions you can trust, built on the history of every bus.</p>
+  {% if user.is_authenticated %}
+    <p>You're logged in as <strong>{{ user.username }}</strong>{% if user.is_staff %} (admin){% endif %}.</p>
+  {% else %}
+    <p>
+      <a class="btn btn-primary" href="{% url 'signup' %}">Create an account</a>
+      <a class="btn btn-outline-primary" href="{% url 'login' %}">Log in</a>
+    </p>
+  {% endif %}
+  <p class="text-body-secondary">This is our walking skeleton. Next buses with predicted arrival times are coming soon.</p>
+</div>
+{% endblock %}

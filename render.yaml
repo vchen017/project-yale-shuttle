@@ -1,0 +1,21 @@
+# Render Blueprint for the staging environment; production comes in Sprint 2.
+# In Render: New > Blueprint, pick this repo. Render asks for the values marked
+# sync: false. The Python version comes from .python-version.
+services:
+  - type: web
+    name: cold-flower-staging
+    runtime: python
+    plan: free
+    region: ohio  # the same region as the Neon database (AWS us-east-2)
+    branch: main
+    buildCommand: ./build.sh
+    startCommand: gunicorn config.wsgi --bind 0.0.0.0:$PORT --access-logfile -
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL  # Neon connection string
+        sync: false
+      - key: SEED_ADMIN_PASSWORD
+        sync: false
+      - key: SEED_RIDER_PASSWORD
+        sync: false

@@ -1,0 +1,7 @@
+framework: django
+database: postgres
+members:
+  - nickname: gentle-reindeer
+    github: vchen017
+  # TODO: add Austin, Ayush and Ishita (course nickname and GitHub username).
+  # The A/B test page lists every nickname in this file.
