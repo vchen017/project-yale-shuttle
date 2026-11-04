@@ -32,7 +32,7 @@
 /* Home page */
 .hero { background: linear-gradient(135deg, var(--ys-blue) 0%, var(--ys-blue-medium) 100%); color: #fff; }
 .hero .lead { max-width: 40rem; opacity: 0.9; }
-.hero-kicker { font-size: 0.8rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.8; }
+.hero h1, .hero .lead { text-wrap: balance; }
 .feature { border: 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 16px rgba(0, 53, 107, 0.06); }
 .feature-icon { font-size: 1.75rem; line-height: 1; margin-bottom: 0.75rem; }
 

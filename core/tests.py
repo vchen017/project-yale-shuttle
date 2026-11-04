@@ -40,7 +40,7 @@ class SeedTests(TestCase):
 class PageTests(TestCase):
     def test_home_page_pitches_the_app_to_visitors(self):
         response = self.client.get("/")
-        self.assertContains(response, "Know when your shuttle will really come.")
+        self.assertContains(response, "Never miss the Yale shuttle again.")
         self.assertContains(response, 'href="/signup/"')
 
     def test_home_page_greets_a_logged_in_rider(self):

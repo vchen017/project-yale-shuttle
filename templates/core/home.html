@@ -1,9 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="hero rounded-4 p-4 p-md-5 mb-4">
-  <p class="hero-kicker mb-2">Yale shuttles, without the guesswork</p>
-  <h1 class="display-5 fw-bold mb-3">Know when your shuttle will really come.</h1>
-  <p class="lead mb-4">Yale Shuttle predicts arrival times from the recorded history of every bus, so you can leave at the right moment.</p>
+  <h1 class="display-5 fw-bold mb-3">Never miss the Yale shuttle again.</h1>
+  <p class="lead mb-4">See when your bus will actually arrive, so you can leave at just the right time.</p>
   {% if user.is_authenticated %}
     <p class="fs-5 mb-0">
       Welcome back, <strong>{{ user.username }}</strong>.
