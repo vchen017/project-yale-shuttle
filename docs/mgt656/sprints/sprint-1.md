@@ -18,7 +18,8 @@ the A/B test page, the grader accounts, and a backlog for the rest of the term.
   ([#4](https://github.com/vchen017/project-yale-shuttle/issues/4)).
 - [#31](https://github.com/vchen017/project-yale-shuttle/pull/31): Neon's agent
   skills and MCP setup for Claude Code.
-- [#33](https://github.com/vchen017/project-yale-shuttle/issues/33): a home page
+- [#35](https://github.com/vchen017/project-yale-shuttle/pull/35), closing
+  [#33](https://github.com/vchen017/project-yale-shuttle/issues/33): a home page
   that explains the app, the site in Yale blue with a bus icon and a footer,
   "Yale Shuttle admin" on the admin pages, a shorter sign-up form, and friendly
   error pages.
