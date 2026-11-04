@@ -20,9 +20,10 @@ the A/B test page, the grader accounts, and a backlog for the rest of the term.
   skills and MCP setup for Claude Code.
 - [#35](https://github.com/vchen017/project-yale-shuttle/pull/35), closing
   [#33](https://github.com/vchen017/project-yale-shuttle/issues/33): a home page
-  that explains the app, the site in Yale blue with a bus icon and a footer,
-  "Yale Shuttle admin" on the admin pages, a shorter sign-up form, and friendly
-  error pages.
+  that explains the app; the site in Yale blue with a bus icon, a footer and
+  consistent icons; log-in and sign-up pages as cards, with a shorter sign-up
+  form; a Yale-blue admin; the A/B page as a team card with our names next to
+  our nicknames; link previews for chat apps; and friendly error pages.
 - The backlog: the rest of our user stories
   ([#5](https://github.com/vchen017/project-yale-shuttle/issues/5) to
   [#21](https://github.com/vchen017/project-yale-shuttle/issues/21)), sub-issues
@@ -37,7 +38,7 @@ https://yale-shuttle-staging.onrender.com, which deploys automatically from
 - a home page that explains what Yale Shuttle will do
 - signing up, logging in and out, and `/admin/` for admins
 - the grader accounts, which `seed` creates on every deploy
-- `/ecc1032`: public, lists our four nicknames, gives each new visitor `kudos`
+- `/ecc1032`: public, lists our names and course nicknames, gives each new visitor `kudos`
   or `thanks` at random and keeps showing it, and counts one impression and at
   most one click per visitor
 - `/ecc1032/stats`: live counts and the `preferred` variant, from the database

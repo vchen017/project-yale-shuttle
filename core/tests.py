@@ -53,8 +53,17 @@ class PageTests(TestCase):
     def test_server_errors_get_a_branded_page(self):
         self.assertIn("Something went wrong", render_to_string("500.html"))
 
-    def test_admin_pages_say_yale_shuttle(self):
-        self.assertContains(self.client.get("/admin/login/"), "Yale Shuttle admin")
+    def test_admin_pages_say_yale_shuttle_in_yale_blue(self):
+        response = self.client.get("/admin/login/")
+        self.assertContains(response, "Yale Shuttle admin")
+        self.assertContains(response, "--secondary: #00356b;")
+        self.assertContains(response, "core/favicon.svg")
+
+    def test_pages_have_link_previews_and_icons(self):
+        response = self.client.get("/")
+        self.assertContains(response, '<meta property="og:title" content="Yale Shuttle: never miss the Yale shuttle again">')
+        self.assertContains(response, '<meta property="og:image" content="http://testserver/static/core/og-image.png">')
+        self.assertContains(response, '<i class="bi bi-clock-history"></i>')
 
     def test_favicon_ico_points_to_our_icon(self):
         response = self.client.get("/favicon.ico")

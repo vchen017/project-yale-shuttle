@@ -32,3 +32,15 @@ class AccountTests(TestCase):
         response = self.client.post("/login/", {"username": "rider@example.com", "password": "wrong"})
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertContains(response, 'class="alert alert-danger')  # the error is shown, styled
+
+    def test_forms_use_bootstrap_inputs(self):
+        self.assertContains(self.client.get("/login/"), 'class="form-control"', count=2)
+        self.assertContains(self.client.get("/signup/"), 'class="form-control"', count=4)
+
+    def test_a_field_with_an_error_is_marked_invalid(self):
+        response = self.client.post(
+            "/signup/", {"username": "newrider", "password1": PASSWORD, "password2": "something-else-1"}
+        )
+        self.assertContains(response, "form-control is-invalid")
+        self.assertContains(response, 'class="invalid-feedback d-block"')

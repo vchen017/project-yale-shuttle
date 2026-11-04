@@ -12,7 +12,11 @@ PAGE_HASH = hashlib.sha1(TEAM_NICKNAME.encode()).hexdigest()[:7]
 
 
 @cache
-def member_nicknames():
-    """Course nicknames of the team members, from docs/mgt656/team.yaml."""
+def members():
+    """The team in docs/mgt656/team.yaml: each member's course nickname, first name and GitHub username."""
     team = yaml.safe_load((settings.BASE_DIR / "docs" / "mgt656" / "team.yaml").read_text())
-    return [member["nickname"] for member in team["members"]]
+    return team["members"]
+
+
+def member_nicknames():
+    return [member["nickname"] for member in members()]

@@ -8,7 +8,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_safe
 
 from .models import Visit
-from .team import TEAM_NICKNAME, member_nicknames
+from .team import TEAM_NICKNAME, members
 
 SESSION_KEY = "abtest_visit_id"
 
@@ -34,7 +34,7 @@ def page(request):
     return render(
         request,
         "abtest/page.html",
-        {"team": TEAM_NICKNAME, "members": member_nicknames(), "variant": visit.variant},
+        {"team": TEAM_NICKNAME, "members": members(), "variant": visit.variant},
     )
 
 
