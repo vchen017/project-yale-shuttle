@@ -45,3 +45,17 @@ installs packages, collects static files, migrates the database, and runs
 
 Before the graded A/B run, delete our own test visits with
 `python manage.py reset_abtest --yes`.
+
+## Neon
+
+The staging database is the `yale-shuttle` project on Neon (AWS US East, Ohio).
+Ask Vivian for an invite to the Neon organization, then:
+
+- Run `neon link` once in this folder. It records the project in `.neon` and
+  pulls the connection strings into `.env`; both files are git-ignored. Django
+  doesn't read `.env`, so local development keeps using SQLite unless you
+  export `DATABASE_URL`.
+- Claude Code loads Neon's agent skills from `.claude/skills/` and the Neon MCP
+  server from `.mcp.json`, which holds no key: you sign in to Neon the first
+  time it's used.
+- `neon skills status` checks the skills for updates.
