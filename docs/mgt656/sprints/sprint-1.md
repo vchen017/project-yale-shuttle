@@ -18,6 +18,10 @@ the A/B test page, the grader accounts, and a backlog for the rest of the term.
   ([#4](https://github.com/vchen017/project-yale-shuttle/issues/4)).
 - [#31](https://github.com/vchen017/project-yale-shuttle/pull/31): Neon's agent
   skills and MCP setup for Claude Code.
+- [#33](https://github.com/vchen017/project-yale-shuttle/issues/33): a home page
+  that explains the app, the site in Yale blue with a bus icon and a footer,
+  "Yale Shuttle admin" on the admin pages, a shorter sign-up form, and friendly
+  error pages.
 - The backlog: the rest of our user stories
   ([#5](https://github.com/vchen017/project-yale-shuttle/issues/5) to
   [#21](https://github.com/vchen017/project-yale-shuttle/issues/21)), sub-issues
@@ -29,6 +33,7 @@ the A/B test page, the grader accounts, and a backlog for the rest of the term.
 https://yale-shuttle-staging.onrender.com, which deploys automatically from
 `main` (merging #31 redeployed it within seconds):
 
+- a home page that explains what Yale Shuttle will do
 - signing up, logging in and out, and `/admin/` for admins
 - the grader accounts, which `seed` creates on every deploy
 - `/ecc1032`: public, lists our four nicknames, gives each new visitor `kudos`
@@ -38,6 +43,8 @@ https://yale-shuttle-staging.onrender.com, which deploys automatically from
 
 We checked all of it with a script that uses staging like a browser: a new
 visitor, a reload, two clicks, both grader logins and a wrong password.
+
+![The Yale Shuttle home page](img/home-desktop.png)
 
 ## Working with our agents
 
@@ -55,9 +62,10 @@ the wrong address.
 
 ## Backlog changes for Sprint 2
 
-- Add a production environment story: Sprint 2 needs production, with its own
-  database.
-- Proposed commitment: [#5](https://github.com/vchen017/project-yale-shuttle/issues/5)
+- Added [#34](https://github.com/vchen017/project-yale-shuttle/issues/34)
+  (production environment): Sprint 2 needs production, with its own database.
+- Put our proposed Sprint 2 commitment in the Sprint 2 iteration on the board:
+  #34, [#5](https://github.com/vchen017/project-yale-shuttle/issues/5)
   (next buses with predicted arrival times) through its sub-issues
   [#22](https://github.com/vchen017/project-yale-shuttle/issues/22) (import the
   recorded shuttle history), [#23](https://github.com/vchen017/project-yale-shuttle/issues/23)

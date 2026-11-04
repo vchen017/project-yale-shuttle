@@ -1,8 +1,15 @@
 # Yale Shuttle
 
+[![ci](https://github.com/vchen017/project-yale-shuttle/actions/workflows/ci.yml/badge.svg)](https://github.com/vchen017/project-yale-shuttle/actions/workflows/ci.yml)
+
+**Staging:** https://yale-shuttle-staging.onrender.com ·
+**Board:** [Yale Shuttle project](https://github.com/users/vchen017/projects/1)
+
 Shuttle arrival predictions for Yale riders, built on the recorded history of
-the live Downtowner feeds. MGT 656 team project: Django and PostgreSQL, with
-staging on Render and the database on Neon.
+the live Downtowner feeds, which
+[downtowner-recorder](https://github.com/vchen017/downtowner-recorder) saves
+every 5 minutes. MGT 656 team project: Django and PostgreSQL, with staging on
+Render and the database on Neon.
 
 ## Run it locally
 

@@ -4,6 +4,7 @@ from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core.management import CommandError, call_command
+from django.template.loader import render_to_string
 from django.test import TestCase
 
 PASSWORDS = {"SEED_ADMIN_PASSWORD": "test-admin-pass-1", "SEED_RIDER_PASSWORD": "test-rider-pass-2"}
@@ -36,6 +37,25 @@ class SeedTests(TestCase):
                 self.seed()
 
 
-class HomeTests(TestCase):
-    def test_home_page_is_public(self):
-        self.assertContains(self.client.get("/"), "Yale Shuttle")
+class PageTests(TestCase):
+    def test_home_page_pitches_the_app_to_visitors(self):
+        response = self.client.get("/")
+        self.assertContains(response, "Know when your shuttle will really come.")
+        self.assertContains(response, 'href="/signup/"')
+
+    def test_home_page_greets_a_logged_in_rider(self):
+        self.client.force_login(get_user_model().objects.create_user("rider@example.com"))
+        self.assertContains(self.client.get("/"), "Welcome back, <strong>rider@example.com</strong>")
+
+    def test_unknown_pages_get_a_friendly_404(self):
+        self.assertContains(self.client.get("/no-such-page/"), "This stop doesn't exist", status_code=404)
+
+    def test_server_errors_get_a_branded_page(self):
+        self.assertIn("Something went wrong", render_to_string("500.html"))
+
+    def test_admin_pages_say_yale_shuttle(self):
+        self.assertContains(self.client.get("/admin/login/"), "Yale Shuttle admin")
+
+    def test_favicon_ico_points_to_our_icon(self):
+        response = self.client.get("/favicon.ico")
+        self.assertRedirects(response, "/static/core/favicon.svg", status_code=301, fetch_redirect_response=False)

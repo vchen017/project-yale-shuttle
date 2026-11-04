@@ -1,3 +1,43 @@
+/* Yale blue on top of Bootstrap's defaults. */
+:root {
+  --ys-blue: #00356b;
+  --ys-blue-dark: #00264d;
+  --ys-blue-medium: #286dc0;
+  --bs-primary: var(--ys-blue);
+  --bs-primary-rgb: 0, 53, 107;
+  --bs-link-color: var(--ys-blue-medium);
+  --bs-link-color-rgb: 40, 109, 192;
+  --bs-link-hover-color: var(--ys-blue);
+  --bs-link-hover-color-rgb: 0, 53, 107;
+}
+.btn-primary {
+  --bs-btn-bg: var(--ys-blue);
+  --bs-btn-border-color: var(--ys-blue);
+  --bs-btn-hover-bg: var(--ys-blue-dark);
+  --bs-btn-hover-border-color: var(--ys-blue-dark);
+  --bs-btn-active-bg: var(--ys-blue-dark);
+  --bs-btn-active-border-color: var(--ys-blue-dark);
+  --bs-btn-disabled-bg: var(--ys-blue);
+  --bs-btn-disabled-border-color: var(--ys-blue);
+}
+.btn-outline-primary {
+  --bs-btn-color: var(--ys-blue);
+  --bs-btn-border-color: var(--ys-blue);
+  --bs-btn-hover-bg: var(--ys-blue);
+  --bs-btn-hover-border-color: var(--ys-blue);
+  --bs-btn-active-bg: var(--ys-blue);
+  --bs-btn-active-border-color: var(--ys-blue);
+}
+
+/* Home page */
+.hero { background: linear-gradient(135deg, var(--ys-blue) 0%, var(--ys-blue-medium) 100%); color: #fff; }
+.hero .lead { max-width: 40rem; opacity: 0.9; }
+.hero-kicker { font-size: 0.8rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.8; }
+.feature { border: 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 16px rgba(0, 53, 107, 0.06); }
+.feature-icon { font-size: 1.75rem; line-height: 1; margin-bottom: 0.75rem; }
+
+.site-footer { border-top: 1px solid var(--bs-border-color); }
+
 /* Django's plain form fields, styled to match Bootstrap. */
 .form-stack > div { margin-bottom: 0.75rem; }
 .form-stack label { display: block; margin-bottom: 0.25rem; font-weight: 500; }

@@ -14,6 +14,11 @@ class AccountTests(TestCase):
         self.assertRedirects(response, "/")
         self.assertContains(response, "newrider")
 
+    def test_sign_up_form_shows_one_short_line_of_password_rules(self):
+        response = self.client.get("/signup/")
+        self.assertContains(response, "At least 8 characters, not too common, and not only numbers.")
+        self.assertNotContains(response, "too similar")
+
     def test_log_in_and_out(self):
         get_user_model().objects.create_user("rider@example.com", password=PASSWORD)
         self.assertEqual(self.client.get("/login/").status_code, 200)
