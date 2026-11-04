@@ -26,7 +26,8 @@ the A/B test page, the grader accounts, and a backlog for the rest of the term.
 
 ## What works on staging
 
-https://yale-shuttle-staging.onrender.com, set to deploy automatically from `main`:
+https://yale-shuttle-staging.onrender.com, which deploys automatically from
+`main` (merging #31 redeployed it within seconds):
 
 - signing up, logging in and out, and `/admin/` for admins
 - the grader accounts, which `seed` creates on every deploy
