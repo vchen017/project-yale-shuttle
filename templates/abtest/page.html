@@ -1,13 +1,21 @@
 {% extends "base.html" %}
-{% block title %}Team {{ team }}{% endblock %}
+{% block title %}Team {{ team }} · Yale Shuttle{% endblock %}
 {% block content %}
-<h1 class="h3">Team {{ team }}</h1>
-<p class="mb-1">Team members:</p>
-<ul>
-  {% for nickname in members %}<li>{{ nickname }}</li>{% endfor %}
-</ul>
-<form method="post">
-  {% csrf_token %}
-  <button id="abtest" class="btn btn-primary btn-lg" type="submit">{{ variant }}</button>
-</form>
+<div class="row justify-content-center">
+  <div class="col-md-9 col-lg-7">
+    <div class="card team-card text-center p-4 p-md-5">
+      <p class="text-body-secondary mb-1">The team behind Yale Shuttle</p>
+      <h1 class="h2 mb-4">Meet team {{ team }}</h1>
+      <ul class="list-unstyled d-flex flex-wrap justify-content-center gap-2 mb-4">
+        {% for member in members %}
+          <li class="member">{{ member.name }} <span class="member-nickname">{{ member.nickname }}</span></li>
+        {% endfor %}
+      </ul>
+      <form method="post">
+        {% csrf_token %}
+        <button id="abtest" class="btn btn-primary btn-lg px-5" type="submit">{{ variant }}</button>
+      </form>
+    </div>
+  </div>
+</div>
 {% endblock %}

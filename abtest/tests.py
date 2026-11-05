@@ -7,7 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .models import Visit
-from .team import PAGE_HASH, member_nicknames
+from .team import PAGE_HASH, member_nicknames, members
 
 PAGE = "/ecc1032"
 STATS = "/ecc1032/stats"
@@ -57,8 +57,9 @@ class PageTests(TestCase):
         response = self.client.get(PAGE)
         self.assertEqual(response.status_code, 200)
         self.assertIn(variant_shown(response), Visit.VARIANTS)
-        for nickname in member_nicknames():
-            self.assertContains(response, nickname)
+        self.assertEqual(len(member_nicknames()), 4)
+        for member in members():
+            self.assertContains(response, f'{member["name"]} <span class="member-nickname">{member["nickname"]}</span>')
 
     def test_a_visitor_keeps_their_variant_and_counts_one_impression(self):
         first = variant_shown(self.client.get(PAGE))

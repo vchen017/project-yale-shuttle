@@ -1,0 +1,30 @@
+{% extends "admin/base.html" %}
+{% load static %}
+{# Django's own admin/base_site.html, plus Yale colors and our bus icon. #}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block extrastyle %}{{ block.super }}
+<link rel="icon" href="{% static 'core/favicon.svg' %}" type="image/svg+xml">
+<style>
+  :root {
+    --primary: #286dc0;
+    --secondary: #00356b;
+    --accent: #ffffff;
+    --breadcrumbs-bg: #00264d;
+    --button-hover-bg: #00264d;
+    --default-button-bg: #00264d;
+    --default-button-hover-bg: #00356b;
+  }
+  #site-name img { vertical-align: middle; margin-right: 0.5rem; }
+</style>
+{% endblock %}
+
+{% block branding %}
+<div id="site-name"><a href="{% url 'admin:index' %}"><img src="{% static 'core/favicon.svg' %}" alt="" width="28" height="28">{{ site_header|default:_('Django administration') }}</a></div>
+{% if user.is_anonymous %}
+  {% include "admin/color_theme_toggle.html" %}
+{% endif %}
+{% endblock %}
+
+{% block nav-global %}{% endblock %}

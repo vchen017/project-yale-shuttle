@@ -1,12 +1,54 @@
-/* Django's plain form fields, styled to match Bootstrap. */
-.form-stack > div { margin-bottom: 0.75rem; }
-.form-stack label { display: block; margin-bottom: 0.25rem; font-weight: 500; }
-.form-stack input:not([type="checkbox"]):not([type="hidden"]) {
-  display: block;
-  width: 100%;
-  padding: 0.375rem 0.75rem;
-  border: 1px solid var(--bs-border-color);
-  border-radius: var(--bs-border-radius);
+/* Yale blue on top of Bootstrap's defaults. */
+:root {
+  --ys-blue: #00356b;
+  --ys-blue-dark: #00264d;
+  --ys-blue-medium: #286dc0;
+  --bs-primary: var(--ys-blue);
+  --bs-primary-rgb: 0, 53, 107;
+  --bs-link-color: var(--ys-blue-medium);
+  --bs-link-color-rgb: 40, 109, 192;
+  --bs-link-hover-color: var(--ys-blue);
+  --bs-link-hover-color-rgb: 0, 53, 107;
 }
-.form-stack .helptext, .form-stack .helptext ul { font-size: 0.875rem; color: var(--bs-secondary-color); }
-.form-stack .errorlist { color: var(--bs-danger); padding-left: 1rem; margin-bottom: 0.25rem; }
+.btn-primary {
+  --bs-btn-bg: var(--ys-blue);
+  --bs-btn-border-color: var(--ys-blue);
+  --bs-btn-hover-bg: var(--ys-blue-dark);
+  --bs-btn-hover-border-color: var(--ys-blue-dark);
+  --bs-btn-active-bg: var(--ys-blue-dark);
+  --bs-btn-active-border-color: var(--ys-blue-dark);
+  --bs-btn-disabled-bg: var(--ys-blue);
+  --bs-btn-disabled-border-color: var(--ys-blue);
+}
+
+/* Home page */
+.hero { background: linear-gradient(135deg, var(--ys-blue) 0%, var(--ys-blue-medium) 100%); color: #fff; }
+.hero .lead { max-width: 40rem; opacity: 0.9; }
+.hero h1, .hero .lead { text-wrap: balance; }
+.feature { border: 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 16px rgba(0, 53, 107, 0.06); }
+.feature-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  margin-bottom: 1rem;
+  border-radius: 0.75rem;
+  background: rgba(0, 53, 107, 0.08);
+  color: var(--ys-blue);
+  font-size: 1.5rem;
+}
+
+/* Log in, sign up and the A/B page: one card in the middle of the page */
+.auth-card, .team-card { border: 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 53, 107, 0.08); }
+.form-control:focus { border-color: var(--ys-blue-medium); box-shadow: 0 0 0 0.25rem rgba(40, 109, 192, 0.25); }
+.member {
+  padding: 0.4rem 1rem;
+  border-radius: 999px;
+  background: rgba(0, 53, 107, 0.08);
+  color: var(--ys-blue);
+  font-weight: 600;
+}
+.member-nickname { margin-left: 0.25rem; font-weight: 400; opacity: 0.75; }
+
+.site-footer { border-top: 1px solid var(--bs-border-color); }

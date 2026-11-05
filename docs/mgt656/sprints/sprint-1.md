@@ -18,6 +18,12 @@ the A/B test page, the grader accounts, and a backlog for the rest of the term.
   ([#4](https://github.com/vchen017/project-yale-shuttle/issues/4)).
 - [#31](https://github.com/vchen017/project-yale-shuttle/pull/31): Neon's agent
   skills and MCP setup for Claude Code.
+- [#35](https://github.com/vchen017/project-yale-shuttle/pull/35), closing
+  [#33](https://github.com/vchen017/project-yale-shuttle/issues/33): a home page
+  that explains the app; the site in Yale blue with a bus icon, a footer and
+  consistent icons; log-in and sign-up pages as cards, with a shorter sign-up
+  form; a Yale-blue admin; the A/B page as a team card with our names next to
+  our nicknames; link previews for chat apps; and friendly error pages.
 - The backlog: the rest of our user stories
   ([#5](https://github.com/vchen017/project-yale-shuttle/issues/5) to
   [#21](https://github.com/vchen017/project-yale-shuttle/issues/21)), sub-issues
@@ -29,15 +35,18 @@ the A/B test page, the grader accounts, and a backlog for the rest of the term.
 https://yale-shuttle-staging.onrender.com, which deploys automatically from
 `main` (merging #31 redeployed it within seconds):
 
+- a home page that explains what Yale Shuttle will do
 - signing up, logging in and out, and `/admin/` for admins
 - the grader accounts, which `seed` creates on every deploy
-- `/ecc1032`: public, lists our four nicknames, gives each new visitor `kudos`
+- `/ecc1032`: public, lists our names and course nicknames, gives each new visitor `kudos`
   or `thanks` at random and keeps showing it, and counts one impression and at
   most one click per visitor
 - `/ecc1032/stats`: live counts and the `preferred` variant, from the database
 
 We checked all of it with a script that uses staging like a browser: a new
 visitor, a reload, two clicks, both grader logins and a wrong password.
+
+![The Yale Shuttle home page](img/home-desktop.png)
 
 ## Working with our agents
 
@@ -55,9 +64,10 @@ the wrong address.
 
 ## Backlog changes for Sprint 2
 
-- Add a production environment story: Sprint 2 needs production, with its own
-  database.
-- Proposed commitment: [#5](https://github.com/vchen017/project-yale-shuttle/issues/5)
+- Added [#34](https://github.com/vchen017/project-yale-shuttle/issues/34)
+  (production environment): Sprint 2 needs production, with its own database.
+- Put our proposed Sprint 2 commitment in the Sprint 2 iteration on the board:
+  #34, [#5](https://github.com/vchen017/project-yale-shuttle/issues/5)
   (next buses with predicted arrival times) through its sub-issues
   [#22](https://github.com/vchen017/project-yale-shuttle/issues/22) (import the
   recorded shuttle history), [#23](https://github.com/vchen017/project-yale-shuttle/issues/23)

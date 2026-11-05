@@ -1,11 +1,15 @@
 framework: django
 database: postgres
-members:  # the A/B test page lists every nickname in this file
+members:  # the A/B test page lists every member: name and course nickname
   - nickname: gentle-reindeer
+    name: Vivian Chen
     github: vchen017
   - nickname: careful-elk
+    name: Ishita Kedia
     github: Ishita-ked
   - nickname: rich-mallard
+    name: Ayush Sanghavi
     github: ayushsanghavi-yale
   - nickname: zealous-kangaroo
+    name: Austin Kwoun
     github: ajk1999
