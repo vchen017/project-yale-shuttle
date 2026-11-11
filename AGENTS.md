@@ -130,8 +130,9 @@ and lowercase, in at most five lines:
 - what's done, with the pull request link
 - who it unblocks, or what comes next
 - anything a reviewer should look at
-- one thing the AI got wrong or caught, if there was one (it goes in the sprint
-  report)
+- "working with the AI": one thing that worked or didn't, and what you changed,
+  if there was one. The sprint report's "working with your agents" section
+  needs these
 
 For example:
 
@@ -139,7 +140,7 @@ For example:
 opened the PR for the live shuttle feed: https://github.com/vchen017/project-yale-shuttle/pull/NN
 it caches for 30 seconds and says when the feed is down instead of crashing
 ishita, once it's merged you can start the next-buses page. can someone review?
-AI moment: its first tests called the real feed, so i had it mock the feed instead
+working with the AI: its first tests called the real feed, so i had it mock the feed instead
 ```
 
 ## Deadlines and sprint reports
@@ -148,8 +149,8 @@ AI moment: its first tests called the real feed, so i had it mock the feed inste
   after. Don't merge code in the last few hours before a deadline, and check
   staging after every merge.
 - Each sprint report needs one concrete thing that worked or didn't with our AI
-  agents, and what we changed. The "AI moment" lines in our team updates are
-  where whoever writes the report finds them.
+  agents, and what we changed. The "working with the AI" lines in our team
+  updates are where whoever writes the report finds them.
 
 ## Data sources
 
