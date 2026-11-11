@@ -119,6 +119,28 @@ another app's code or migrations when your issue says to, and tell its owner.
   is enough.
 - After merging, it works on staging, https://yale-shuttle-staging.onrender.com,
   which redeploys from `main` within about a minute.
+- The team update (below) is posted in our team chat.
+
+## When you finish
+
+Agents: after opening the pull request, end with a short message the person can
+paste into our team WhatsApp, in a code block. Write it in their voice, casual
+and lowercase, in at most five lines:
+
+- what's done, with the pull request link
+- who it unblocks, or what comes next
+- anything a reviewer should look at
+- one thing the AI got wrong or caught, if there was one (it goes in the sprint
+  report)
+
+For example:
+
+```
+opened the PR for the live shuttle feed: https://github.com/vchen017/project-yale-shuttle/pull/NN
+it caches for 30 seconds and says when the feed is down instead of crashing
+ishita, once it's merged you can start the next-buses page. can someone review?
+AI moment: its first tests called the real feed, so i had it mock the feed instead
+```
 
 ## Deadlines and sprint reports
 
@@ -126,8 +148,8 @@ another app's code or migrations when your issue says to, and tell its owner.
   after. Don't merge code in the last few hours before a deadline, and check
   staging after every merge.
 - Each sprint report needs one concrete thing that worked or didn't with our AI
-  agents, and what we changed. When yours gets something wrong or catches
-  something, post a line in the team chat so whoever writes the report has it.
+  agents, and what we changed. The "AI moment" lines in our team updates are
+  where whoever writes the report finds them.
 
 ## Data sources
 
