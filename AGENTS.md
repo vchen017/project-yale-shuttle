@@ -37,6 +37,10 @@ Tests: `DJANGO_DEBUG=1 .venv/bin/python manage.py test`. CI runs them against
 PostgreSQL on every pull request and checks that the migrations match the
 models. GitHub won't merge until both pass.
 
+Your laptop runs the app on SQLite, but CI and the servers use PostgreSQL. When
+tests pass locally and fail in CI, that difference is the usual cause, so avoid
+database-specific tricks.
+
 ## Where code goes
 
 | Folder | What's in it |
@@ -64,6 +68,16 @@ another app's code or migrations when your issue says to, and tell its owner.
 
 ## Rules
 
+- **Check facts instead of guessing.** Look up names, IDs, URLs and course
+  rules at their source. If you have to assume something, say so in the pull
+  request. Review data files like `docs/mgt656/team.yaml` as closely as code:
+  in Sprint 1 an agent matched names to GitHub accounts by list order and
+  swapped two.
+- **Time zones.** The site shows Eastern time (`TIME_ZONE` is
+  `America/New_York`, with `USE_TZ` on), but the Downtowner feed and the
+  recorded history are in UTC. Use `django.utils.timezone.now()`, never
+  `datetime.now()`, and keep every datetime time-zone aware: stored in UTC,
+  shown in Eastern.
 - **Settings and secrets come from environment variables**, read in
   `config/settings.py`. Keys, passwords and connection strings never go in the
   repo, tests or fixtures.
@@ -76,13 +90,21 @@ another app's code or migrations when your issue says to, and tell its owner.
 - **Schema changes are migrations**, committed with the code that needs them.
 - **New packages** go in `requirements.txt` with an exact version (`name==1.2.3`).
 - **Pages** extend `templates/base.html`, use Bootstrap 5 and our Yale-blue
-  styles, and work on a phone and a desktop. Forms reuse `BootstrapFormMixin`
-  from `accounts/forms.py`.
+  styles, and work on a phone and a desktop. Reuse what's there so new pages
+  match: forms use `BootstrapFormMixin` from `accounts/forms.py` and the
+  `templates/registration/_fields.html` partial, which shows errors properly,
+  and icons come from Bootstrap Icons (`<i class="bi bi-...">`), already loaded
+  in `base.html`.
 - **Users:** point to them with `settings.AUTH_USER_MODEL`. Admin-only pages
   check `is_staff`.
 - **Demo data:** if graders need data to see your feature, add it to
   `core/management/commands/seed.py`, safe to run twice. Never add A/B test
   visits there: the graded A/B run counts every visit.
+- **Don't break what graders use.** The seed command manages the two grader
+  logins (`admin@example.com` and `rider@example.com`), so leave them alone.
+  Never change A/B test data, except deleting our own visits right before the
+  graded run (#47). Production is updated only through the promote step (#34),
+  and nobody changes it during the A/B run.
 - **Small pull requests:** one issue each.
 
 ## Done means
@@ -97,6 +119,15 @@ another app's code or migrations when your issue says to, and tell its owner.
   is enough.
 - After merging, it works on staging, https://yale-shuttle-staging.onrender.com,
   which redeploys from `main` within about a minute.
+
+## Deadlines and sprint reports
+
+- Every deadline is 11:59 PM ET, and graders check `main` and staging right
+  after. Don't merge code in the last few hours before a deadline, and check
+  staging after every merge.
+- Each sprint report needs one concrete thing that worked or didn't with our AI
+  agents, and what we changed. When yours gets something wrong or catches
+  something, post a line in the team chat so whoever writes the report has it.
 
 ## Data sources
 
