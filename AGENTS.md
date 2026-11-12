@@ -169,6 +169,6 @@ working with the AI: its first tests called the real feed, so i had it mock the 
   - A bus's position can be minutes old. Compare its `lastUpdate` with the
     current time before trusting it (#58).
   - The official routes aren't always right. The evening Blue also drives the
-    daytime Blue's northern loop (#54), and moved stops appear only in notices,
-    not in the stop list (#56).
+    daytime Blue's northern loop, and moved stops appear only in notices, not in
+    the stop list (both in #54).
   - Routes and stops change during the term, for example on Nov 13 (#57).
