@@ -282,6 +282,16 @@ class ImportHistoryCommandTests(TestCase):
         with self.assertRaisesMessage(CommandError, "YYYY-MM-DD"):
             call_command("import_history", "--since", "november 1st")
 
+    def test_a_bad_date_is_rejected_before_touching_the_network(self):
+        # Arguments are checked first: even with GitHub unreachable, the
+        # date error is what comes out (CI caught this ordering once).
+        with mock.patch(
+            "history.management.commands.import_history.sources.list_dates",
+            side_effect=OSError("no network"),
+        ):
+            with self.assertRaisesMessage(CommandError, "YYYY-MM-DD"):
+                call_command("import_history", "--since", "november 1st")
+
 
 class SourceParsingTests(TestCase):
     """The CSV-to-rows parsers, on strings straight from the recorder's files."""

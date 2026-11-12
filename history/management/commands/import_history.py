@@ -35,14 +35,20 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         wanted = self._dates_to_import(options)
 
-        gaps = importer.import_gaps(sources.read_gaps())
+        try:
+            gaps = importer.import_gaps(sources.read_gaps())
+        except OSError as error:
+            raise CommandError(f"Could not reach GitHub: {error}")
         self.stdout.write(
             f"gaps.csv: {gaps.polls_added} missing polls stored, "
             f"{gaps.polls_already_known} already known"
         )
 
         for date in wanted:
-            day = sources.read_day(date)
+            try:
+                day = sources.read_day(date)
+            except OSError as error:
+                raise CommandError(f"Could not fetch {date} from GitHub: {error}")
             stats = importer.import_day(date, day)
             self.stdout.write(
                 f"{date}: {stats.polls_added} polls imported "
@@ -53,24 +59,29 @@ class Command(BaseCommand):
             )
 
     def _dates_to_import(self, options):
+        """Which UTC dates to fetch. Arguments are parsed and checked before
+        anything reaches the network, so bad arguments fail fast."""
         date_arg, days_arg, since_arg = options["date"], options["days"], options["since"]
         given = [arg for arg in (date_arg, days_arg, since_arg) if arg is not None]
         if len(given) > 1:
             raise CommandError("Use only one of --date, --days or --since.")
 
         try:
-            if date_arg:
-                return [dt.date.fromisoformat(date_arg)]
-            dates = sources.list_dates()
-            if days_arg is not None:
-                if days_arg < 1:
-                    raise CommandError("--days must be at least 1.")
-                return dates[-days_arg:]
-            if since_arg:
-                since = dt.date.fromisoformat(since_arg)
-                return [date for date in dates if date >= since]
-            return dates
+            date = dt.date.fromisoformat(date_arg) if date_arg else None
+            since = dt.date.fromisoformat(since_arg) if since_arg else None
         except ValueError:
             raise CommandError("Dates look like YYYY-MM-DD (UTC dates).")
+        if days_arg is not None and days_arg < 1:
+            raise CommandError("--days must be at least 1.")
+
+        try:
+            dates = sources.list_dates()
         except OSError as error:
             raise CommandError(f"Could not reach GitHub: {error}")
+        if date:
+            return [date]
+        if days_arg is not None:
+            return dates[-days_arg:]
+        if since:
+            return [day for day in dates if day >= since]
+        return dates
