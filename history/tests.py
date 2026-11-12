@@ -1,17 +1,21 @@
-"""Tests for the history import (#22). Nothing here reaches the network: the
-importer tests feed it parsed rows directly, and the command tests mock
-history.sources, the app's only network module."""
+"""Tests for the history import (#22) and our predictions (#23). Nothing
+here reaches the network: the importer tests feed it parsed rows directly,
+the prediction tests build synthetic history in the database, and the
+command tests mock history.sources, the app's only network module."""
 
 import datetime as dt
+from io import StringIO
 from unittest import mock
 
 from django.core.management import CommandError, call_command
 from django.test import TestCase
+from django.utils import timezone
 
-from history import importer, sources
+from history import importer, predictions, sources
 from history.models import Announcement, BusPosition, Eta, Poll, RouteStatus
 
 UTC = dt.UTC
+ET = predictions.ET
 DAY = dt.date(2026, 11, 10)
 
 
@@ -374,3 +378,176 @@ class SourceParsingTests(TestCase):
         self.assertEqual(gaps[0]["polled_at"], dt.datetime(2026, 10, 27, 5, 45, tzinfo=UTC))
         self.assertIsNone(gaps[0]["bus_count"])
         self.assertEqual(gaps[0]["cause"], "run_could_not_save")
+
+
+# ----- Predictions (#23) -----
+#
+# The synthetic history covers six real days (Wed Nov 4 – Mon Nov 9, 2026,
+# all EST, no DST in the way). Weekdays run every 12 minutes, weekends every
+# 20. Whatever days evaluate() holds out get a different service pattern
+# instead (a bus every minute, 7–8 am), so if any held-out day leaked into
+# training, the predictions on it would collapse towards zero and the
+# error assertions below would catch it.
+
+
+def WEEK_DAYS():
+    return [dt.date(2026, 11, day) for day in (4, 5, 6, 9)]
+
+
+def WEEKEND_DAYS():
+    return [dt.date(2026, 11, day) for day in (7, 8)]
+
+
+def eastern(day, hour, minute=0):
+    """A moment on the Eastern clock, as it is stored: UTC."""
+    return dt.datetime.combine(day, dt.time(hour, minute), tzinfo=ET).astimezone(UTC)
+
+
+def add_arrivals(day, headway_minutes, first_hour, last_hour, route_id=1, stop_id=100):
+    """eta_minutes=0 rows every `headway_minutes` from first_hour to last_hour ET.
+
+    A different bus each time, like a real rotation: the same bus showing
+    eta 0 again within five minutes would look like one bus dwelling, and
+    be merged into a single arrival.
+    """
+    minute = first_hour * 60
+    last_minute = last_hour * 60
+    bus_number = 0
+    while minute <= last_minute:
+        moment = eastern(day, minute // 60, minute % 60)
+        bus_number += 1
+        poll = Poll.objects.create(polled_at=moment, status=Poll.Status.RECORDED)
+        Eta.objects.create(
+            poll=poll,
+            polled_at=moment,
+            stop_id=stop_id,
+            stop_name="Test stop",
+            route_id=route_id,
+            route_name="Test route",
+            bus_id=500 + bus_number,
+            bus_name=f"#{500 + bus_number}",
+            eta_minutes=0,
+            calculation_time=moment,
+        )
+        minute += headway_minutes
+
+
+def seed_history():
+    for day in WEEK_DAYS():
+        if day.toordinal() % 3 == 0:  # what evaluate() will hold out
+            add_arrivals(day, headway_minutes=1, first_hour=7, last_hour=8)
+        else:
+            add_arrivals(day, headway_minutes=12, first_hour=7, last_hour=19)
+    for day in WEEKEND_DAYS():
+        add_arrivals(day, headway_minutes=20, first_hour=8, last_hour=22)
+
+
+class PredictMinutesTests(TestCase):
+    def test_predicts_the_wait_for_a_regular_headway(self):
+        seed_history()
+        # Noon on a regular weekday, buses every 12 minutes: walking up at a
+        # random minute means waiting 0–12; the median is about 6.
+        ours = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 12, 7))
+        self.assertIsNotNone(ours)
+        self.assertGreaterEqual(ours, 4)
+        self.assertLessEqual(ours, 8)
+
+    def test_weekend_service_gets_its_own_prediction(self):
+        seed_history()
+        saturday = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 7), 10))
+        self.assertIsNotNone(saturday)
+        self.assertGreaterEqual(saturday, 8)  # a 20-minute headway, not 12
+        self.assertLessEqual(saturday, 13)
+
+    def test_no_history_means_no_prediction(self):
+        self.assertIsNone(predictions.predict_minutes(1, 100))
+        seed_history()
+        self.assertIsNone(predictions.predict_minutes(1, 999))  # an unknown stop
+
+    def test_only_history_before_now_is_used(self):
+        seed_history()
+        # Asking before any of it was recorded: nothing to learn from yet.
+        before = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 2), 12))
+        self.assertIsNone(before)
+
+    def test_a_quiet_time_of_day_falls_back_to_the_whole_day(self):
+        seed_history()
+        ours = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 3))
+        self.assertIsNotNone(ours)
+        self.assertGreater(ours, 180)  # real: the first bus is hours away
+
+
+class ArrivalMomentTests(TestCase):
+    def test_a_dwelling_bus_is_one_arrival(self):
+        t = eastern(dt.date(2026, 11, 5), 10)
+        rows = [(t, 1), (t + dt.timedelta(minutes=5), 1), (t + dt.timedelta(minutes=20), 1)]
+        moments = predictions._arrival_moments(rows)
+        self.assertEqual(moments, [t, t + dt.timedelta(minutes=20)])
+
+    def test_two_buses_at_the_stop_are_one_moment(self):
+        t = eastern(dt.date(2026, 11, 5), 10)
+        moments = predictions._arrival_moments([(t, 1), (t, 2)])
+        self.assertEqual(moments, [t])
+
+    def test_day_types_and_buckets_follow_the_eastern_clock(self):
+        # _day_type and _bucket take Eastern-aware moments, like _predict gives them.
+        def et(day, hour, minute=0):
+            return dt.datetime.combine(day, dt.time(hour, minute), tzinfo=ET)
+
+        self.assertEqual(predictions._day_type(et(dt.date(2026, 11, 7), 10)), "saturday")
+        self.assertEqual(predictions._day_type(et(dt.date(2026, 11, 8), 10)), "sunday")
+        self.assertEqual(predictions._day_type(et(dt.date(2026, 11, 5), 10)), "weekday")
+        self.assertEqual(predictions._bucket(et(dt.date(2026, 11, 5), 0, 29)), 0)
+        self.assertEqual(predictions._bucket(et(dt.date(2026, 11, 5), 0, 30)), 1)
+        self.assertEqual(predictions._bucket(et(dt.date(2026, 11, 5), 12, 7)), 24)
+
+    def test_held_out_days_are_deterministic(self):
+        days = WEEK_DAYS() + WEEKEND_DAYS()
+        held = predictions.held_out_days(set(days), 3)
+        self.assertEqual(
+            held, {day for day in days if day.toordinal() % 3 == 0}
+        )
+        self.assertTrue(held)  # the fixtures below depend on some being held out
+
+
+class EvaluateTests(TestCase):
+    def test_held_out_days_are_scored_without_leaking_into_training(self):
+        seed_history()
+        result = predictions.evaluate(holdout_modulus=3, stride=1, now=eastern(dt.date(2026, 11, 10), 12))
+
+        self.assertTrue(result["test_days"])
+        self.assertEqual(
+            result["test_days"],
+            sorted(predictions.held_out_days({dt.date(2026, 11, day) for day in range(4, 10)}, 3)),
+        )
+        self.assertGreater(result["queries"], 100)
+        self.assertEqual(result["no_prediction"], 0)
+        # The official ETA is exactly right in this synthetic history, but
+        # our prediction is worse on held-out days only because it refused
+        # to learn them (a bus every minute) — proof the holdout is honest.
+        self.assertIsNotNone(result["official_mae"])
+        self.assertLess(result["official_mae"], 0.5)
+        self.assertIsNotNone(result["ours_mae"])
+        self.assertGreater(result["ours_mae"], 3.5)
+        self.assertLess(result["ours_mae"], 12)
+
+    def test_an_empty_history_has_nothing_to_score(self):
+        result = predictions.evaluate()
+        self.assertEqual(result["queries"], 0)
+        self.assertIsNone(result["ours_mae"])
+        self.assertIsNone(result["official_mae"])
+
+
+class EvaluatePredictionsCommandTests(TestCase):
+    def test_it_prints_ours_next_to_the_official_eta(self):
+        seed_history()
+        out = StringIO()
+        call_command("evaluate_predictions", "--stride", "1", stdout=out)
+        printed = out.getvalue()
+        self.assertIn("Held out", printed)
+        self.assertIn("our prediction:", printed)
+        self.assertIn("official ETA:", printed)
+
+    def test_without_history_it_says_so(self):
+        with self.assertRaisesMessage(CommandError, "import_history"):
+            call_command("evaluate_predictions")
