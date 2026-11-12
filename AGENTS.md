@@ -162,3 +162,13 @@ working with the AI: its first tests called the real feed, so i had it mock the 
   [downtowner-recorder](https://github.com/vchen017/downtowner-recorder), under
   `data/<UTC date>/`. Its README describes each CSV's columns, and
   `data/gaps.csv` lists the polls that are missing.
+- **Feed quirks we've found** in the recorded data:
+  - Route short names aren't unique: "BW" is both Blue – Weekend Daytime
+    (route 4) and Blue West (route 16). Always identify routes by their
+    numeric `id`.
+  - A bus's position can be minutes old. Compare its `lastUpdate` with the
+    current time before trusting it (#58).
+  - The official routes aren't always right. The evening Blue also drives the
+    daytime Blue's northern loop (#54), and moved stops appear only in notices,
+    not in the stop list (#56).
+  - Routes and stops change during the term, for example on Nov 13 (#57).
