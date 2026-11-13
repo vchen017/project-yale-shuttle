@@ -11,7 +11,7 @@ from django.test import TestCase
 from history import importer, sources
 from history.models import Announcement, BusPosition, Eta, Poll, RouteStatus
 
-UTC = dt.timezone.utc
+UTC = dt.UTC
 DAY = dt.date(2026, 11, 10)
 
 
@@ -288,9 +288,8 @@ class ImportHistoryCommandTests(TestCase):
         with mock.patch(
             "history.management.commands.import_history.sources.list_dates",
             side_effect=OSError("no network"),
-        ):
-            with self.assertRaisesMessage(CommandError, "YYYY-MM-DD"):
-                call_command("import_history", "--since", "november 1st")
+        ), self.assertRaisesMessage(CommandError, "YYYY-MM-DD"):
+            call_command("import_history", "--since", "november 1st")
 
 
 class SourceParsingTests(TestCase):

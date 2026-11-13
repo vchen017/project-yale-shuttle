@@ -48,7 +48,7 @@ class GapStats:
 
 
 def _utc_day_range(date):
-    start = dt.datetime(date.year, date.month, date.day, tzinfo=dt.timezone.utc)
+    start = dt.datetime(date.year, date.month, date.day, tzinfo=dt.UTC)
     end = start + dt.timedelta(days=1)
     return start, end
 
