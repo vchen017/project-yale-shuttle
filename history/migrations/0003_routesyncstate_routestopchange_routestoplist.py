@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('history', '0001_initial'),
+        ('history', '0002_alter_routestatus_short_name'),
     ]
 
     operations = [
