@@ -57,7 +57,7 @@ def import_gaps(gap_rows):
     """Store the recorder's missing polls as MISSING, never as 'no buses'."""
     stats = GapStats()
     for row in gap_rows:
-        poll, created = Poll.objects.get_or_create(
+        _, created = Poll.objects.get_or_create(
             polled_at=row["polled_at"],
             defaults={
                 "status": Poll.Status.MISSING,
