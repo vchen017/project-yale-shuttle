@@ -91,8 +91,12 @@ def sample_day():
         "route_status": [
             _route_status(at(0), 10, "Purple - West Campus", "PW", True),
             _route_status(at(0), 4, "Blue - Weekend Daytime", "BW", False),
+            # Route 19's short name is 15 characters: longer than the old
+            # max_length=10, which PostgreSQL rejects (SQLite doesn't check).
+            _route_status(at(0), 19, "Brown Connector", "Brown Connector", True),
             _route_status(at(5), 10, "Purple - West Campus", "PW", True),
             _route_status(at(5), 4, "Blue - Weekend Daytime", "BW", False),
+            _route_status(at(5), 19, "Brown Connector", "Brown Connector", True),
         ],
         "announcements": [_announcement(at(0), 23), _announcement(at(5), 23)],
     }
@@ -137,7 +141,7 @@ class ImportDayTests(TestCase):
         self.assertFalse(Poll.objects.exclude(status=Poll.Status.RECORDED).exists())
         self.assertEqual(BusPosition.objects.count(), 4)
         self.assertEqual(Eta.objects.count(), 5)
-        self.assertEqual(RouteStatus.objects.count(), 4)
+        self.assertEqual(RouteStatus.objects.count(), 6)
         self.assertEqual(Announcement.objects.count(), 2)
 
         first = Poll.objects.get(polled_at=at(0))
@@ -153,6 +157,9 @@ class ImportDayTests(TestCase):
         self.assertEqual(inactive.short_name, "BW")
         self.assertFalse(inactive.active)
         self.assertTrue(RouteStatus.objects.get(poll=first, route_id=10).active)
+        # The 15-character short name survives the round trip.
+        brown = RouteStatus.objects.get(poll=first, route_id=19)
+        self.assertEqual(brown.short_name, "Brown Connector")
 
     def test_rerunning_the_same_day_adds_no_duplicates(self):
         importer.import_day(DAY, sample_day())
@@ -163,7 +170,7 @@ class ImportDayTests(TestCase):
         self.assertEqual(Poll.objects.count(), 2)
         self.assertEqual(BusPosition.objects.count(), 4)
         self.assertEqual(Eta.objects.count(), 5)
-        self.assertEqual(RouteStatus.objects.count(), 4)
+        self.assertEqual(RouteStatus.objects.count(), 6)
         self.assertEqual(Announcement.objects.count(), 2)
 
     def test_rows_are_never_double_counted_across_polls(self):

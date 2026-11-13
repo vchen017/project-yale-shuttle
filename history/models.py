@@ -46,7 +46,10 @@ class RouteStatus(models.Model):
     polled_at = models.DateTimeField()
     route_id = models.IntegerField()
     route_name = models.CharField(max_length=100)
-    short_name = models.CharField(max_length=10)
+    # 50, not a tight fit: short names aren't short — route 19's is
+    # "Brown Connector" (15), and PostgreSQL enforces the length where
+    # SQLite doesn't (#22 review).
+    short_name = models.CharField(max_length=50)
     description = models.CharField(max_length=200, blank=True, default="")
     active = models.BooleanField()
     num_stops = models.IntegerField()
