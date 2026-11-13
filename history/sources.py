@@ -28,9 +28,9 @@ def _text_stream(url):
     return io.TextIOWrapper(response, encoding="utf-8", newline="")  # newline="" for csv
 
 
-def _raw_url(path):
+def _raw_url(path, ref=BRANCH):
     repo = settings.HISTORY_RECORDER_REPO
-    return f"https://raw.githubusercontent.com/{repo}/{BRANCH}/{path}"
+    return f"https://raw.githubusercontent.com/{repo}/{ref}/{path}"
 
 
 def list_dates():
@@ -156,3 +156,40 @@ def read_day(date):
         "route_status": [_route_status(row) for row in read_rows(prefix + "route_status.csv")],
         "announcements": [_announcement(row) for row in read_rows(prefix + "announcements.csv")],
     }
+
+
+def list_route_commits():
+    """Commits touching data/routes.json, oldest first, as (sha, committed_at).
+
+    The recorder commits routes.json whenever the file changes, so every
+    commit is a candidate stop-list change; the walk diffs consecutive
+    versions to find the real ones (#57).
+    """
+    repo = settings.HISTORY_RECORDER_REPO
+    commits = []
+    page = 1
+    while True:
+        url = (
+            f"https://api.github.com/repos/{repo}/commits"
+            f"?path=data/routes.json&per_page=100&page={page}"
+        )
+        with _text_stream(url) as stream:
+            entries = json.load(stream)
+        if not entries:
+            break
+        commits.extend(
+            (entry["sha"], _parse_datetime(entry["commit"]["author"]["date"]))
+            for entry in entries
+        )
+        if len(entries) < 100:
+            break
+        page += 1
+    commits.sort(key=lambda item: (item[1], item[0]))
+    return commits
+
+
+def read_routes_json(sha):
+    """The recorder's routes.json at a commit, parsed: one dict per route,
+    each with its numeric id and ordered stop ids."""
+    with _text_stream(_raw_url("data/routes.json", ref=sha)) as stream:
+        return json.load(stream)

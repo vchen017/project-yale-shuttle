@@ -69,6 +69,12 @@ class Command(BaseCommand):
             f"Scored {result['queries']:,} route-stop-poll queries "
             f"({result['no_prediction']:,} had no prediction of ours)."
         )
+        if result["not_served"]:
+            self.stdout.write(
+                f"Skipped {result['not_served']:,} queries at stops the route "
+                f"no longer serves (#57), so the score matches what riders "
+                f"would be told."
+            )
         self.stdout.write("")
         self.stdout.write(f"  our prediction:  average error {result['ours_mae']} min")
         self.stdout.write(f"  official ETA:    average error {result['official_mae']} min")
