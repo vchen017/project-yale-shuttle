@@ -9,7 +9,6 @@ from unittest import mock
 
 from django.core.management import CommandError, call_command
 from django.test import TestCase
-from django.utils import timezone
 
 from history import importer, predictions, sources
 from history.models import Announcement, BusPosition, Eta, Poll, RouteStatus
@@ -382,10 +381,10 @@ class SourceParsingTests(TestCase):
 
 # ----- Predictions (#23) -----
 #
-# The synthetic history covers six real days (Wed Nov 4 – Mon Nov 9, 2026,
+# The synthetic history covers six real days (Wed Nov 4 to Mon Nov 9, 2026,
 # all EST, no DST in the way). Weekdays run every 12 minutes, weekends every
 # 20. Whatever days evaluate() holds out get a different service pattern
-# instead (a bus every minute, 7–8 am), so if any held-out day leaked into
+# instead (a bus every minute, 7-8 am), so if any held-out day leaked into
 # training, the predictions on it would collapse towards zero and the
 # error assertions below would catch it.
 
@@ -446,7 +445,7 @@ class PredictMinutesTests(TestCase):
     def test_predicts_the_wait_for_a_regular_headway(self):
         seed_history()
         # Noon on a regular weekday, buses every 12 minutes: walking up at a
-        # random minute means waiting 0–12; the median is about 6.
+        # random minute means waiting 0-12; the median is about 6.
         ours = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 12, 7))
         self.assertIsNotNone(ours)
         self.assertGreaterEqual(ours, 4)
