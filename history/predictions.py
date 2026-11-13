@@ -12,7 +12,9 @@ clock, one set per day type (weekday, Saturday, Sunday). Each bucket keeps
 the distribution of "minutes until the next bus, if you walk up then",
 sampled every five minutes across four weeks of history. The prediction is
 the bucket's median wait, widened to neighbouring buckets when the exact one
-has no data (late night, quiet stops), then to the whole day type. It is
+has no data (late night, quiet stops). When even the neighbours are empty —
+outside service hours, mostly — there is no prediction: a route that isn't
+running has no wait to predict. It is
 history only: the live feed plays no part, so a prediction works even when
 the feed is down.
 
@@ -191,7 +193,10 @@ def _learn(arrivals, exclude_dates=frozenset()):
 
 
 def _predict(profile, now):
-    """The median wait for now's bucket, widened when the bucket has no data."""
+    """The median wait for now's bucket, widened to the neighbouring
+    buckets; None when even they have no data, so a route that isn't
+    running right now (service hours ended, mostly) predicts nothing
+    instead of borrowing a wait from a different time of day."""
     if not profile:
         return None
     local = now.astimezone(ET)
@@ -204,9 +209,6 @@ def _predict(profile, now):
         ]
         if values:
             return round(statistics.median(values), 1)
-    same_day_type = [value for (day_type, _), value in profile.items() if day_type == key[0]]
-    if same_day_type:
-        return round(statistics.median(same_day_type), 1)
     return None
 
 

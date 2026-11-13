@@ -469,11 +469,16 @@ class PredictMinutesTests(TestCase):
         before = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 2), 12))
         self.assertIsNone(before)
 
-    def test_a_quiet_time_of_day_falls_back_to_the_whole_day(self):
+    def test_after_the_last_bus_predicts_nothing(self):
         seed_history()
-        ours = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 3))
-        self.assertIsNotNone(ours)
-        self.assertGreater(ours, 180)  # real: the first bus is hours away
+        # 9 PM on a weekday, hours after the last recorded arrival: the
+        # neighbouring buckets are all empty, so there is no prediction —
+        # a route that isn't running has no wait to borrow from the whole
+        # day. Hours *before* the first bus is different: the samples before
+        # the day's first arrival are real, so 3 AM still predicts hours.
+        self.assertIsNone(predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 21)))
+        early = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 3))
+        self.assertGreaterEqual(early, 120)
 
 
 class ArrivalMomentTests(TestCase):
