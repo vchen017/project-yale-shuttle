@@ -119,6 +119,78 @@ class Eta(models.Model):
         return f"{self.bus_name} at {self.stop_name} in {self.eta_minutes} min ({self.polled_at:%H:%M})"
 
 
+class RouteStopList(models.Model):
+    """One distinct version of a route's stop list, as observed in the
+    recorder's routes.json (#57). The newest first_seen per route is the
+    stop list the route serves now; earlier rows are how the walk (#57)
+    found the route before that.
+
+    The recorder commits routes.json only when the file changes, so
+    (route_id, commit_sha) identifies a version and makes re-running the
+    walk idempotent.
+    """
+
+    route_id = models.IntegerField(db_index=True)
+    route_name = models.CharField(max_length=100)
+    # Ordered like the feed serves them; order matters (it is the loop order).
+    stop_ids = models.JSONField()
+    first_seen = models.DateTimeField()
+    commit_sha = models.CharField(max_length=40)
+
+    class Meta:
+        ordering = ["route_id", "first_seen"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["route_id", "commit_sha"], name="unique_version_per_route_commit"
+            ),
+        ]
+        indexes = [models.Index(fields=["route_id", "first_seen"])]
+
+    def __str__(self):
+        return f"route {self.route_id}: {len(self.stop_ids)} stops as of {self.first_seen:%Y-%m-%d %H:%M}"
+
+
+class RouteStopChange(models.Model):
+    """A route's stop list changing (#57): which stops were added or
+    removed, and when the recorder's routes.json first showed it.
+
+    A reordering (same stops, new order) is recorded too, with both lists
+    empty, since the order is the loop order.
+    """
+
+    route_id = models.IntegerField(db_index=True)
+    changed_at = models.DateTimeField()
+    commit_sha = models.CharField(max_length=40)
+    added_stop_ids = models.JSONField(default=list)
+    removed_stop_ids = models.JSONField(default=list)
+
+    class Meta:
+        ordering = ["changed_at", "route_id"]
+        indexes = [models.Index(fields=["route_id", "changed_at"])]
+
+    def __str__(self):
+        return (
+            f"route {self.route_id}: +{self.added_stop_ids} "
+            f"-{self.removed_stop_ids} at {self.changed_at:%Y-%m-%d %H:%M}"
+        )
+
+
+class RouteSyncState(models.Model):
+    """How far the routes.json walk has run, one row (#57). Re-imports fetch
+    only commits newer than last_commit_at, so a walk that processed
+    hundreds of commits once never refetches them."""
+
+    last_commit_sha = models.CharField(max_length=40, blank=True, default="")
+    last_commit_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "route sync state"
+        verbose_name_plural = "route sync state"
+
+    def __str__(self):
+        return f"routes.json walked through {self.last_commit_sha[:7] or 'nothing yet'}"
+
+
 class Announcement(models.Model):
     """A service announcement in effect during one poll."""
 
