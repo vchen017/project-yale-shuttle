@@ -726,6 +726,116 @@ def seed_history():
         add_arrivals(day, headway_minutes=20, first_hour=8, last_hour=22)
 
 
+def add_eta_poll(moment, bus_id, eta_minutes, route_id=1, stop_id=100):
+    """One bus's ETA at one stop in one poll, like the feed serves it."""
+    poll, _ = Poll.objects.get_or_create(
+        polled_at=moment, defaults={"status": Poll.Status.RECORDED}
+    )
+    Eta.objects.create(
+        poll=poll,
+        polled_at=moment,
+        stop_id=stop_id,
+        stop_name="Test stop",
+        route_id=route_id,
+        route_name="Test route",
+        bus_id=bus_id,
+        bus_name=f"#{bus_id}",
+        eta_minutes=eta_minutes,
+        calculation_time=moment,
+    )
+
+
+class LiveLayerTests(TestCase):
+    """A bus counting down in the fresh polls is the prediction, and it
+    ticks: the official app's whiplash ("20 minutes away", and 6 five
+    minutes later) is what this layer exists to never do."""
+
+    def test_a_counting_down_bus_is_the_prediction(self):
+        add_eta_poll(eastern(dt.date(2026, 11, 5), 12), bus_id=9, eta_minutes=7)
+        ours = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 12, 2))
+        self.assertEqual(ours, 5.0)  # the countdown run out: 12:07, asked at 12:02
+
+    def test_the_countdown_ticks_between_polls(self):
+        add_eta_poll(eastern(dt.date(2026, 11, 5), 12), bus_id=9, eta_minutes=7)
+        first = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 12, 2))
+        second = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 12, 4))
+        self.assertEqual(first, 5.0)
+        self.assertEqual(second, 3.0)  # two minutes passed, the answer dropped two
+
+    def test_the_soonest_of_several_buses_wins(self):
+        noon = eastern(dt.date(2026, 11, 5), 12)
+        add_eta_poll(noon, bus_id=9, eta_minutes=9)
+        add_eta_poll(noon, bus_id=11, eta_minutes=4)
+        ours = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 12, 2))
+        self.assertEqual(ours, 2.0)
+
+    def test_a_new_poll_can_only_bring_the_bus_sooner(self):
+        # The feed recomputed 12 minutes out (implied 12:12); the next poll
+        # says 5 (implied 12:10). The estimate follows the new evidence down.
+        add_eta_poll(eastern(dt.date(2026, 11, 5), 12), bus_id=9, eta_minutes=12)
+        add_eta_poll(eastern(dt.date(2026, 11, 5), 12, 5), bus_id=9, eta_minutes=5)
+        ours = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 12, 6))
+        self.assertEqual(ours, 4.0)
+
+    def test_an_arrival_that_comes_due_reads_zero_then_defers_to_history(self):
+        add_eta_poll(eastern(dt.date(2026, 11, 5), 12), bus_id=9, eta_minutes=3)
+        due = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 12, 3))
+        gone = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 12, 7))
+        self.assertEqual(due, 0.0)  # arrived about now
+        # Minutes later the expired countdown is gone; the answer is the
+        # history layer's, which learned the arrival at 12:03 from that
+        # same poll — not a frozen "0" held open forever.
+        self.assertEqual(gone, 3.0)
+
+    def test_a_stale_poll_falls_through_to_history(self):
+        seed_history()
+        # The 12:00 poll is 16 minutes old at 12:16 — too old to trust, so
+        # the recorded history answers, not a frozen countdown.
+        ours = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 12, 16))
+        self.assertIsNotNone(ours)
+        self.assertGreaterEqual(ours, 4)
+        self.assertLessEqual(ours, 8)
+
+    def test_nothing_after_now_is_used(self):
+        add_eta_poll(eastern(dt.date(2026, 11, 5), 12, 10), bus_id=9, eta_minutes=7)
+        self.assertIsNone(
+            predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 12, 2))
+        )
+
+
+class ConditionedHistoryTests(TestCase):
+    """When no poll is fresh but a bus did come recently, the wait shrinks
+    with the elapsed time — the history layer's own countdown."""
+
+    def test_the_wait_shrinks_with_elapsed_time(self):
+        seed_history()
+        # Tuesday Nov 10 is not a seeded day: its only arrival is the one
+        # we add, so the live layer goes quiet minutes later and the
+        # conditioned history answers. Weekday headways are 12 minutes,
+        # so 7 minutes after a bus the truth is 5 — and the interpolation
+        # between the sampled elapsed points recovers exactly that.
+        add_eta_poll(eastern(dt.date(2026, 11, 10), 12), bus_id=9, eta_minutes=0)
+        ours = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 10), 12, 7))
+        self.assertEqual(ours, 5.0)
+
+    def test_each_day_type_conditions_on_its_own_service(self):
+        seed_history()
+        # Sunday headways are 20 minutes: 7 minutes after the bus, 13 remain.
+        add_eta_poll(eastern(dt.date(2026, 11, 15), 12), bus_id=9, eta_minutes=0)
+        ours = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 15), 12, 7))
+        self.assertEqual(ours, 13.0)
+
+    def test_an_arrival_hours_old_defers_to_the_buckets(self):
+        seed_history()
+        add_eta_poll(eastern(dt.date(2026, 11, 10), 12), bus_id=9, eta_minutes=0)
+        # An hour later, unseen buses may have come and gone: conditioning
+        # on a stale elapsed time would be a lie, so the walk-up median —
+        # about 6 on this schedule — answers instead.
+        ours = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 10), 13, 1))
+        self.assertGreaterEqual(ours, 4)
+        self.assertLessEqual(ours, 8)
+
+
 class PredictMinutesTests(TestCase):
     def test_predicts_the_wait_for_a_regular_headway(self):
         seed_history()
@@ -738,7 +848,10 @@ class PredictMinutesTests(TestCase):
 
     def test_weekend_service_gets_its_own_prediction(self):
         seed_history()
-        saturday = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 7), 10))
+        # 10:07, not 10:00: at 10:00 a bus is due that minute, and the live
+        # layer rightly says so (see LiveLayerTests); 10:07 asks the
+        # history layer about Saturday service.
+        saturday = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 7), 10, 7))
         self.assertIsNotNone(saturday)
         self.assertGreaterEqual(saturday, 8)  # a 20-minute headway, not 12
         self.assertLessEqual(saturday, 13)
@@ -766,17 +879,53 @@ class PredictMinutesTests(TestCase):
         self.assertGreaterEqual(early, 120)
 
 
-class ArrivalMomentTests(TestCase):
+class ArrivalEventTests(TestCase):
     def test_a_dwelling_bus_is_one_arrival(self):
         t = eastern(dt.date(2026, 11, 5), 10)
-        rows = [(t, 1), (t + dt.timedelta(minutes=5), 1), (t + dt.timedelta(minutes=20), 1)]
-        moments = predictions._arrival_moments(rows)
-        self.assertEqual(moments, [t, t + dt.timedelta(minutes=20)])
+        rows = [
+            (t, 1, 0),
+            (t + dt.timedelta(minutes=5), 1, 0),
+            (t + dt.timedelta(minutes=20), 1, 0),
+        ]
+        events = predictions._arrival_events(rows)
+        self.assertEqual(events, [t, t + dt.timedelta(minutes=20)])
 
     def test_two_buses_at_the_stop_are_one_moment(self):
         t = eastern(dt.date(2026, 11, 5), 10)
-        moments = predictions._arrival_moments([(t, 1), (t, 2)])
-        self.assertEqual(moments, [t])
+        events = predictions._arrival_events([(t, 1, 0), (t, 2, 0)])
+        self.assertEqual(events, [t])
+
+    def test_an_approach_caught_between_polls_is_extrapolated(self):
+        # The recorder polls every five minutes: the countdown reaches 4 and
+        # the bus is gone by the next poll. The arrival is the countdown run
+        # out, not a poll that landed on it.
+        t = eastern(dt.date(2026, 11, 5), 10)
+        rows = [
+            (t - dt.timedelta(minutes=20), 7, 30),
+            (t - dt.timedelta(minutes=15), 7, 25),
+            (t, 7, 4),
+        ]
+        events = predictions._arrival_events(rows)
+        self.assertEqual(events, [t + dt.timedelta(minutes=4)])
+
+    def test_a_wrap_to_the_next_lap_starts_a_new_approach(self):
+        t = eastern(dt.date(2026, 11, 5), 10)
+        rows = [
+            (t, 7, 1),  # arrives about a minute after this poll
+            (t + dt.timedelta(minutes=5), 7, 52),  # next lap, from the top
+            (t + dt.timedelta(minutes=40), 7, 3),  # back again
+        ]
+        events = predictions._arrival_events(rows)
+        self.assertEqual(events, [t + dt.timedelta(minutes=1), t + dt.timedelta(minutes=43)])
+
+    def test_a_countdown_that_merely_stops_is_no_arrival(self):
+        # A bus taken off the feed mid-approach never reached the stop.
+        t = eastern(dt.date(2026, 11, 5), 10)
+        rows = [
+            (t - dt.timedelta(minutes=10), 7, 30),
+            (t - dt.timedelta(minutes=5), 7, 25),
+        ]
+        self.assertEqual(predictions._arrival_events(rows), [])
 
     def test_day_types_and_buckets_follow_the_eastern_clock(self):
         # _day_type and _bucket take Eastern-aware moments, like _predict gives them.
@@ -811,14 +960,24 @@ class EvaluateTests(TestCase):
         )
         self.assertGreater(result["queries"], 100)
         self.assertEqual(result["no_prediction"], 0)
-        # The official ETA is exactly right in this synthetic history, but
-        # our prediction is worse on held-out days only because it refused
-        # to learn them (a bus every minute) — proof the holdout is honest.
+        # The official ETA is nearly right in this synthetic history — the
+        # query stands QUERY_OFFSET past its poll, so an eta of 0 is already
+        # a minute or so stale. And the live layer reads the held-out day's
+        # own polls, the way production would, so it scores nearly perfect
+        # here. The holdout is proven honest by the history layer alone: it
+        # is worse only because it refused to learn the held-out days (a bus
+        # every minute); if they leaked into training, it would collapse
+        # towards zero too.
         self.assertIsNotNone(result["official_mae"])
-        self.assertLess(result["official_mae"], 0.5)
+        self.assertLess(result["official_mae"], 2.0)
         self.assertIsNotNone(result["ours_mae"])
-        self.assertGreater(result["ours_mae"], 3.5)
-        self.assertLess(result["ours_mae"], 12)
+        self.assertIsNotNone(result["history_mae"])
+        # On held-out weekdays the conditioned history reads the median
+        # residual at elapsed 0 — a 12-minute headway — against an actual
+        # of 0 (a bus arrives as the rider opens the app). Had the held-out
+        # days leaked into training, it would collapse towards zero.
+        self.assertGreater(result["history_mae"], 3.5)
+        self.assertLess(result["history_mae"], 12.5)
 
     def test_an_empty_history_has_nothing_to_score(self):
         result = predictions.evaluate()
