@@ -11,6 +11,9 @@ the live Downtowner feeds, which
 every 5 minutes. MGT 656 team project: Django and PostgreSQL, with staging on
 Render and the database on Neon.
 
+**Working on it?** Read [AGENTS.md](AGENTS.md) first: where code goes, our
+rules, and what "done" means. Our AI agents read it too.
+
 ## Run it locally
 
 You need Python 3.12; [uv](https://docs.astral.sh/uv/) installs it for you.
