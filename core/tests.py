@@ -5,7 +5,7 @@ from unittest import mock
 from django.contrib.auth import get_user_model
 from django.core.management import CommandError, call_command
 from django.template.loader import render_to_string
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 PASSWORDS = {"SEED_ADMIN_PASSWORD": "test-admin-pass-1", "SEED_RIDER_PASSWORD": "test-rider-pass-2"}
 
@@ -68,3 +68,26 @@ class PageTests(TestCase):
     def test_favicon_ico_points_to_our_icon(self):
         response = self.client.get("/favicon.ico")
         self.assertRedirects(response, "/static/core/favicon.svg", status_code=301, fetch_redirect_response=False)
+
+
+class HealthTests(SimpleTestCase):
+    """/healthz, for Render's health check and the promote workflow. SimpleTestCase
+    fails on any database query, which proves it stays off the database."""
+
+    def test_reports_ok_and_the_commit_render_is_running(self):
+        with mock.patch.dict(os.environ, {"RENDER_GIT_COMMIT": "4231b6a9f0c1d2e3b4a5"}):
+            response = self.client.get("/healthz")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "ok", "commit": "4231b6a"})
+
+    def test_is_never_cached(self):
+        response = self.client.get("/healthz")
+        self.assertIn("no-cache", response["Cache-Control"])
+
+    def test_works_outside_render_with_no_commit(self):
+        with mock.patch.dict(os.environ, {"RENDER_GIT_COMMIT": ""}):
+            response = self.client.get("/healthz")
+        self.assertEqual(response.json(), {"status": "ok", "commit": ""})
+
+    def test_only_answers_reads(self):
+        self.assertEqual(self.client.post("/healthz").status_code, 405)
