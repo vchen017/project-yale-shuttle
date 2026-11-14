@@ -19,3 +19,23 @@ services:
         sync: false
       - key: SEED_RIDER_PASSWORD
         sync: false
+
+  # Import the recorder's freshest polls every five minutes, so predictions
+  # have live data to work from (history/predictions.py's live layer reads
+  # polls up to 15 minutes old). Two days, so a run just before UTC midnight
+  # and the polls that land during it are both covered. Re-running adds no
+  # duplicates (the importer skips known polls). Render bills cron jobs
+  # separately from free web services — this service is created only when
+  # the blueprint is applied with it enabled, and the team decides when.
+  - type: cron
+    name: yale-shuttle-import
+    runtime: python
+    region: ohio
+    schedule: "*/5 * * * *"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python manage.py import_history --days 2
+    envVars:
+      - key: DATABASE_URL  # the same Neon connection string
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
