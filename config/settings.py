@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     "accounts",
     "abtest",
     "core",
+    "transit",
     "history",
 ]
 
@@ -130,3 +131,6 @@ LOGGING = {
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# The live Downtowner feeds the transit app reads (issue #36).
+DOWNTOWNER_URL = os.environ.get("DOWNTOWNER_URL", "https://yale.downtownerapp.com")
