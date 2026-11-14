@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     "accounts",
     "abtest",
     "core",
+    "history",
 ]
 
 MIDDLEWARE = [
@@ -113,6 +114,9 @@ STORAGES = {
 # Render terminates HTTPS and forwards plain HTTP with this header.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = not DEBUG
+
+# The GitHub repo whose recorded shuttle history we import (issue #22).
+HISTORY_RECORDER_REPO = os.environ.get("HISTORY_RECORDER_REPO", "vchen017/downtowner-recorder")
 
 EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
 
