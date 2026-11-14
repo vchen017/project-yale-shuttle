@@ -1,6 +1,8 @@
-# Render Blueprint for the staging environment; production comes in Sprint 2.
-# In Render: New > Blueprint, pick this repo. Render asks for the values marked
-# sync: false. The Python version comes from .python-version.
+# Render Blueprint. Staging deploys every merge to main; production changes only
+# when someone runs the "promote to production" workflow (see README).
+# Render asks for the values marked sync: false when a Blueprint is first
+# created; for a service added later, set them on that service's Environment
+# page. The Python version comes from .python-version.
 services:
   - type: web
     name: yale-shuttle-staging
@@ -10,10 +12,31 @@ services:
     branch: main
     buildCommand: ./build.sh
     startCommand: gunicorn config.wsgi --bind 0.0.0.0:$PORT --access-logfile -
+    healthCheckPath: /healthz
     envVars:
       - key: SECRET_KEY
         generateValue: true
-      - key: DATABASE_URL  # Neon connection string
+      - key: DATABASE_URL  # Neon connection string: the project's main branch
+        sync: false
+      - key: SEED_ADMIN_PASSWORD
+        sync: false
+      - key: SEED_RIDER_PASSWORD
+        sync: false
+
+  - type: web
+    name: yale-shuttle
+    runtime: python
+    plan: free
+    region: ohio
+    branch: main
+    autoDeployTrigger: "off"  # production only changes through the promote workflow
+    buildCommand: ./build.sh
+    startCommand: gunicorn config.wsgi --bind 0.0.0.0:$PORT --access-logfile -
+    healthCheckPath: /healthz
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL  # production's own Neon database: branch "production", database "yale_shuttle"
         sync: false
       - key: SEED_ADMIN_PASSWORD
         sync: false
