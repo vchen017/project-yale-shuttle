@@ -114,6 +114,10 @@ STORAGES = {
 # Render terminates HTTPS and forwards plain HTTP with this header.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = not DEBUG
+if not DEBUG:  # the site is HTTPS-only off localhost: redirect and say so
+    SECURE_SSL_REDIRECT = True
+    SECURE_HSTS_SECONDS = 60 * 60 * 24 * 30  # a month to start; raise once sure
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 
 # The GitHub repo whose recorded shuttle history we import (issue #22).
 HISTORY_RECORDER_REPO = os.environ.get("HISTORY_RECORDER_REPO", "vchen017/downtowner-recorder")
