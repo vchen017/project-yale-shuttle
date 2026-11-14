@@ -23,6 +23,9 @@ SEED_ADMIN_PASSWORD=pick-one SEED_RIDER_PASSWORD=pick-another .venv/bin/python m
 .venv/bin/python manage.py runserver
 ```
 
+On Windows without uv: `python -m venv .venv`, then use
+`.venv\Scripts\python.exe` in place of `.venv/bin/python` everywhere.
+
 Run the tests with `DJANGO_DEBUG=1 .venv/bin/python manage.py test`. CI runs
 them against PostgreSQL on every pull request.
 
@@ -37,6 +40,7 @@ Everything comes from environment variables; nothing secret goes in git.
 | `DJANGO_DEBUG` | `1` for local development only |
 | `ALLOWED_HOSTS` | extra host names, comma-separated; Render's own is added automatically |
 | `SEED_ADMIN_PASSWORD`, `SEED_RIDER_PASSWORD` | grader account passwords, used by `manage.py seed` |
+| `HISTORY_RECORDER_REPO` | where to import history from; defaults to `vchen017/downtowner-recorder` |
 
 ## Pages
 
@@ -44,11 +48,41 @@ Everything comes from environment variables; nothing secret goes in git.
 - `/ecc1032`: the A/B test page, and `/ecc1032/stats` for its live results
   (`ecc1032` is the start of the SHA-1 hash of our team nickname, cold-flower)
 
+## How the predictions work
+
+`history/predictions.py` answers in two layers, live first:
+
+- **Live:** the freshest recorded polls each imply an absolute arrival time
+  (`polled_at + eta_minutes`). The earliest one still ahead is the next bus,
+  and the answer ages a minute per minute between polls — a countdown that
+  ticks, unlike the official app's. Estimates only ever move sooner; ones
+  that come due expire after 3 minutes, so a listing that never arrives
+  can't hold the answer hostage.
+- **History:** the fallback when nothing live is fresh. Arrivals are
+  detected by countdown crossing (an ETA at or below 5 extrapolated to
+  zero — the recorder polls every 5 minutes, so most arrivals land between
+  polls), and learned as walk-up medians per (day type, half-hour bucket),
+  then conditioned on how long the stop has been without a bus.
+
+Score it against the official ETA on days held out from training:
+
+```sh
+DJANGO_DEBUG=1 python manage.py evaluate_predictions
+```
+
+This takes a couple of minutes and needs imported history. Numbers from
+before November 14, 2026 aren't comparable to later ones: the ground truth
+changed from "polls with eta 0" (which misses most arrivals) to crossing
+detection, which is also what the model trains on now.
+
 ## Deploying
 
-`render.yaml` defines the staging service. Each deploy runs `build.sh`, which
-installs packages, collects static files, migrates the database, and runs
-`seed`. Seed is safe to run more than once.
+`render.yaml` defines the staging service, plus a cron job that imports the
+recorder's freshest polls every five minutes — the fresh data our live
+predictions read. The cron job bills separately from the free web service,
+so it is only created when the blueprint is applied with it enabled. Each
+deploy runs `build.sh`, which installs packages, collects static files,
+migrates the database, and runs `seed`. Seed is safe to run more than once.
 
 Before the graded A/B run, delete our own test visits with
 `python manage.py reset_abtest --yes`.
