@@ -19,6 +19,8 @@ services:
         sync: false
       - key: SEED_RIDER_PASSWORD
         sync: false
+      - key: SECURE_SSL_REDIRECT  # HTTPS-only on staging; CI's tests stay plain HTTP
+        value: "1"
 
   # Import the recorder's freshest polls every five minutes, so predictions
   # have live data to work from (history/predictions.py's live layer reads
