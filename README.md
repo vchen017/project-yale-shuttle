@@ -49,12 +49,34 @@ Everything comes from environment variables; nothing secret goes in git.
 
 ## Deploying
 
-`render.yaml` defines the staging service. Each deploy runs `build.sh`, which
-installs packages, collects static files, migrates the database, and runs
-`seed`. Seed is safe to run more than once.
+`render.yaml` defines both environments, each with its own Neon database:
 
-Before the graded A/B run, delete our own test visits with
-`python manage.py reset_abtest --yes`.
+- **Staging** (`yale-shuttle-staging`) deploys every merge to `main`. Its
+  database is the Neon project's `main` branch.
+- **Production** (`yale-shuttle`) never deploys on merge. To release, open
+  **Actions → promote to production → Run workflow**. It checks that the commit
+  is on `main` and passed CI, deploys exactly that commit, then waits until
+  production's `/healthz` reports it and the log-in and A/B pages answer. Its
+  database is `yale_shuttle` on the Neon branch `production`.
+
+Every deploy runs `build.sh`, which installs packages, collects static files,
+migrates the database, and runs `seed` (safe to run more than once). Render
+only switches to a new deploy once `/healthz` answers, and `/healthz` shows
+which commit each environment is running.
+
+Production's one-time setup, after `render.yaml` creates the service:
+
+1. On the `yale-shuttle` service's Environment page in Render, set
+   `DATABASE_URL` (Neon: branch `production`, database `yale_shuttle`, pooled
+   connection string), `SEED_ADMIN_PASSWORD` and `SEED_RIDER_PASSWORD`.
+2. In the GitHub repo's Actions settings, add its deploy hook (Render: the
+   service's Settings, Deploy Hook) as the secret
+   `RENDER_PRODUCTION_DEPLOY_HOOK`, and its address as the variable
+   `PRODUCTION_URL`.
+
+Before the graded A/B run, delete our own test visits on production with
+`python manage.py reset_abtest --yes`, run from a laptop with production's
+`DATABASE_URL` (Render's free plan has no shell). See #47.
 
 ## Neon
 
