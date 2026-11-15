@@ -12,7 +12,7 @@ import json
 import logging
 import zoneinfo
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from django.conf import settings
 
@@ -21,6 +21,11 @@ from . import openrouter
 logger = logging.getLogger(__name__)
 
 MAX_MESSAGE_LENGTH = 160  # one short push notification
+
+# Our rules of thumb for the prompt: a team decision, not something the model knows.
+TIGHT_SLACK_MINUTES = 30
+LEAD_MINUTES_EARLIEST = 5
+LEAD_MINUTES_LATEST = 15
 
 
 @dataclass(frozen=True)
@@ -52,10 +57,18 @@ minutes they walk to the stop, the official arrival time of the next bus, and
 our own predicted arrival time (it may be missing). Our prediction is usually
 better than the official time when it exists.
 
-Notify only if it helps the rider: they need to leave soon, or the bus is late
-enough that they should know. A rider whose bus is comfortably on time and who
-has plenty of slack doesn't need a message. The notification must be sent at
-least as early as the rider has to leave for the stop.
+The facts include two numbers worked out for you:
+  - "Leave for the stop by": the bus's arrival (ours when we have one, otherwise
+    the official time) minus the walking time.
+  - "Slack": the minutes between that arrival and when the rider needs to be there.
+
+Notify only when the slack is {TIGHT_SLACK_MINUTES} minutes or less: then the rider has little
+room for error and a reminder helps. With more slack than that, don't notify,
+even if the bus is coming soon.
+
+When you do notify, notify_at is {LEAD_MINUTES_EARLIEST} to {LEAD_MINUTES_LATEST} minutes before "Leave for the stop by", never
+at or after it, and never at the bus's arrival time. The message says which bus,
+when it arrives and when to leave.
 
 Reply with only a JSON object with exactly these keys:
   "notify": true or false
@@ -74,6 +87,9 @@ def _local(moment):
 
 def build_messages(trip):
     predicted = _local(trip.predicted_arrival) if trip.predicted_arrival else "none (no prediction)"
+    arrival = trip.predicted_arrival or trip.official_arrival
+    leave_by = arrival - timedelta(minutes=trip.walking_minutes)
+    slack = round((trip.needed_at - arrival).total_seconds() / 60)
     facts = (
         f"Route: {trip.route}\n"
         f"Stop: {trip.stop}\n"
@@ -81,6 +97,8 @@ def build_messages(trip):
         f"Walking time to the stop: {trip.walking_minutes} minutes\n"
         f"Official arrival of the next bus: {_local(trip.official_arrival)}\n"
         f"Our predicted arrival: {predicted}\n"
+        f"Leave for the stop by: {_local(leave_by)}\n"
+        f"Slack: {slack} minutes\n"
     )
     return [
         {"role": "system", "content": SYSTEM_PROMPT},

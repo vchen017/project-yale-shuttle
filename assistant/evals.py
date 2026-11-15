@@ -6,6 +6,10 @@ through `decide_notification` with OpenRouter mocked, which checks the prompt
 plumbing, the validation and our scoring. `manage.py evaluate_assistant` runs
 the same cases against the real model once we have a key.
 
+"Tight" means 30 minutes of slack or less between the bus arriving and the
+rider's deadline (`TIGHT_SLACK_MINUTES` in decide.py): a team rule of thumb that
+the other cases are built around.
+
 A case expects either "don't notify", or "notify at some time in
 [earliest, latest]" (the message wording isn't scored). The latest time is the
 moment the rider has to leave for the stop to catch the bus; the earliest is
@@ -29,9 +33,9 @@ def case(name, trip, notify, mock_reply, window=None):
 
 CASES = [
     case(
-        "on-time bus and plenty of slack: stay quiet",
+        "on-time bus and plenty of slack (44 min): stay quiet",
         Trip("Blue", "Grove Street", needed_at=at(9, 0), walking_minutes=5,
-             official_arrival=at(8, 30), predicted_arrival=at(8, 31)),
+             official_arrival=at(8, 15), predicted_arrival=at(8, 16)),
         notify=False,
         mock_reply='{"notify": false, "notify_at": null, "message": ""}',
     ),
