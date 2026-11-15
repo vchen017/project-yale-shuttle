@@ -39,6 +39,8 @@ Everything comes from environment variables; nothing secret goes in git.
 | `SECRET_KEY` | Django's secret key (required unless `DJANGO_DEBUG=1`) |
 | `DJANGO_DEBUG` | `1` for local development only |
 | `ALLOWED_HOSTS` | extra host names, comma-separated; Render's own is added automatically |
+| `OPENROUTER_API_KEY` | key for the AI feature's LLM calls (OpenRouter); without it the assistant never notifies |
+| `OPENROUTER_MODEL` | OpenRouter model name; defaults to `openai/gpt-4o-mini` |
 | `SEED_ADMIN_PASSWORD`, `SEED_RIDER_PASSWORD` | grader account passwords, used by `manage.py seed` |
 
 ## Pages
