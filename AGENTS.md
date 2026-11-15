@@ -33,9 +33,10 @@ SEED_ADMIN_PASSWORD=pick-one SEED_RIDER_PASSWORD=pick-another .venv/bin/python m
 .venv/bin/python manage.py runserver
 ```
 
-Tests: `DJANGO_DEBUG=1 .venv/bin/python manage.py test`. CI runs them against
-PostgreSQL on every pull request and checks that the migrations match the
-models. GitHub won't merge until both pass.
+Tests: `DJANGO_DEBUG=1 .venv/bin/python manage.py test`. Lint:
+`uvx ruff check --fix .` (the rules are in `ruff.toml`). CI runs the linter and
+the tests against PostgreSQL on every pull request, and checks that the
+migrations match the models. GitHub won't merge until all of them pass.
 
 Your laptop runs the app on SQLite, but CI and the servers use PostgreSQL. When
 tests pass locally and fail in CI, that difference is the usual cause, so avoid
@@ -88,6 +89,9 @@ another app's code or migrations when your issue says to, and tell its owner.
 - **Nothing lasting on local disk.** Data goes in the database; the servers'
   disks are wiped on every deploy.
 - **Schema changes are migrations**, committed with the code that needs them.
+  Keep them safe for the previous version to run against, so a rollback works:
+  add tables and nullable columns freely, and remove or rename things in a
+  later pull request.
 - **New packages** go in `requirements.txt` with an exact version (`name==1.2.3`).
 - **Pages** extend `templates/base.html`, use Bootstrap 5 and our Yale-blue
   styles, and work on a phone and a desktop. Reuse what's there so new pages
