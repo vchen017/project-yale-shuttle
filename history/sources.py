@@ -23,7 +23,11 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _text_stream(url):
-    request = Request(url, headers={"User-Agent": USER_AGENT})
+    headers = {"User-Agent": USER_AGENT}
+    if settings.GITHUB_TOKEN and url.startswith("https://api.github.com/"):
+        # Signed-in calls get a far higher rate limit (see config/settings.py).
+        headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
+    request = Request(url, headers=headers)
     response = urlopen(request, timeout=TIMEOUT_SECONDS)
     return io.TextIOWrapper(response, encoding="utf-8", newline="")  # newline="" for csv
 
