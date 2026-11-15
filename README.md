@@ -39,7 +39,6 @@ Everything comes from environment variables; nothing secret goes in git.
 | `SECRET_KEY` | Django's secret key (required unless `DJANGO_DEBUG=1`) |
 | `DJANGO_DEBUG` | `1` for local development only |
 | `ALLOWED_HOSTS` | extra host names, comma-separated; Render's own is added automatically |
-| `GITHUB_TOKEN` | optional: a token for the history import's GitHub API calls, which otherwise share 60 calls an hour; the scheduled-jobs workflow passes its own |
 | `SEED_ADMIN_PASSWORD`, `SEED_RIDER_PASSWORD` | grader account passwords, used by `manage.py seed` |
 
 ## Pages
@@ -102,7 +101,10 @@ jobs in its own `jobs.py`, and `python manage.py run_job --list` shows them all.
   production or staging. Locally, `python manage.py run_job import_history`.
 - **Setup:** the workflow reads a `DATABASE_URL` secret from each GitHub
   environment (`production`, `staging`): Neon's direct (unpooled) connection
-  string for that site's database.
+  string for that site's database. It also passes its own token as
+  `GITHUB_TOKEN`, so the history import's GitHub API calls aren't held to the
+  60 an hour GitHub allows without one. Set `GITHUB_TOKEN` locally only if you
+  hit that limit.
 
 Mind Neon's free plan, which staging and production share:
 
