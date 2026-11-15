@@ -18,8 +18,6 @@ services:
         generateValue: true
       - key: DATABASE_URL  # Neon connection string: the project's main branch
         sync: false
-      - key: OPENROUTER_API_KEY
-        sync: false
       - key: SEED_ADMIN_PASSWORD
         sync: false
       - key: SEED_RIDER_PASSWORD
@@ -39,8 +37,6 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL  # production's own Neon database: branch "production", database "yale_shuttle"
-        sync: false
-      - key: OPENROUTER_API_KEY
         sync: false
       - key: SEED_ADMIN_PASSWORD
         sync: false
