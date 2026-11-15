@@ -22,11 +22,6 @@ logger = logging.getLogger(__name__)
 
 MAX_MESSAGE_LENGTH = 160  # one short push notification
 
-# Our rules of thumb for the prompt: a team decision, not something the model knows.
-TIGHT_SLACK_MINUTES = 30
-LEAD_MINUTES_EARLIEST = 5
-LEAD_MINUTES_LATEST = 15
-
 
 @dataclass(frozen=True)
 class Trip:
@@ -49,26 +44,29 @@ class Decision:
 
 DONT_NOTIFY = Decision(notify=False)
 
+def leave_by(trip):
+    """When the rider has to leave for the stop to meet the bus: arithmetic, so it's done here
+    and handed to the model, not left for it to work out. Our prediction wins when we have one."""
+    arrival = trip.predicted_arrival or trip.official_arrival
+    return arrival - timedelta(minutes=trip.walking_minutes)
+
+
 SYSTEM_PROMPT = f"""\
 You decide whether and when to notify a Yale shuttle rider about an upcoming trip.
 
 You get the route, the stop, the time the rider needs to be there, how many
-minutes they walk to the stop, the official arrival time of the next bus, and
-our own predicted arrival time (it may be missing). Our prediction is usually
-better than the official time when it exists.
+minutes they walk to the stop, the official arrival time of the next bus, our own
+predicted arrival time (it may be missing), and "Leave for the stop by": the bus's
+arrival (ours when we have one, otherwise the official time) minus the walking time.
+Our prediction is usually better than the official time when it exists.
 
-The facts include two numbers worked out for you:
-  - "Leave for the stop by": the bus's arrival (ours when we have one, otherwise
-    the official time) minus the walking time.
-  - "Slack": the minutes between that arrival and when the rider needs to be there.
+You don't know how long the ride takes, so don't promise the rider will arrive on time.
 
-Notify only when the slack is {TIGHT_SLACK_MINUTES} minutes or less: then the rider has little
-room for error and a reminder helps. With more slack than that, don't notify,
-even if the bus is coming soon.
-
-When you do notify, notify_at is {LEAD_MINUTES_EARLIEST} to {LEAD_MINUTES_LATEST} minutes before "Leave for the stop by", never
-at or after it, and never at the bus's arrival time. The message says which bus,
-when it arrives and when to leave.
+Use your judgment. A notification is worth sending when the rider has little room
+for error, when the bus is meaningfully later than the official time says, or when
+the bus will arrive too late for them. Stay quiet when they have plenty of room.
+When you notify, send it early enough to act on, always before "Leave for the stop by"
+and never after it. The message names the bus, says when it arrives and when to leave.
 
 Reply with only a JSON object with exactly these keys:
   "notify": true or false
@@ -87,9 +85,6 @@ def _local(moment):
 
 def build_messages(trip):
     predicted = _local(trip.predicted_arrival) if trip.predicted_arrival else "none (no prediction)"
-    arrival = trip.predicted_arrival or trip.official_arrival
-    leave_by = arrival - timedelta(minutes=trip.walking_minutes)
-    slack = round((trip.needed_at - arrival).total_seconds() / 60)
     facts = (
         f"Route: {trip.route}\n"
         f"Stop: {trip.stop}\n"
@@ -97,8 +92,7 @@ def build_messages(trip):
         f"Walking time to the stop: {trip.walking_minutes} minutes\n"
         f"Official arrival of the next bus: {_local(trip.official_arrival)}\n"
         f"Our predicted arrival: {predicted}\n"
-        f"Leave for the stop by: {_local(leave_by)}\n"
-        f"Slack: {slack} minutes\n"
+        f"Leave for the stop by: {_local(leave_by(trip))}\n"
     )
     return [
         {"role": "system", "content": SYSTEM_PROMPT},

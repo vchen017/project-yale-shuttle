@@ -92,7 +92,8 @@ class DecideTests(SimpleTestCase):
         system, user = chat.call_args.args[0]
         self.assertEqual(system["role"], "system")
         for expected in ("Blue", "Grove Street", "2026-11-16T09:00-05:00", "10 minutes",
-                         "2026-11-16T08:45-05:00", "2026-11-16T08:50-05:00"):
+                         "2026-11-16T08:45-05:00", "2026-11-16T08:50-05:00",
+                         "Leave for the stop by: 2026-11-16T08:40-05:00"):
             self.assertIn(expected, user["content"])
 
     def test_a_missing_prediction_is_said_so(self, chat):
@@ -140,9 +141,9 @@ def decide_replace(trip, **changes):
 class EvaluationSetTests(SimpleTestCase):
     """The evaluation set, run like tests: OpenRouter is mocked with each case's good answer."""
 
-    def test_there_are_at_least_five_cases_with_both_outcomes(self):
+    def test_there_are_at_least_five_cases_with_clear_answers_both_ways(self):
         self.assertGreaterEqual(len(evals.CASES), 5)
-        self.assertEqual({c["notify"] for c in evals.CASES}, {True, False})
+        self.assertEqual({c["expect"] for c in evals.CASES}, {True, False, None})
 
     def test_every_case_passes_with_the_mocked_model(self):
         for case in evals.CASES:
@@ -154,14 +155,24 @@ class EvaluationSetTests(SimpleTestCase):
                 self.assertTrue(ok, why)
 
     def test_the_scoring_catches_wrong_decisions(self):
-        quiet = next(c for c in evals.CASES if not c["notify"])
-        loud = next(c for c in evals.CASES if c["notify"])
-        earliest, latest = evals.window(loud["trip"])
-        self.assertFalse(evals.check(quiet, decide.Decision(True, latest, "hi"))[0])
+        quiet = next(c for c in evals.CASES if c["expect"] is False)
+        loud = next(c for c in evals.CASES if c["expect"] is True)
+        either = next(c for c in evals.CASES if c["expect"] is None)
+        on_time = decide.Decision(True, decide.leave_by(loud["trip"]), "hi")
+
+        self.assertFalse(evals.check(quiet, decide.Decision(True, decide.leave_by(quiet["trip"]), "hi"))[0])
         self.assertFalse(evals.check(loud, DONT_NOTIFY)[0])
-        self.assertFalse(evals.check(loud, decide.Decision(True, latest + timedelta(minutes=1), "hi"))[0])
-        self.assertFalse(evals.check(loud, decide.Decision(True, earliest - timedelta(minutes=1), "hi"))[0])
-        self.assertTrue(evals.check(loud, decide.Decision(True, latest, "hi"))[0])
+        self.assertTrue(evals.check(loud, on_time)[0])
+        self.assertTrue(evals.check(quiet, DONT_NOTIFY)[0])
+        # judgment calls accept either answer...
+        self.assertTrue(evals.check(either, DONT_NOTIFY)[0])
+        self.assertTrue(evals.check(either, decide.Decision(True, decide.leave_by(either["trip"]), "hi"))[0])
+
+    def test_a_notification_after_the_leave_by_time_always_fails(self):
+        for case in evals.CASES:
+            with self.subTest(case["name"]):
+                late = decide.Decision(True, decide.leave_by(case["trip"]) + timedelta(minutes=1), "hi")
+                self.assertFalse(evals.check(case, late)[0])
 
 
 class EvaluateCommandTests(SimpleTestCase):
