@@ -10,15 +10,14 @@ the same cases against the real model once we have a key.
 rider's deadline (`TIGHT_SLACK_MINUTES` in decide.py): a team rule of thumb that
 the other cases are built around.
 
-A case expects either "don't notify", or "notify at some time in
-[earliest, latest]" (the message wording isn't scored). The latest time is the
-moment the rider has to leave for the stop to catch the bus; the earliest is
-when a heads-up stops being useful.
+A case expects either "don't notify", or "notify at some time in `window(trip)`"
+(the message wording isn't scored): at most LEAD_MINUTES_LATEST before the rider
+has to leave for the stop, and no later than that moment.
 """
 
 from datetime import datetime, timedelta, timezone
 
-from .decide import DONT_NOTIFY, Decision, Trip, decide_notification
+from .decide import LEAD_MINUTES_LATEST, Trip, decide_notification
 
 EASTERN = timezone(timedelta(hours=-5))  # EST, the offset on Nov 16, 2026
 
@@ -27,8 +26,17 @@ def at(hour, minute):
     return datetime(2026, 11, 16, hour, minute, tzinfo=EASTERN)
 
 
-def case(name, trip, notify, mock_reply, window=None):
-    return {"name": name, "trip": trip, "notify": notify, "window": window, "mock_reply": mock_reply}
+def case(name, trip, notify, mock_reply):
+    return {"name": name, "trip": trip, "notify": notify, "mock_reply": mock_reply}
+
+
+def window(trip):
+    """When a notification for this trip is on time: the same rule the prompt gives
+    the model (LEAD_MINUTES_LATEST before the leave-by time, up to the leave-by time).
+    Computed, not hand-written, so the cases can't drift from the prompt."""
+    arrival = trip.predicted_arrival or trip.official_arrival
+    leave_by = arrival - timedelta(minutes=trip.walking_minutes)
+    return leave_by - timedelta(minutes=LEAD_MINUTES_LATEST), leave_by
 
 
 CASES = [
@@ -43,7 +51,7 @@ CASES = [
         "tight connection: leave by 8:40",
         Trip("Blue", "Grove Street", needed_at=at(9, 0), walking_minutes=10,
              official_arrival=at(8, 45), predicted_arrival=at(8, 50)),
-        notify=True, window=(at(8, 25), at(8, 40)),
+        notify=True,
         mock_reply='{"notify": true, "notify_at": "2026-11-16T08:35:00-05:00", '
                    '"message": "Blue reaches Grove St at 8:50. Leave by 8:40."}',
     ),
@@ -51,7 +59,7 @@ CASES = [
         "our prediction says the bus is late: trust it over the official time",
         Trip("Gold", "Science Hill", needed_at=at(9, 10), walking_minutes=5,
              official_arrival=at(8, 40), predicted_arrival=at(8, 55)),
-        notify=True, window=(at(8, 35), at(8, 50)),
+        notify=True,
         mock_reply='{"notify": true, "notify_at": "2026-11-16T13:40:00+00:00", '
                    '"message": "Gold is running ~15 min late. Leave by 8:50 instead."}',
     ),
@@ -59,7 +67,7 @@ CASES = [
         "no prediction, official time only, tight",
         Trip("Orange", "Broadway", needed_at=at(8, 45), walking_minutes=8,
              official_arrival=at(8, 20), predicted_arrival=None),
-        notify=True, window=(at(8, 0), at(8, 12)),
+        notify=True,
         mock_reply='{"notify": true, "notify_at": "2026-11-16T08:05:00-05:00", '
                    '"message": "Orange is due at 8:20 (official time). Leave by 8:12."}',
     ),
@@ -74,7 +82,7 @@ CASES = [
         "long walk makes an otherwise easy bus tight",
         Trip("Blue", "Prospect Street", needed_at=at(10, 0), walking_minutes=20,
              official_arrival=at(9, 40), predicted_arrival=at(9, 42)),
-        notify=True, window=(at(9, 15), at(9, 22)),
+        notify=True,
         mock_reply='{"notify": true, "notify_at": "2026-11-16T09:20:00-05:00", '
                    '"message": "20 min walk to Prospect St: leave by 9:22 for the 9:42 Blue."}',
     ),
@@ -87,7 +95,7 @@ def check(case_, decision):
         return (not decision.notify, "notified, but we expected silence")
     if not decision.notify:
         return False, "stayed quiet, but we expected a notification"
-    earliest, latest = case_["window"]
+    earliest, latest = window(case_["trip"])
     if not earliest <= decision.notify_at <= latest:
         return False, f"notify_at {decision.notify_at.astimezone(EASTERN):%H:%M} is outside {earliest:%H:%M}-{latest:%H:%M}"
     return True, ""

@@ -156,7 +156,7 @@ class EvaluationSetTests(SimpleTestCase):
     def test_the_scoring_catches_wrong_decisions(self):
         quiet = next(c for c in evals.CASES if not c["notify"])
         loud = next(c for c in evals.CASES if c["notify"])
-        earliest, latest = loud["window"]
+        earliest, latest = evals.window(loud["trip"])
         self.assertFalse(evals.check(quiet, decide.Decision(True, latest, "hi"))[0])
         self.assertFalse(evals.check(loud, DONT_NOTIFY)[0])
         self.assertFalse(evals.check(loud, decide.Decision(True, latest + timedelta(minutes=1), "hi"))[0])
