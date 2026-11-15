@@ -51,6 +51,8 @@ def chat(messages, *, model=None):
     except (OSError, ValueError, HTTPException) as error:
         # OSError covers timeouts, refused connections and HTTP errors (HTTPError
         # is one); ValueError covers an answer that isn't JSON.
-        raise OpenRouterError(f"OpenRouter request failed ({error.__class__.__name__})") from error
+        # Show the reason (certificate trouble, DNS, a 401...) but never the key.
+        reason = str(getattr(error, "reason", None) or error).replace(api_key, "[key]")
+        raise OpenRouterError(f"OpenRouter request failed ({error.__class__.__name__}: {reason})") from error
     except (KeyError, IndexError, TypeError) as error:
         raise OpenRouterError("OpenRouter's answer had no message in it") from error

@@ -1,7 +1,8 @@
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
-from assistant import evals
+from assistant import evals, openrouter
+from assistant.decide import decide_notification
 
 
 class Command(BaseCommand):
@@ -14,7 +15,11 @@ class Command(BaseCommand):
         if not settings.OPENROUTER_API_KEY:
             raise CommandError("Set OPENROUTER_API_KEY to run the evaluation against the real model.")
         self.stdout.write(f"Model: {settings.OPENROUTER_MODEL}")
-        results = evals.run()
+        try:
+            results = evals.run(lambda trip: decide_notification(trip, strict=True))
+        except openrouter.OpenRouterError as error:
+            # An outage isn't a "don't notify" answer, so don't score it as one.
+            raise CommandError(f"Couldn't reach the model, so nothing was evaluated: {error.__cause__ or error}")
         for case_, decision, ok, why in results:
             self.stdout.write(f"{'PASS' if ok else 'FAIL'}  {case_['name']}")
             if not ok:

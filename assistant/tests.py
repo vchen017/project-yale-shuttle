@@ -126,6 +126,11 @@ class DecideTests(SimpleTestCase):
         with self.assertLogs("assistant.decide", "WARNING"):
             self.assertEqual(decide_notification(TRIP), DONT_NOTIFY)
 
+    def test_strict_mode_lets_an_outage_through_instead_of_hiding_it(self, chat):
+        chat.side_effect = openrouter.OpenRouterError("down")
+        with self.assertRaises(openrouter.OpenRouterError):
+            decide_notification(TRIP, strict=True)
+
 
 def decide_replace(trip, **changes):
     from dataclasses import replace
@@ -166,6 +171,14 @@ class EvaluateCommandTests(SimpleTestCase):
             with self.assertRaises(CommandError):
                 call_command("evaluate_assistant", stdout=io.StringIO())
         urlopen.assert_not_called()
+
+    @override_settings(OPENROUTER_API_KEY="test-key")
+    def test_an_unreachable_model_is_an_error_not_a_score(self):
+        out = io.StringIO()
+        with mock.patch("assistant.openrouter.urlopen", side_effect=URLError("no route")):
+            with self.assertRaisesRegex(CommandError, "nothing was evaluated"):
+                call_command("evaluate_assistant", stdout=out)
+        self.assertNotIn("PASS", out.getvalue())
 
     @override_settings(OPENROUTER_API_KEY="test-key")
     def test_it_scores_every_case(self):

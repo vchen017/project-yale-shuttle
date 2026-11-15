@@ -126,11 +126,18 @@ def parse_answer(text, trip):
     return Decision(notify=True, notify_at=when.astimezone(zoneinfo.ZoneInfo("UTC")), message=message.strip())
 
 
-def decide_notification(trip):
-    """Ask the LLM about one trip; returns a Decision. Never raises for LLM trouble."""
+def decide_notification(trip, *, strict=False):
+    """Ask the LLM about one trip; returns a Decision.
+
+    LLM trouble never raises: it counts as "don't notify". With strict=True, a
+    failure to reach OpenRouter raises OpenRouterError instead, so the by-hand
+    evaluation can't mistake an outage for a decision.
+    """
     try:
         reply = openrouter.chat(build_messages(trip))
     except openrouter.OpenRouterError as error:
+        if strict:
+            raise
         logger.warning("Not notifying: %s", error)
         return DONT_NOTIFY
     try:
