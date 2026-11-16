@@ -6,9 +6,29 @@ from django.templatetags.static import static
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_safe
 
+from transit.downtowner import FeedUnavailable
+from transit.network import network
+
 
 def home(request):
     return render(request, "core/home.html")
+
+
+@require_safe
+def network_json(request):
+    """The routes running now and their stops, for the home page's map (#71).
+
+    The page fetches it after loading, so the page itself never waits on the
+    shuttle feed. Browsers may reuse it for 30 seconds, as long as the server
+    caches the feed.
+    """
+    try:
+        data = network()
+    except FeedUnavailable:
+        return JsonResponse({"error": "Live shuttle data is unavailable right now."}, status=503)
+    response = JsonResponse(data)
+    response["Cache-Control"] = "max-age=30"
+    return response
 
 
 def favicon(request):
