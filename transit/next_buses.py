@@ -89,7 +89,9 @@ def next_buses(stop_id, destination_id=None):
     for route in net["routes"]:
         if route["id"] not in serving:
             continue
-        ours = predict_minutes(route["id"], stop_id)
+        # Ours comes from our own data, not the feed: the official column
+        # already shows the feed's countdown.
+        ours = predict_minutes(route["id"], stop_id, use_live_feed=False)
         rows.append(
             Row(
                 route_id=route["id"],
