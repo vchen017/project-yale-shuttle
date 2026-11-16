@@ -65,8 +65,7 @@ the hour. We moved the lookups into riders' browsers
 
 ## Backlog changes for Sprint 3
 
-Kyle's three items are done, and crowd reports (#12), custom alerts (#20) and
-demo data (#46) moved up from Sprint 3. Our data added the real stop locations
+Kyle's three items are done. Our data added the real stop locations
 ([#54](https://github.com/vchen017/project-yale-shuttle/issues/54)), detours
 ([#55](https://github.com/vchen017/project-yale-shuttle/issues/55)) and old bus
 positions ([#58](https://github.com/vchen017/project-yale-shuttle/issues/58)).
