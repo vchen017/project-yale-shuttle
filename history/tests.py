@@ -1,7 +1,7 @@
 """Tests for the history import (#22) and our predictions (#23). Nothing
 here reaches the network: the importer tests feed it parsed rows directly,
-the prediction tests build synthetic history in the database, and the
-command tests mock history.sources, the app's only network module."""
+the prediction tests build synthetic history in the database and mock the
+live feed they read, and the command tests mock history.sources."""
 
 import datetime as dt
 import json
@@ -10,6 +10,7 @@ from unittest import mock
 
 from django.core.management import CommandError, call_command
 from django.test import TestCase
+from django.utils import timezone
 
 from history import importer, predictions, sources
 from history.models import (
@@ -22,6 +23,7 @@ from history.models import (
     RouteStopList,
     RouteSyncState,
 )
+from transit import downtowner
 
 UTC = dt.UTC
 ET = predictions.ET
@@ -803,6 +805,47 @@ class LiveLayerTests(TestCase):
         )
 
 
+class FeedLiveLayerTests(TestCase):
+    """The feed itself (transit.etas, cached 30 seconds) is the live layer's
+    first source for calls about right now. Its outage and its silences fall
+    through to the recorded polls and then history, never to a crash — and a
+    simulated `now` never reads it, because the feed's countdown is about
+    the present."""
+
+    def test_the_feed_answers_calls_about_right_now(self):
+        feed = [
+            {"route_id": 2, "bus_id": 5, "bus_name": "#5", "minutes": 9},
+            {"route_id": 1, "bus_id": 4, "bus_name": "#4", "minutes": -2},
+            {"route_id": 1, "bus_id": 7, "bus_name": "#7", "minutes": 4},
+            {"route_id": 1, "bus_id": 8, "bus_name": "#8", "minutes": 11},
+        ]
+        with mock.patch("transit.downtowner.etas", return_value=feed) as etas:
+            ours = predictions.predict_minutes(1, 100)
+        self.assertEqual(ours, 4.0)  # our route's soonest bus; the other
+        # route's 9 and our own negative, already-arrived listing don't win
+        etas.assert_called_once_with(100)
+
+    def test_a_route_absent_from_the_feed_uses_the_recorded_polls(self):
+        add_eta_poll(timezone.now() - dt.timedelta(minutes=2), bus_id=9, eta_minutes=7)
+        feed = [{"route_id": 2, "bus_id": 5, "bus_name": "#5", "minutes": 3}]
+        with mock.patch("transit.downtowner.etas", return_value=feed):
+            ours = predictions.predict_minutes(1, 100)
+        self.assertEqual(ours, 5.0)  # the recorded countdown, aged two minutes
+
+    def test_a_feed_outage_falls_through_to_the_recorded_polls(self):
+        add_eta_poll(timezone.now() - dt.timedelta(minutes=2), bus_id=9, eta_minutes=7)
+        outage = downtowner.FeedUnavailable("The Downtowner feed is unavailable")
+        with mock.patch("transit.downtowner.etas", side_effect=outage):
+            ours = predictions.predict_minutes(1, 100)
+        self.assertEqual(ours, 5.0)
+
+    def test_a_simulated_now_never_reads_the_feed(self):
+        with mock.patch("transit.downtowner.etas") as etas:
+            ours = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 12))
+        etas.assert_not_called()
+        self.assertIsNone(ours)  # no recorded polls either: nothing to say
+
+
 class ConditionedHistoryTests(TestCase):
     """When no poll is fresh but a bus did come recently, the wait shrinks
     with the elapsed time — the history layer's own countdown."""
@@ -857,9 +900,13 @@ class PredictMinutesTests(TestCase):
         self.assertLessEqual(saturday, 13)
 
     def test_no_history_means_no_prediction(self):
-        self.assertIsNone(predictions.predict_minutes(1, 100))
+        # The feed has nothing for the route either, so every layer is out
+        # of data.
+        with mock.patch("transit.downtowner.etas", return_value=[]):
+            self.assertIsNone(predictions.predict_minutes(1, 100))
         seed_history()
-        self.assertIsNone(predictions.predict_minutes(1, 999))  # an unknown stop
+        with mock.patch("transit.downtowner.etas", return_value=[]):
+            self.assertIsNone(predictions.predict_minutes(1, 999))  # an unknown stop
 
     def test_only_history_before_now_is_used(self):
         seed_history()

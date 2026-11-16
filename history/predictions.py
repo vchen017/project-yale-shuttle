@@ -7,15 +7,20 @@ prediction. The next-buses page (#24), trip plans (#26) and the AI agent
 
 Two layers, live first:
 
-*Live* — the freshest recorded polls for the stop each imply an absolute
-arrival time: polled_at + eta_minutes, the feed's countdown frozen at one
-instant. The earliest implied arrival that has not yet come due is the next
-bus, and the answer is that arrival minus `now`: the number ticks down a
-minute per minute between polls instead of being recomputed from scratch on
-every request — the official app's whiplash, "20 minutes away" and 6 five
-minutes later. New polls can only lower the estimate, never raise it, and
-an estimate that has come due expires, so a listing that never arrives
-cannot hold the answer hostage.
+*Live* — two sources. The first is the feed itself, through the transit
+app's helper (`transit.downtowner.etas`, cached 30 seconds), used only when
+the caller asks about right now: its countdown is about the present, so a
+simulated `now` never reads it, and a feed outage falls through quietly to
+the next source instead of crashing the page. The second is the freshest
+recorded polls for the stop, which each imply an absolute arrival time:
+polled_at + eta_minutes, the feed's countdown frozen at one instant. The
+soonest arrival that has not yet come due is the next bus, and the answer
+is that arrival minus `now`: between polls the number ticks down a minute
+per minute instead of being recomputed from scratch on every request — the
+official app's whiplash, "20 minutes away" and 6 five minutes later. New
+polls can only lower the estimate, never raise it, and an estimate that has
+come due expires, so a listing that never arrives cannot hold the answer
+hostage.
 
 *History* is the fallback, for when nothing live is fresh enough (imports
 lag, the feed is down) or nothing is coming (service hours ended). How it
@@ -53,6 +58,9 @@ from dataclasses import dataclass
 from zoneinfo import ZoneInfo
 
 from django.utils import timezone
+
+from transit import downtowner
+from transit.downtowner import FeedUnavailable
 
 from .models import Eta, RouteStopList
 
@@ -112,14 +120,21 @@ def _stop_is_served(route_id, stop_id):
 def predict_minutes(route_id, stop_id, now=None):
     """Our predicted minutes until the route's next bus reaches the stop.
 
-    None when the live polls say nothing fresh and history has nothing to
-    learn from, or when the route no longer serves the stop (#57): a moved
-    or removed stop's old arrivals must not look like a prediction. `now`
-    defaults to now; only data from before it is used.
+    None when nothing live is fresh and history has nothing to learn from,
+    or when the route no longer serves the stop (#57): a moved or removed
+    stop's old arrivals must not look like a prediction. `now` defaults to
+    now, and only data from before it is used — the live feed answers only
+    calls that take the default, because its countdown is about the
+    present, not a simulated moment.
     """
     if not _stop_is_served(route_id, stop_id):
         return None
+    asked_about_now = now is None
     now = now or timezone.now()
+    if asked_about_now:
+        live = _live_feed_minutes(route_id, stop_id)
+        if live is not None:
+            return live
     live = _live_minutes(route_id, stop_id, now)
     if live is not None:
         return live
@@ -139,8 +154,31 @@ def predict_minutes(route_id, stop_id, now=None):
     return _predict_history(profile, now, _last_arrival_before(arrivals, now))
 
 
+def _live_feed_minutes(route_id, stop_id):
+    """Minutes until the route's next bus at the stop, straight from the
+    live Downtowner feed (transit.downtowner.etas, cached 30 seconds), the
+    live layer's first source. None when the feed serves no eta for this
+    route at this stop, or when the feed is down: FeedUnavailable means
+    the recorded polls answer next, then history — never a crashed page.
+    Transit logs the outage itself.
+    """
+    try:
+        arrivals = downtowner.etas(stop_id)
+    except FeedUnavailable:
+        return None
+    minutes = [
+        arrival["minutes"]
+        for arrival in arrivals
+        if arrival["route_id"] == route_id and arrival["minutes"] >= 0
+    ]
+    if not minutes:
+        return None
+    return round(float(min(minutes)), 1)
+
+
 def _live_minutes(route_id, stop_id, now):
-    """Minutes until the stop's next bus, from the freshest recorded polls.
+    """Minutes until the stop's next bus, from the freshest recorded polls —
+    the live layer's second source, behind the feed.
 
     Each recent poll implies an absolute arrival: polled_at + eta_minutes.
     The earliest implied arrival that has not yet come due is the next bus;
