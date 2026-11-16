@@ -110,9 +110,11 @@ another app's code or migrations when your issue says to, and tell its owner.
   in `base.html`.
 - **Users:** point to them with `settings.AUTH_USER_MODEL`. Admin-only pages
   check `is_staff`.
-- **Demo data:** if graders need data to see your feature, add it to
-  `core/management/commands/seed.py`, safe to run twice. Never add A/B test
-  visits there: the graded A/B run counts every visit.
+- **Demo data:** if graders need data to see your feature, add a `demo.py` to
+  your app with `seed(accounts, stdout)` (see `alerts/demo.py`). The `seed`
+  command runs it on every deploy, so it must be safe to run twice and leave
+  alone anything an admin has changed since. Never add A/B test visits: the
+  graded A/B run counts every visit.
 - **Don't break what graders use.** The seed command manages the two grader
   logins (`admin@example.com` and `rider@example.com`), so leave them alone.
   Never change A/B test data, except deleting our own visits right before the

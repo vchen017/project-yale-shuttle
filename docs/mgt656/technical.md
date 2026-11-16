@@ -52,8 +52,9 @@ recorded and safe to repeat. Details to come with
 - The A/B test page is tested over HTTP the way a browser uses it: each visitor
   keeps their variant, one impression per visitor, at most one click, the
   CSRF-protected form, the 50/50 split, and `preferred` chosen by click rate.
-- The seed command is tested for being safe to rerun and for refusing to run
-  without passwords.
+- The seed command is tested for being safe to rerun, for refusing to run
+  without passwords, for creating each app's demo data (#46) without undoing an
+  admin's changes, and for never adding A/B test visits.
 - The main rider workflows run end to end through Django's test client
   (`core/test_rider_workflows.py`): signing up and landing on the stops map,
   turning notifications on and sending a test, logging out, logging back in,
