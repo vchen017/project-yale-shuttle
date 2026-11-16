@@ -36,6 +36,11 @@
   </ul>
 </section>
 
+<section class="mb-4" aria-labelledby="trip-title">
+  <h2 class="h4 mb-2" id="trip-title">Find your bus</h2>
+  {% include "transit/_trip_search.html" with wide=True %}
+</section>
+
 <section class="mb-4" aria-labelledby="map-title" id="stops"
          data-network-url="{% url 'network' %}">
   <div class="d-flex flex-wrap align-items-end justify-content-between gap-2 mb-3">

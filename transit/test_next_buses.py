@@ -157,30 +157,28 @@ class StopPickerTests(TestCase):
     def setUp(self):
         cache.clear()
 
-    def test_lists_the_stops_running_routes_serve_by_name(self, urlopen):
+    def test_asks_where_the_rider_is_starting_and_going(self, urlopen):
+        # Typed places, not a long list of stops (story #5): see test_trips.py.
         urlopen.side_effect = feed()
-
         response = self.client.get(reverse("stops"))
+        self.assertContains(response, 'placeholder="Where are you starting?"')
+        self.assertContains(response, 'placeholder="Where are you going?"')
+        self.assertNotContains(response, "form-select")
 
-        choices = [label for value, label in response.context["form"].fields["start"].choices if value]
-        self.assertEqual(choices, ["Grove Street", "Payne Whitney", "Science Hill", "Union Station"])
-        self.assertContains(response, 'class="form-select"', count=2)
-
-    def test_picking_stops_goes_to_the_next_buses_page(self, urlopen):
+    def test_links_that_name_stops_go_to_the_next_buses_page(self, urlopen):
         urlopen.side_effect = feed()
         response = self.client.get(reverse("stops"), {"start": 10, "to": 40})
         self.assertRedirects(response, "/stops/10/?to=40", fetch_redirect_response=False)
 
-    def test_picking_only_a_start_is_enough(self, urlopen):
+    def test_a_link_with_only_a_start_is_enough(self, urlopen):
         urlopen.side_effect = feed()
         response = self.client.get(reverse("stops"), {"start": 10, "to": ""})
         self.assertRedirects(response, "/stops/10/", fetch_redirect_response=False)
 
-    def test_a_stop_not_in_the_list_is_refused(self, urlopen):
+    def test_a_link_to_a_stop_not_in_the_list_stays_on_the_search(self, urlopen):
         urlopen.side_effect = feed()
         response = self.client.get(reverse("stops"), {"start": 777})
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "is-invalid")
+        self.assertContains(response, 'placeholder="Where are you starting?"')
 
     def test_when_the_feed_is_down_the_picker_says_so(self, urlopen):
         urlopen.side_effect = URLError("down")

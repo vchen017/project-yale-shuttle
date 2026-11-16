@@ -131,6 +131,24 @@
 .you-are-here { width: 16px; height: 16px; border-radius: 50%; background: #286dc0; border: 3px solid #fff; box-shadow: 0 0 0 3px rgba(40, 109, 192, 0.35); }
 .route-chip { display: inline-block; margin: 0.15rem 0.25rem 0 0; padding: 0.05rem 0.5rem; border-radius: 999px; color: #fff; font-size: 0.8rem; }
 
+/* The trip search (story #5): two boxes, with suggestions as the rider types */
+.trip-search-field { position: relative; }
+.trip-search-field .form-control { padding-left: 2.5rem; }
+.trip-search-field .form-control[name="from"] { padding-right: 2.75rem; }
+.trip-search-field .form-control.is-invalid { background-image: none; }
+.trip-search-icon, .trip-search-locate { position: absolute; top: 0; z-index: 5; display: flex; align-items: center; height: calc(1.5em + 0.75rem + 2px); }
+.trip-search-icon { left: 0.9rem; color: var(--bs-primary); pointer-events: none; }
+.trip-search-locate { right: 0.25rem; padding: 0 0.6rem; border: 0; background: none; color: var(--bs-primary); }
+.trip-search-locate:hover { color: var(--bs-link-hover-color); }
+.trip-search-places { position: absolute; top: calc(1.5em + 0.75rem + 2px + 0.25rem); left: 0; right: 0; z-index: 1050; max-height: 20rem; overflow-y: auto; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15); }
+.trip-search-places .list-group-item-action { cursor: pointer; }
+.trip-search-places .list-group-item.active { color: inherit; background: var(--bs-primary-bg-subtle); border-color: var(--bs-list-group-border-color); }
+
+/* A trip's steps: walk to the stop, ride, walk the rest */
+.trip-steps li { display: flex; gap: 0.75rem; align-items: baseline; padding: 0.45rem 0; }
+.trip-steps li + li { border-top: 1px dashed var(--bs-border-color); }
+.trip-steps .bi { width: 1.25rem; flex-shrink: 0; text-align: center; color: var(--bs-primary); }
+
 /* Service alerts on the home page (#13): one slim box, one line per alert */
 #service-alerts [data-alerts] { background: #fff8e6; border: 1px solid #f1d58a; border-radius: 0.75rem; padding: 0.25rem 0.9rem; }
 .service-alert { padding: 0.4rem 0; border-top: 1px solid rgba(0, 0, 0, 0.06); overflow-wrap: anywhere; }

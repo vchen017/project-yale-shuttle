@@ -1,0 +1,57 @@
+{% load static %}
+{% comment %}
+The trip search (story #5): where the rider is starting and where they're
+going, typed as an address, a building or a stop. trip-search.js suggests
+places as they type and fills in each place's coordinates; the map on the home
+page can fill a box too. Without the script, the coordinates stay disabled and
+the server looks up what was typed.
+
+Optional context: search_from and search_to ({"name", "lat", "lon"}) fill the
+boxes in, search_errors ({"from": ..., "to": ...}) says what's wrong, and wide
+puts the boxes side by side on wider screens.
+{% endcomment %}
+<form method="get" action="{% url 'trip' %}" class="trip-search card" role="search" autocomplete="off"
+      data-trip-search data-places-url="{% url 'places' %}">
+  <div class="card-body">
+    <div class="{% if wide %}row g-2{% else %}d-grid gap-2{% endif %}">
+      <div class="{% if wide %}col-md{% endif %}">
+        <div class="trip-search-field">
+          <label class="visually-hidden" for="trip-from">Where are you starting?</label>
+          <i class="bi bi-record-circle trip-search-icon" aria-hidden="true"></i>
+          <input class="form-control{% if search_errors.from %} is-invalid{% endif %}" id="trip-from" name="from"
+                 type="text" placeholder="Where are you starting?" value="{{ search_from.name|default:'' }}"
+                 role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="trip-from-places"
+                 enterkeyhint="next" required>
+          <input type="hidden" name="from_at" disabled
+                 value="{% if search_from.lat %}{{ search_from.lat|stringformat:'.6f' }},{{ search_from.lon|stringformat:'.6f' }}{% endif %}">
+          <button class="trip-search-locate" type="button" data-use-my-location title="Use my location" hidden>
+            <i class="bi bi-crosshair" aria-hidden="true"></i><span class="visually-hidden">Use my location</span>
+          </button>
+          {% if search_errors.from %}<div class="invalid-feedback">{{ search_errors.from }}</div>{% endif %}
+          <ul class="trip-search-places list-group" id="trip-from-places" role="listbox" aria-label="Places to start from" hidden></ul>
+        </div>
+      </div>
+      <div class="{% if wide %}col-md{% endif %}">
+        <div class="trip-search-field">
+          <label class="visually-hidden" for="trip-to">Where are you going?</label>
+          <i class="bi bi-geo-alt-fill trip-search-icon" aria-hidden="true"></i>
+          <input class="form-control{% if search_errors.to %} is-invalid{% endif %}" id="trip-to" name="to"
+                 type="text" placeholder="Where are you going?" value="{{ search_to.name|default:'' }}"
+                 role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="trip-to-places"
+                 enterkeyhint="search" required>
+          <input type="hidden" name="to_at" disabled
+                 value="{% if search_to.lat %}{{ search_to.lat|stringformat:'.6f' }},{{ search_to.lon|stringformat:'.6f' }}{% endif %}">
+          {% if search_errors.to %}<div class="invalid-feedback">{{ search_errors.to }}</div>{% endif %}
+          <ul class="trip-search-places list-group" id="trip-to-places" role="listbox" aria-label="Places to go to" hidden></ul>
+        </div>
+      </div>
+      <div class="{% if wide %}col-md-auto{% endif %}">
+        <button class="btn btn-primary w-100" type="submit">
+          <i class="bi bi-search me-1" aria-hidden="true"></i>Find my bus
+        </button>
+      </div>
+    </div>
+    <p class="form-text mb-0 mt-2">An address, a Yale building or a stop{% if wide %}, or tap a stop on the map{% endif %}.</p>
+  </div>
+</form>
+<script src="{% static 'core/trip-search.js' %}" defer></script>
