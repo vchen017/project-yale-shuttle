@@ -130,3 +130,9 @@
 .stop-map .maplibregl-popup-content { padding: 0.75rem 1rem; border-radius: 0.75rem; font-family: var(--bs-body-font-family); font-size: 0.95rem; }
 .you-are-here { width: 16px; height: 16px; border-radius: 50%; background: #286dc0; border: 3px solid #fff; box-shadow: 0 0 0 3px rgba(40, 109, 192, 0.35); }
 .route-chip { display: inline-block; margin: 0.15rem 0.25rem 0 0; padding: 0.05rem 0.5rem; border-radius: 999px; color: #fff; font-size: 0.8rem; }
+
+/* Service alerts on the home page (#13) */
+.service-alert {
+  border-left: 0.3rem solid var(--bs-warning);
+  overflow-wrap: anywhere;
+}
