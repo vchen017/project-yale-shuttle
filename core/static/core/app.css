@@ -93,3 +93,9 @@
 .member-nickname { margin-left: 0.25rem; font-weight: 400; opacity: 0.75; }
 
 .site-footer { border-top: 1px solid var(--bs-border-color); }
+
+/* The home page's map of stops (#71) */
+.stop-map { height: 22rem; background: #e9eef4; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 16px rgba(0, 53, 107, 0.06); }
+@media (min-width: 768px) { .stop-map { height: 28rem; } }
+.stop-map .leaflet-popup-content { margin: 0.75rem 1rem; font-family: var(--bs-body-font-family); font-size: 0.95rem; }
+.route-chip { display: inline-block; margin: 0.15rem 0.25rem 0 0; padding: 0.05rem 0.5rem; border-radius: 999px; color: #fff; font-size: 0.8rem; }

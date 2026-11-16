@@ -1,7 +1,28 @@
 {% extends "base.html" %}
+{% load static %}
+{% block extra_head %}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
+{% endblock %}
 {% block content %}
+<section class="mb-4" aria-labelledby="map-title" id="stops"
+         data-network-url="{% url 'network' %}">
+  <div class="d-flex flex-wrap align-items-end justify-content-between gap-2 mb-3">
+    <div>
+      <h1 class="h3 mb-1" id="map-title">Shuttle stops near you</h1>
+      <p class="text-body-secondary mb-0" data-map-status aria-live="polite">Loading the shuttle map…</p>
+    </div>
+    <button class="btn btn-primary" type="button" data-locate hidden>
+      <i class="bi bi-geo-alt-fill me-1" aria-hidden="true"></i>Show stops near me
+    </button>
+  </div>
+  <div class="stop-map rounded-4 mb-3" data-map role="region" aria-label="Map of the shuttle routes and stops"></div>
+  <p class="small text-body-secondary mb-2" data-locate-status aria-live="polite" hidden></p>
+  <ol class="list-group list-group-numbered mb-2" data-nearby hidden></ol>
+</section>
+
 <section class="hero rounded-4 p-4 p-md-5 mb-4">
-  <h1 class="display-5 fw-bold mb-3">Never miss the Yale shuttle again.</h1>
+  <h2 class="display-5 fw-bold mb-3">Never miss the Yale shuttle again.</h2>
   <p class="lead mb-4">See when your bus will actually arrive, so you can leave at just the right time.</p>
   {% if user.is_authenticated %}
     <p class="fs-5 mb-0">
@@ -50,4 +71,7 @@
 <p class="text-body-secondary small mb-0">
   Yale Shuttle is in development, and these features arrive over the coming sprints. You can already create an account and log in.
 </p>
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous" defer></script>
+<script src="{% static 'core/map.js' %}" defer></script>
 {% endblock %}

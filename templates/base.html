@@ -24,6 +24,7 @@
         integrity="sha384-XGjxtQfXaH2tnPFa9x+ruJTuLE3Aa6LhHSWRr1XeTyhezb4abCG4ccI5AkVDxqC+" crossorigin="anonymous">
   <link rel="preload" href="{% static 'core/fonts/newsreader-latin-opsz-normal.woff2' %}" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="{% static 'core/app.css' %}">
+  {% block extra_head %}{% endblock %}
 </head>
 <body class="d-flex flex-column min-vh-100">
   <nav class="navbar navbar-expand-sm bg-primary" data-bs-theme="dark">
