@@ -6,6 +6,11 @@ from django.contrib.auth import get_user_model
 from django.core.management import CommandError, call_command
 from django.template.loader import render_to_string
 from django.test import SimpleTestCase, TestCase, override_settings
+from django.utils import timezone
+
+from abtest.models import Visit
+from alerts.models import Alert
+from core.management.commands.seed import demo_modules
 
 PASSWORDS = {"SEED_ADMIN_PASSWORD": "test-admin-pass-1", "SEED_RIDER_PASSWORD": "test-rider-pass-2"}
 
@@ -30,6 +35,36 @@ class SeedTests(TestCase):
         with mock.patch.dict(os.environ, {"SEED_RIDER_PASSWORD": "a-new-pass-3"}):
             self.seed()
         self.assertTrue(self.client.login(username="rider@example.com", password="a-new-pass-3"))
+
+    def test_creates_demo_data_once_and_never_ab_test_visits(self):
+        self.seed()
+        self.seed()
+
+        self.assertEqual(
+            sorted(Alert.objects.values_list("title", flat=True)),
+            ["Sample: Chapel Street closed for a past event", "Welcome to Yale Shuttle"],
+        )
+        self.assertEqual(Visit.objects.count(), 0)
+
+    def test_graders_see_the_demo_alert_on_the_home_page(self):
+        self.seed()
+        with mock.patch("transit.downtowner.urlopen", side_effect=OSError("no network in tests")):
+            fragment = self.client.get("/alerts/home").content.decode()
+        self.assertIn("Welcome to Yale Shuttle", self.client.get("/").content.decode())
+        self.assertIn("Welcome to Yale Shuttle", fragment)
+        self.assertNotIn("past event", fragment)
+
+    def test_a_rerun_keeps_an_admins_changes_to_demo_alerts(self):
+        self.seed()
+        ended_at = timezone.now()
+        Alert.objects.filter(title="Welcome to Yale Shuttle").update(ends_at=ended_at, message="Edited")
+        self.seed()
+
+        alert = Alert.objects.get(title="Welcome to Yale Shuttle")
+        self.assertEqual((alert.ends_at, alert.message), (ended_at, "Edited"))
+
+    def test_runs_every_app_demo_module(self):
+        self.assertIn("alerts.demo", [module.__name__ for module in demo_modules()])
 
     def test_refuses_to_run_without_passwords(self):
         with mock.patch.dict(os.environ, {"SEED_RIDER_PASSWORD": ""}):
