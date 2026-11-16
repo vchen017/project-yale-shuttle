@@ -1,9 +1,9 @@
 // The home page's map of shuttle stops (#71, #73): the routes running now in
 // their colours, a pin for each stop, and the stops nearest the rider.
 //
-// The map is MapLibre over OpenFreeMap's "Positron" style: vector tiles, so it
-// stays sharp on any screen, and light grey, so the route colours stand out.
-// Neither needs an API key. The shuttle data comes from /network.json after the
+// The map is MapLibre over OpenFreeMap's "Bright" style: vector tiles, so it
+// stays sharp on any screen, with parks, main roads and labels in colour,
+// lightly faded so the route colours still stand out. Neither needs an API key. The shuttle data comes from /network.json after the
 // page loads, so the page never waits on the shuttle feed.
 (() => {
   const section = document.getElementById("stops");
@@ -14,11 +14,14 @@
   const nearbyList = section.querySelector("[data-nearby]");
   const CENTRAL_CAMPUS = [-72.9267, 41.3111]; // longitude, latitude
   const WALK_METERS_PER_MINUTE = 80;
+  // The base map, and how much its layers are faded so the routes stand out.
+  const BASE_STYLE = "https://tiles.openfreemap.org/styles/bright";
+  const FADE = { symbol: 0.8, line: 0.7, fill: 0.75 };
   let youAreHere = null;
 
   const map = new maplibregl.Map({
     container: section.querySelector("[data-map]"),
-    style: "https://tiles.openfreemap.org/styles/positron",
+    style: BASE_STYLE,
     center: CENTRAL_CAMPUS,
     zoom: 14.6,
     attributionControl: { compact: true },
@@ -29,20 +32,31 @@
   const mapReady = new Promise((resolve) =>
     map.on("load", () => {
       fadeBaseMap();
+      collapseCreditsOnPhones();
       resolve();
     }),
   );
 
-  // Fade the base map's roads, labels and areas, so the routes carry the map.
+  // On a phone the map's credits start open and cover the bottom of the map;
+  // start them closed, one tap away on the (i) button.
+  function collapseCreditsOnPhones() {
+    const credits = map.getContainer().querySelector(".maplibregl-ctrl-attrib");
+    if (credits && map.getContainer().offsetWidth <= 640) {
+      credits.removeAttribute("open");
+      credits.classList.remove("maplibregl-compact-show");
+    }
+  }
+
+  // Fade the base map's roads, labels and areas a little, so the routes carry the map.
   function fadeBaseMap() {
     for (const layer of map.getStyle().layers) {
       if (layer.type === "symbol") {
-        map.setPaintProperty(layer.id, "text-opacity", 0.55);
-        map.setPaintProperty(layer.id, "icon-opacity", 0.55);
+        map.setPaintProperty(layer.id, "text-opacity", FADE.symbol);
+        map.setPaintProperty(layer.id, "icon-opacity", FADE.symbol);
       } else if (layer.type === "line") {
-        map.setPaintProperty(layer.id, "line-opacity", 0.45);
+        map.setPaintProperty(layer.id, "line-opacity", FADE.line);
       } else if (layer.type === "fill") {
-        map.setPaintProperty(layer.id, "fill-opacity", 0.5);
+        map.setPaintProperty(layer.id, "fill-opacity", FADE.fill);
       }
     }
   }
