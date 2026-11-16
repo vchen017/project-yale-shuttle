@@ -94,6 +94,23 @@ when to leave.
   our shuttle data, below.
 - [#72](https://github.com/vchen017/project-yale-shuttle/pull/72): the Yale typeface, Yale 2024,
   on every page, with #65's Newsreader as the fallback.
+- [#83](https://github.com/vchen017/project-yale-shuttle/pull/83), closing
+  [#24](https://github.com/vchen017/project-yale-shuttle/issues/24): the next-buses page, for
+  story [#5](https://github.com/vchen017/project-yale-shuttle/issues/5). A rider picks a stop, and
+  optionally where they're going, and sees each running route's next buses,
+  with the official time next to our prediction. When the feed is down, the
+  page says so instead of failing. Every stop on the home page's map links
+  to it. **TODO:** while the feed has a bus, our prediction column currently
+  repeats the official time (see #83); say how we settled that.
+- [#82](https://github.com/vchen017/project-yale-shuttle/pull/82), closing
+  [#13](https://github.com/vchen017/project-yale-shuttle/issues/13): service alerts on the home
+  page. It shows the Downtowner's announcements and the alerts our admins post
+  in `/admin/`, newest first. The admins' alerts show at once, and the feed's
+  are added after the page loads, so it never waits on the feed.
+- [#80](https://github.com/vchen017/project-yale-shuttle/pull/80) and
+  [#81](https://github.com/vchen017/project-yale-shuttle/pull/81): the map's tiles fixed for
+  production, then the map redrawn with vector tiles, so it's sharp on any
+  screen, with bolder routes. The home page leads with the hook again.
 
 ## What works on staging and production
 
@@ -107,11 +124,11 @@ runs. On both:
 - `/ecc1032` and `/ecc1032/stats`. Production counts its visits in its own
   database, apart from staging's test visits.
 
-On both sites, the home page opens on the map of stops, and `/notifications/`
+On both sites, the home page shows any service alerts and the map of stops, and `/notifications/`
 turns push notifications on for a device and sends a test. Both redirect plain
 HTTP to HTTPS. Production changes only through the promote workflow, which
 deploys a commit that passed CI and waits until production's `/healthz`
-reports it. Its latest run, [Nov 16](https://github.com/vchen017/project-yale-shuttle/actions/runs/43925739876), promoted `26718d4`.
+reports it. For example, [this run on Nov 16](https://github.com/vchen017/project-yale-shuttle/actions/runs/43925739876) promoted `26718d4`.
 
 The history and predictions get their page with the next-buses page
 ([#24](https://github.com/vchen017/project-yale-shuttle/issues/24)). #69's
@@ -147,12 +164,6 @@ at most.
 
 ## Backlog changes for Sprint 3
 
-- Carried over: service alerts on the home screen
-  ([#13](https://github.com/vchen017/project-yale-shuttle/issues/13)), now in
-  the Sprint 3 iteration. **TODO:** the next-buses page
-  ([#24](https://github.com/vchen017/project-yale-shuttle/issues/24)), which
-  completes #5, is due to land before the deadline. If it does, move it into
-  "What shipped"; if not, say it carried over too.
 - Added from Kyle's Sprint 1 feedback
   ([#71](https://github.com/vchen017/project-yale-shuttle/issues/71)) and done
   this sprint: the stops map (#73), the rider-workflow and feed tests (#75),
