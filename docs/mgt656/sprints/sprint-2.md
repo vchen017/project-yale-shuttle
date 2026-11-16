@@ -113,8 +113,8 @@ at most.
   completes #5, and service alerts on the home screen
   ([#13](https://github.com/vchen017/project-yale-shuttle/issues/13)).
   Predictions (#23) continue in
-  [#64](https://github.com/vchen017/project-yale-shuttle/pull/64).
-  **TODO:** move #5, #13 and #24 to the Sprint 3 iteration on the board.
+  [#64](https://github.com/vchen017/project-yale-shuttle/pull/64). The board
+  now has #5, #13 and #24 in the Sprint 3 iteration.
 - New backlog items from what we found in the recorded data:
   [#54](https://github.com/vchen017/project-yale-shuttle/issues/54) (the real
   stops, not just the official list),
