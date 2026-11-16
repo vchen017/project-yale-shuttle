@@ -1,10 +1,13 @@
 // The home page's map of shuttle stops (#71, #73): the routes running now in
-// their colours, a pin for each stop, and the stops nearest the rider.
+// their colours, a pin for each stop, and the stops nearest the rider. A stop's
+// popup can start or end the rider's trip in the trip search above the map
+// (story #5): its buttons send a "trip:pick" event to trip-search.js.
 //
 // The map is MapLibre over OpenFreeMap's "Bright" style: vector tiles, so it
 // stays sharp on any screen, with parks, main roads and labels in colour,
-// lightly faded so the route colours still stand out. Neither needs an API key. The shuttle data comes from /network.json after the
-// page loads, so the page never waits on the shuttle feed.
+// lightly faded so the route colours still stand out. Neither needs an API
+// key. The shuttle data comes from /network.json after the page loads, so the
+// page never waits on the shuttle feed.
 (() => {
   const section = document.getElementById("stops");
   if (!section || !window.maplibregl) return;
@@ -18,6 +21,7 @@
   const BASE_STYLE = "https://tiles.openfreemap.org/styles/bright";
   const FADE = { symbol: 0.8, line: 0.7, fill: 0.75 };
   let youAreHere = null;
+  let popup = null;
 
   const map = new maplibregl.Map({
     container: section.querySelector("[data-map]"),
@@ -77,7 +81,7 @@
     return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.6;
   }
 
-  function stopDetails(stop, routesById, note) {
+  function stopDetails(stop, routesById, note, buttons) {
     const box = document.createElement("div");
     const name = document.createElement("div");
     name.className = "fw-semibold";
@@ -94,6 +98,7 @@
       if (routesById.has(id)) chips.append(chip(routesById.get(id)));
     }
     box.append(chips);
+    if (buttons) box.append(buttons);
     if (stop.url) {
       const link = document.createElement("a");
       link.href = stop.url;
@@ -102,6 +107,36 @@
       box.append(link);
     }
     return box;
+  }
+
+  // In a stop's popup, when the page has the trip search: start or end the trip here.
+  function tripButtons(stop) {
+    if (!document.querySelector("[data-trip-search]")) return null;
+    const row = document.createElement("div");
+    row.className = "d-flex flex-wrap gap-2 mt-2";
+    for (const [end, label, icon] of [
+      ["from", "Start here", "bi-record-circle"],
+      ["to", "Go here", "bi-geo-alt-fill"],
+    ]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn btn-sm btn-outline-primary";
+      const mark = document.createElement("i");
+      mark.className = `bi ${icon} me-1`;
+      mark.setAttribute("aria-hidden", "true");
+      button.append(mark, label);
+      button.addEventListener("click", () => {
+        if (popup) popup.remove();
+        status.textContent =
+          end === "from"
+            ? `Starting at ${stop.name}. Now tap the stop you're going to, or type it above.`
+            : `Going to ${stop.name}. Now tap the stop you're starting from, or type it above.`;
+        const place = { name: stop.name, lat: stop.lat, lon: stop.lon };
+        document.dispatchEvent(new CustomEvent("trip:pick", { detail: { end, place } }));
+      });
+      row.append(button);
+    }
+    return row;
   }
 
   function metersBetween([lon1, lat1], [lon2, lat2]) {
@@ -182,24 +217,39 @@
         "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 12, 1, 16, 2.5],
       },
     });
+    // The stops are small to hit with a finger, so a wider, invisible circle
+    // around each one takes the tap.
+    map.addLayer({
+      id: "stop-targets",
+      type: "circle",
+      source: "stops",
+      paint: { "circle-radius": 16, "circle-opacity": 0 },
+    });
 
-    map.on("click", "stops", (event) => {
-      const stop = stopsById.get(event.features[0].properties.id);
+    map.on("click", "stop-targets", (event) => {
+      // Of the stops around the tap, the one nearest to it.
+      const away = (stop) => map.project([stop.lon, stop.lat]).dist(event.point);
+      const stop = event.features
+        .map((feature) => stopsById.get(feature.properties.id))
+        .filter(Boolean)
+        .reduce((nearest, stop) => (!nearest || away(stop) < away(nearest) ? stop : nearest), null);
       if (!stop) return;
-      new maplibregl.Popup({ offset: 10, maxWidth: "260px" })
+      popup = new maplibregl.Popup({ offset: 10, maxWidth: "260px" })
         .setLngLat([stop.lon, stop.lat])
-        .setDOMContent(stopDetails(stop, routesById))
+        .setDOMContent(stopDetails(stop, routesById, null, tripButtons(stop)))
         .addTo(map);
     });
-    map.on("mouseenter", "stops", () => {
+    map.on("mouseenter", "stop-targets", () => {
       map.getCanvas().style.cursor = "pointer";
     });
-    map.on("mouseleave", "stops", () => {
+    map.on("mouseleave", "stop-targets", () => {
       map.getCanvas().style.cursor = "";
     });
 
     const count = network.routes.length;
-    const tapFor = network.stops.some((stop) => stop.url) ? "its routes and next buses" : "the routes that stop there";
+    const tapFor = network.stops.some((stop) => stop.url)
+      ? "its next buses, or to start or end your trip there"
+      : "the routes that stop there";
     status.textContent = network.running
       ? `The ${count} route${count === 1 ? "" : "s"} running now. Tap a stop to see ${tapFor}.`
       : "No shuttles are running right now. This is where they go.";

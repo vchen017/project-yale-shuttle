@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}{{ origin.name }} to {{ destination.name }} · Yale Shuttle{% endblock %}
+{% block content %}
+<div class="row g-4">
+  <div class="col-lg-8 order-lg-2">
+    <h1 class="h3 mb-1">{{ origin.name }} to {{ destination.name }}</h1>
+    <p class="text-body-secondary mb-3">
+      As of {{ updated_at|date:"g:i A" }} · <a href="{{ request.get_full_path }}">Refresh</a>
+    </p>
+
+    {% if plan %}
+      {% if plan.walking_is_quicker %}
+        <div class="alert alert-success" role="status">
+          <i class="bi bi-person-walking me-1" aria-hidden="true"></i>Walking is quicker: it's about {{ plan.walk_all_the_way }} min on foot.
+        </div>
+      {% endif %}
+      <ol class="trip-steps list-unstyled mb-4">
+        <li>
+          <i class="bi bi-person-walking" aria-hidden="true"></i>
+          <div>{% if plan.walk_to_stop %}Walk {{ plan.walk_to_stop }} min to{% else %}Start at{% endif %} the <a href="{{ plan.board_at.url }}">{{ plan.board_at.name }}</a> stop</div>
+        </li>
+        <li>
+          <i class="bi bi-bus-front" aria-hidden="true"></i>
+          <div>Take the shuttle to <strong>{{ plan.get_off_at.name }}</strong></div>
+        </li>
+        {% if plan.walk_from_stop %}
+          <li>
+            <i class="bi bi-geo-alt-fill" aria-hidden="true"></i>
+            <div>Walk {{ plan.walk_from_stop }} min to {{ destination.name }}</div>
+          </li>
+        {% endif %}
+      </ol>
+
+      <h2 class="h5 mb-3">Next buses at {{ plan.board_at.name }}</h2>
+      {% include "transit/_board.html" with stop=plan.board_at destination=plan.get_off_at %}
+      {% if not plan.walking_is_quicker %}
+        <p class="small text-body-secondary mt-2 mb-0">Walking the whole way takes about {{ plan.walk_all_the_way }} min.</p>
+      {% endif %}
+    {% else %}
+      <div class="alert alert-info" role="status">
+        <i class="bi bi-info-circle me-1" aria-hidden="true"></i>No shuttle route running now links stops near these two places.
+        Walking takes about {{ walk_all_the_way }} min.
+      </div>
+    {% endif %}
+  </div>
+  <div class="col-lg-4 order-lg-1">
+    <h2 class="h6 text-body-secondary text-uppercase mb-2">Change trip</h2>
+    {% include "transit/_trip_search.html" %}
+  </div>
+</div>
+{% endblock %}

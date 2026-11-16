@@ -11,7 +11,7 @@
         <p class="mb-0">The Downtowner's feed isn't answering. Try again in a minute.</p>
       </div>
     </div>
-    <a class="btn btn-primary" href="{% if stop_id %}{% url 'stop' stop_id %}{% else %}{% url 'stops' %}{% endif %}{% if request.GET.to %}?to={{ request.GET.to|urlencode }}{% endif %}">
+    <a class="btn btn-primary" href="{{ request.get_full_path }}">
       <i class="bi bi-arrow-clockwise me-1" aria-hidden="true"></i>Try again
     </a>
   </div>
