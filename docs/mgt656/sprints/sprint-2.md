@@ -77,6 +77,23 @@ when to leave.
   are learned from countdown crossings, not zero-ETAs, because most happen
   between the recorder's five-minute polls. Both sites are now HTTPS-only
   behind Render, with `/healthz` left plain for the health check.
+- [#76](https://github.com/vchen017/project-yale-shuttle/pull/76), closing
+  [#73](https://github.com/vchen017/project-yale-shuttle/issues/73), from Kyle's Sprint 1
+  feedback ([#71](https://github.com/vchen017/project-yale-shuttle/issues/71)): the home page
+  opens on a map of the shuttle stops near you. It shows the routes running now
+  in their colours and a pin for each stop they serve, and "Show stops near me"
+  lists the five closest stops with walking times.
+- [#77](https://github.com/vchen017/project-yale-shuttle/pull/77), closing
+  [#75](https://github.com/vchen017/project-yale-shuttle/issues/75), also from #71: tests of the
+  main rider workflows, end to end, and of a slow, dead or broken feed. CI now
+  applies every migration to an empty PostgreSQL database, next to its check
+  that every model change has a migration. [#77's checks](https://github.com/vchen017/project-yale-shuttle/actions/runs/43921210586) passed:
+  Ruff, both migration checks, and the tests against PostgreSQL.
+- [#78](https://github.com/vchen017/project-yale-shuttle/pull/78), closing
+  [#74](https://github.com/vchen017/project-yale-shuttle/issues/74), also from #71: a report on
+  our shuttle data, below.
+- [#72](https://github.com/vchen017/project-yale-shuttle/pull/72): the Yale typeface, Yale 2024,
+  on every page, with #65's Newsreader as the fallback.
 
 ## What works on staging and production
 
@@ -90,12 +107,32 @@ runs. On both:
 - `/ecc1032` and `/ecc1032/stats`. Production counts its visits in its own
   database, apart from staging's test visits.
 
-The history, predictions and live feed have no page yet; #24 adds one in
-Sprint 3. Both sites now run the Nov 16 `main` (the countdown merge, promoted
-to production the same hour), and both redirect plain HTTP to HTTPS.
-`/admin/` lists the history tables, still empty on both: #69's daily import
-has its first run tomorrow morning, 4:17 AM Eastern, and fills production's
-from then on, starting with the last three days.
+On both sites, the home page opens on the map of stops, and `/notifications/`
+turns push notifications on for a device and sends a test. Both redirect plain
+HTTP to HTTPS. Production changes only through the promote workflow, which
+deploys a commit that passed CI and waits until production's `/healthz`
+reports it. Its latest run, [Nov 16](https://github.com/vchen017/project-yale-shuttle/actions/runs/43925739876), promoted `26718d4`.
+
+The history and predictions get their page with the next-buses page
+([#24](https://github.com/vchen017/project-yale-shuttle/issues/24)). #69's
+daily import runs at 4:17 AM Eastern and fills production's history tables,
+starting with the last three days.
+
+## Our data
+
+Kyle asked where our data has gaps and how far to trust the arrivals we infer.
+[`docs/mgt656/data-quality.md`](../data-quality.md) answers for Nov 9–15, and
+`python manage.py data_quality` reruns it for any week:
+
+- **The recording has been complete since Nov 6.** The recorder missed 480
+  polls in all, nearly all on Oct 27–30, when its runs couldn't save.
+- **Bus GPS is mostly fresh, except on Blue West,** where 7% of positions were
+  over 10 minutes old.
+  [#58](https://github.com/vchen017/project-yale-shuttle/issues/58) will tell
+  riders when a position is old.
+- **The arrivals we infer agree with the buses' own GPS.** For 87% of them, the
+  inferred time was within 2 minutes of when the GPS says the bus reached the
+  stop; when we're off, it's usually early.
 
 ## Working with our agents
 
@@ -110,11 +147,16 @@ at most.
 
 ## Backlog changes for Sprint 3
 
-- Carried over, since we didn't start them: the next-buses page
+- Carried over: service alerts on the home screen
+  ([#13](https://github.com/vchen017/project-yale-shuttle/issues/13)), now in
+  the Sprint 3 iteration. **TODO:** the next-buses page
   ([#24](https://github.com/vchen017/project-yale-shuttle/issues/24)), which
-  completes #5, and service alerts on the home screen
-  ([#13](https://github.com/vchen017/project-yale-shuttle/issues/13)).
-  The board now has #5, #13 and #24 in the Sprint 3 iteration.
+  completes #5, is due to land before the deadline. If it does, move it into
+  "What shipped"; if not, say it carried over too.
+- Added from Kyle's Sprint 1 feedback
+  ([#71](https://github.com/vchen017/project-yale-shuttle/issues/71)) and done
+  this sprint: the stops map (#73), the rider-workflow and feed tests (#75),
+  and the data report (#74).
 - New backlog items from what we found in the recorded data:
   [#54](https://github.com/vchen017/project-yale-shuttle/issues/54) (the real
   stops, not just the official list),
