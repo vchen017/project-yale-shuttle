@@ -62,6 +62,7 @@ or create clashing migrations:
 | `transit` | Vivian, then Ishita | The live Downtowner feed (#36) and the next-buses page (#24) |
 | `history` | Ayush | The imported shuttle history (#22) and our predictions (#23) |
 | `alerts` | Ishita | Service alerts (#13, #20) |
+| `crowding` | Ishita | Riders' crowding reports, and crowding now and by time of day (#12) |
 | `notifications` | Vivian | Browser push: riders' devices and sending to them (#27), and the trip-notification job (#29) |
 | `assistant` | Austin | The AI feature (#37, #28) |
 | `jobs` | Vivian | The scheduled-job runner and its run log (#40). Each app's own jobs go in its `jobs.py` |

@@ -147,3 +147,19 @@
 .service-alerts-more { padding: 0.4rem 0 0.2rem; border-top: 1px solid rgba(0, 0, 0, 0.06); }
 .service-alerts-more > details > summary { color: var(--ys-blue-medium); font-size: 0.9rem; }
 .service-alerts-more .service-alert:first-child { border-top: 0; }
+
+/* Crowding (#12): one colour per level, empty to full */
+.crowd-0 { --crowd: #198754; }
+.crowd-1 { --crowd: #0d6efd; }
+.crowd-2 { --crowd: #b26b00; }
+.crowd-3 { --crowd: #dc3545; }
+.crowd-dot { display: inline-block; width: 0.65rem; height: 0.65rem; margin-right: 0.4rem; border-radius: 50%; background: var(--crowd); }
+.crowd-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+.crowd-choice { display: flex; align-items: center; justify-content: center; min-height: 3rem; }
+.btn-check:checked + .crowd-choice { background: var(--crowd); border-color: var(--crowd); color: #fff; }
+.btn-check:checked + .crowd-choice .crowd-dot { background: #fff; }
+.crowd-bar { display: inline-block; width: 1.25rem; height: 0.6rem; margin-right: 0.4rem; border-radius: 999px; background: var(--crowd); vertical-align: middle; }
+.crowd-hours td, .crowd-hours th { white-space: nowrap; }
+.crowd-bar.crowd-1 { width: 2.5rem; }
+.crowd-bar.crowd-2 { width: 3.75rem; }
+.crowd-bar.crowd-3 { width: 5rem; }

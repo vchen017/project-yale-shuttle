@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from history.predictions import predict_minutes
 
 from . import downtowner
-from .network import network
+from .network import network, text_color
 
 LATER_BUSES = 2  # official times shown after the next one
 
@@ -30,8 +30,7 @@ class Row:
     @property
     def text_color(self):
         """Dark text on a light route colour, white on a dark one."""
-        r, g, b = (int(self.color[i : i + 2], 16) / 255 for i in (0, 2, 4))
-        return "#212529" if 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.6 else "#fff"
+        return text_color(self.color)
 
     @property
     def next_official(self):
