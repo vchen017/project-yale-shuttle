@@ -21,7 +21,7 @@ class HomeMapTests(TestCase):
         response = self.client.get(reverse("home"))
         self.assertContains(response, "Shuttle stops near you")
         self.assertContains(response, f'data-network-url="{reverse("network")}"')
-        self.assertContains(response, "leaflet@1.9.4/dist/leaflet.js")
+        self.assertContains(response, "maplibre-gl@5.24.1/dist/maplibre-gl.js")
         self.assertContains(response, 'integrity="sha384-')
         self.assertContains(response, "core/map.js")
         feed.assert_not_called()

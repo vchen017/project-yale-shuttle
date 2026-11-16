@@ -1,27 +1,65 @@
-// The home page's map of shuttle stops (#71): the routes running now in their
-// colours, a pin for each stop, and the stops nearest the rider. The data comes
-// from /network.json after the page loads, so the page never waits on the feed.
+// The home page's map of shuttle stops (#71, #73): the routes running now in
+// their colours, a pin for each stop, and the stops nearest the rider.
+//
+// The map is MapLibre over OpenFreeMap's "Bright" style: vector tiles, so it
+// stays sharp on any screen, with parks, main roads and labels in colour,
+// lightly faded so the route colours still stand out. Neither needs an API key. The shuttle data comes from /network.json after the
+// page loads, so the page never waits on the shuttle feed.
 (() => {
   const section = document.getElementById("stops");
-  if (!section || !window.L) return;
+  if (!section || !window.maplibregl) return;
   const status = section.querySelector("[data-map-status]");
   const locateButton = section.querySelector("[data-locate]");
   const locateStatus = section.querySelector("[data-locate-status]");
   const nearbyList = section.querySelector("[data-nearby]");
-  const CENTRAL_CAMPUS = [41.3111, -72.9267];
+  const CENTRAL_CAMPUS = [-72.9267, 41.3111]; // longitude, latitude
   const WALK_METERS_PER_MINUTE = 80;
+  // The base map, and how much its layers are faded so the routes stand out.
+  const BASE_STYLE = "https://tiles.openfreemap.org/styles/bright";
+  const FADE = { symbol: 0.8, line: 0.7, fill: 0.75 };
   let youAreHere = null;
 
-  const map = L.map(section.querySelector("[data-map]"), { scrollWheelZoom: false }).setView(CENTRAL_CAMPUS, 15);
-  // OpenStreetMap's tile servers turn away browser requests that don't say
-  // which site they're for, and our pages tell browsers not to say by default
-  // (Django's Referrer-Policy: same-origin). So the tiles send our site's
-  // address, and nothing more.
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    referrerPolicy: "strict-origin-when-cross-origin",
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  }).addTo(map);
+  const map = new maplibregl.Map({
+    container: section.querySelector("[data-map]"),
+    style: BASE_STYLE,
+    center: CENTRAL_CAMPUS,
+    zoom: 14.6,
+    attributionControl: { compact: true },
+    // Scrolling the page shouldn't zoom the map: zoom with ctrl or two fingers.
+    cooperativeGestures: true,
+  });
+  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-left");
+  const mapReady = new Promise((resolve) =>
+    map.on("load", () => {
+      fadeBaseMap();
+      collapseCreditsOnPhones();
+      resolve();
+    }),
+  );
+
+  // On a phone the map's credits start open and cover the bottom of the map;
+  // start them closed, one tap away on the (i) button.
+  function collapseCreditsOnPhones() {
+    const credits = map.getContainer().querySelector(".maplibregl-ctrl-attrib");
+    if (credits && map.getContainer().offsetWidth <= 640) {
+      credits.removeAttribute("open");
+      credits.classList.remove("maplibregl-compact-show");
+    }
+  }
+
+  // Fade the base map's roads, labels and areas a little, so the routes carry the map.
+  function fadeBaseMap() {
+    for (const layer of map.getStyle().layers) {
+      if (layer.type === "symbol") {
+        map.setPaintProperty(layer.id, "text-opacity", FADE.symbol);
+        map.setPaintProperty(layer.id, "icon-opacity", FADE.symbol);
+      } else if (layer.type === "line") {
+        map.setPaintProperty(layer.id, "line-opacity", FADE.line);
+      } else if (layer.type === "fill") {
+        map.setPaintProperty(layer.id, "fill-opacity", FADE.fill);
+      }
+    }
+  }
 
   // Built from DOM nodes, never HTML strings: the names come from the feed.
   function chip(route) {
@@ -66,7 +104,7 @@
     return box;
   }
 
-  function metersBetween([lat1, lon1], [lat2, lon2]) {
+  function metersBetween([lon1, lat1], [lon2, lat2]) {
     const rad = Math.PI / 180;
     const a =
       Math.sin(((lat2 - lat1) * rad) / 2) ** 2 +
@@ -85,18 +123,81 @@
 
   function draw(network) {
     const routesById = new Map(network.routes.map((route) => [route.id, route]));
-    for (const route of network.routes) {
-      const points = [];
-      for (let i = 0; i + 1 < route.path.length; i += 2) points.push([route.path[i], route.path[i + 1]]);
-      if (points.length > 1) {
-        L.polyline(points, { color: `#${route.color}`, weight: 4, opacity: network.running ? 0.75 : 0.35 }).addTo(map);
-      }
-    }
-    for (const stop of network.stops) {
-      L.circleMarker([stop.lat, stop.lon], { radius: 6, color: "#00356b", weight: 2, fillColor: "#fff", fillOpacity: 1 })
-        .bindPopup(() => stopDetails(stop, routesById))
+    const stopsById = new Map(network.stops.map((stop) => [stop.id, stop]));
+
+    map.addSource("routes", {
+      type: "geojson",
+      data: {
+        type: "FeatureCollection",
+        features: network.routes.map((route) => {
+          const coordinates = [];
+          for (let i = 0; i + 1 < route.path.length; i += 2) coordinates.push([route.path[i + 1], route.path[i]]);
+          return { type: "Feature", properties: { color: `#${route.color}` }, geometry: { type: "LineString", coordinates } };
+        }),
+      },
+    });
+    // A white outline under each route, so it stands out from the streets.
+    map.addLayer({
+      id: "route-outlines",
+      type: "line",
+      source: "routes",
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: {
+        "line-color": "#ffffff",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 12, 5, 14, 8, 16, 12],
+        "line-opacity": network.running ? 0.9 : 0.4,
+      },
+    });
+    map.addLayer({
+      id: "routes",
+      type: "line",
+      source: "routes",
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: {
+        "line-color": ["get", "color"],
+        "line-width": ["interpolate", ["linear"], ["zoom"], 12, 3, 14, 5, 16, 8],
+        "line-opacity": network.running ? 1 : 0.35,
+      },
+    });
+
+    map.addSource("stops", {
+      type: "geojson",
+      data: {
+        type: "FeatureCollection",
+        features: network.stops.map((stop) => ({
+          type: "Feature",
+          properties: { id: stop.id },
+          geometry: { type: "Point", coordinates: [stop.lon, stop.lat] },
+        })),
+      },
+    });
+    map.addLayer({
+      id: "stops",
+      type: "circle",
+      source: "stops",
+      paint: {
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 12, 2.5, 16, 7],
+        "circle-color": "#ffffff",
+        "circle-stroke-color": "#00356b",
+        "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 12, 1, 16, 2.5],
+      },
+    });
+
+    map.on("click", "stops", (event) => {
+      const stop = stopsById.get(event.features[0].properties.id);
+      if (!stop) return;
+      new maplibregl.Popup({ offset: 10, maxWidth: "260px" })
+        .setLngLat([stop.lon, stop.lat])
+        .setDOMContent(stopDetails(stop, routesById))
         .addTo(map);
-    }
+    });
+    map.on("mouseenter", "stops", () => {
+      map.getCanvas().style.cursor = "pointer";
+    });
+    map.on("mouseleave", "stops", () => {
+      map.getCanvas().style.cursor = "";
+    });
+
     const count = network.routes.length;
     const tapFor = network.stops.some((stop) => stop.url) ? "its routes and next buses" : "the routes that stop there";
     status.textContent = network.running
@@ -114,18 +215,21 @@
     navigator.geolocation.getCurrentPosition(
       (position) => {
         locateButton.disabled = false;
-        const here = [position.coords.latitude, position.coords.longitude];
-        if (youAreHere) youAreHere.setLatLng(here);
-        else {
-          youAreHere = L.circleMarker(here, { radius: 8, color: "#fff", weight: 3, fillColor: "#286dc0", fillOpacity: 1 })
-            .bindTooltip("You are here")
-            .addTo(map);
+        const here = [position.coords.longitude, position.coords.latitude];
+        if (!youAreHere) {
+          const dot = document.createElement("div");
+          dot.className = "you-are-here";
+          dot.title = "You are here";
+          youAreHere = new maplibregl.Marker({ element: dot });
         }
+        youAreHere.setLngLat(here).addTo(map);
         const nearest = network.stops
-          .map((stop) => ({ stop, meters: metersBetween(here, [stop.lat, stop.lon]) }))
+          .map((stop) => ({ stop, meters: metersBetween(here, [stop.lon, stop.lat]) }))
           .sort((a, b) => a.meters - b.meters)
           .slice(0, 5);
-        map.fitBounds(L.latLngBounds([here, ...nearest.map(({ stop }) => [stop.lat, stop.lon])]).pad(0.2), { maxZoom: 17 });
+        const bounds = new maplibregl.LngLatBounds(here, here);
+        for (const { stop } of nearest) bounds.extend([stop.lon, stop.lat]);
+        map.fitBounds(bounds, { padding: 60, maxZoom: 17 });
         nearbyList.replaceChildren(
           ...nearest.map(({ stop, meters }) => {
             const item = document.createElement("li");
@@ -153,12 +257,12 @@
     );
   }
 
-  fetch(section.dataset.networkUrl, { headers: { Accept: "application/json" } })
-    .then((response) => {
-      if (!response.ok) throw new Error(`the server answered ${response.status}`);
-      return response.json();
-    })
-    .then(draw)
+  const shuttles = fetch(section.dataset.networkUrl, { headers: { Accept: "application/json" } }).then((response) => {
+    if (!response.ok) throw new Error(`the server answered ${response.status}`);
+    return response.json();
+  });
+  Promise.all([shuttles, mapReady])
+    .then(([network]) => draw(network))
     .catch(() => {
       status.textContent = "Live shuttle data is unavailable right now. Try again in a minute.";
     });
