@@ -4,6 +4,7 @@ the prediction tests build synthetic history in the database, and the
 command tests mock history.sources, the app's only network module."""
 
 import datetime as dt
+import json
 from io import StringIO
 from unittest import mock
 
@@ -11,7 +12,16 @@ from django.core.management import CommandError, call_command
 from django.test import TestCase
 
 from history import importer, predictions, sources
-from history.models import Announcement, BusPosition, Eta, Poll, RouteStatus
+from history.models import (
+    Announcement,
+    BusPosition,
+    Eta,
+    Poll,
+    RouteStatus,
+    RouteStopChange,
+    RouteStopList,
+    RouteSyncState,
+)
 
 UTC = dt.UTC
 ET = predictions.ET
@@ -135,6 +145,51 @@ def sample_gaps():
     ]
 
 
+# ----- The routes.json walk (#57) -----
+#
+# Fixtures follow what the recorder actually committed around Nov 13, 2026:
+# the evening before, routes 3 (Red) and 19 (Brown Connector) still have
+# their old stop lists; at 10:30 UTC stop 1 (100 Church Street South)
+# joins both; five minutes later stop 14 (Amistad / Church St South)
+# leaves route 3 — the change issue #57 exists for.
+
+ROUTE_3_STOPS = [
+    121, 115, 45, 75, 30, 31, 41, 126, 36, 128, 120, 3, 147, 27, 11, 146, 49,
+    48, 104, 113, 4, 42, 98, 38, 39, 72, 117, 13, 14,
+]
+ROUTE_19_STOPS = [145, 147, 4, 42, 98, 121, 115, 172, 47]
+
+SHA_PRE = "f521fda000000000000000000000000000000000"
+SHA_1030 = "8fdaa48900000000000000000000000000000000"
+SHA_1035 = "dd29a46400000000000000000000000000000000"
+AT_PRE = dt.datetime(2026, 11, 12, 23, 45, tzinfo=UTC)
+AT_1030 = dt.datetime(2026, 11, 13, 10, 30, tzinfo=UTC)
+AT_1035 = dt.datetime(2026, 11, 13, 10, 35, tzinfo=UTC)
+
+ROUTE_COMMITS = [(SHA_PRE, AT_PRE), (SHA_1030, AT_1030), (SHA_1035, AT_1035)]
+
+
+def routes_payload(route_3_stops, route_19_stops):
+    """A routes.json as the walk reads it, for just the two routes we track."""
+    return [
+        {"id": 3, "name": "Red - Weekday Daytime", "stops": route_3_stops},
+        {"id": 19, "name": "Brown Connector", "stops": route_19_stops},
+    ]
+
+
+ROUTE_PAYLOADS = {
+    SHA_PRE: routes_payload(ROUTE_3_STOPS, ROUTE_19_STOPS),
+    SHA_1030: routes_payload(
+        [1] + ROUTE_3_STOPS, ROUTE_19_STOPS[:5] + [1] + ROUTE_19_STOPS[5:]
+    ),
+    # Five minutes later only route 3 changes, losing stop 14; route 19's
+    # list is committed again, identical, and must record nothing.
+    SHA_1035: routes_payload(
+        [1] + ROUTE_3_STOPS[:-1], ROUTE_19_STOPS[:5] + [1] + ROUTE_19_STOPS[5:]
+    ),
+}
+
+
 class ImportDayTests(TestCase):
     def test_imports_all_four_tables_and_marks_polls_recorded(self):
         stats = importer.import_day(DAY, sample_day())
@@ -226,7 +281,7 @@ class ImportGapsTests(TestCase):
 class ImportHistoryCommandTests(TestCase):
     """The whole command, with every GitHub fetch mocked to a small local copy."""
 
-    def call_command_with_fixtures(self):
+    def call_command_with_fixtures(self, commits=(), payloads=None):
         out = mock.Mock()
         with (
             mock.patch(
@@ -240,10 +295,18 @@ class ImportHistoryCommandTests(TestCase):
             mock.patch(
                 "history.management.commands.import_history.sources.read_day",
                 return_value=sample_day(),
-            ) as read_day,
+            ),
+            mock.patch(
+                "history.management.commands.import_history.sources.list_route_commits",
+                return_value=list(commits),
+            ),
+            mock.patch(
+                "history.management.commands.import_history.sources.read_routes_json",
+                side_effect=lambda sha: (payloads or {})[sha],
+            ) as read_routes_json,
         ):
             call_command("import_history", stdout=out)
-        return out, read_day
+        return out, read_routes_json
 
     def test_the_command_imports_gaps_and_recorded_polls(self):
         out, _ = self.call_command_with_fixtures()
@@ -279,10 +342,46 @@ class ImportHistoryCommandTests(TestCase):
                 "history.management.commands.import_history.sources.read_day",
                 return_value=sample_day(),
             ) as read_day,
+            mock.patch(
+                "history.management.commands.import_history.sources.list_route_commits",
+                return_value=[],
+            ),
         ):
             call_command("import_history", "--days", "1", stdout=out)
 
         read_day.assert_called_once_with(DAY)
+
+    def test_the_command_walks_the_routes_json_history(self):
+        out, read_routes_json = self.call_command_with_fixtures(
+            commits=ROUTE_COMMITS, payloads=ROUTE_PAYLOADS
+        )
+
+        self.assertEqual(RouteStopList.objects.count(), 5)  # route 3 ×3 (pre, +1, -14), route 19 ×2 (pre, +1)
+        self.assertEqual(RouteStopChange.objects.count(), 3)
+        printed = "\n".join(str(call.args[0]) for call in out.write.call_args_list)
+        self.assertIn("3 new commits walked", printed)
+        self.assertIn("5 stop-list versions stored", printed)
+        self.assertIn("3 changes recorded", printed)
+        # All three commits fetched, in order, nothing else.
+        self.assertEqual(
+            [call.args[0] for call in read_routes_json.call_args_list],
+            [SHA_PRE, SHA_1030, SHA_1035],
+        )
+        change = RouteStopChange.objects.get(route_id=3, changed_at=AT_1035)
+        self.assertEqual(change.added_stop_ids, [])
+        self.assertEqual(change.removed_stop_ids, [14])
+
+    def test_rerunning_the_command_walks_nothing_new(self):
+        self.call_command_with_fixtures(commits=ROUTE_COMMITS, payloads=ROUTE_PAYLOADS)
+        out, read_routes_json = self.call_command_with_fixtures(
+            commits=ROUTE_COMMITS, payloads=ROUTE_PAYLOADS
+        )
+
+        read_routes_json.assert_not_called()
+        self.assertEqual(RouteStopList.objects.count(), 5)
+        self.assertEqual(RouteStopChange.objects.count(), 3)
+        printed = "\n".join(str(call.args[0]) for call in out.write.call_args_list)
+        self.assertIn("0 new commits walked", printed)
 
     def test_conflicting_date_arguments_are_rejected(self):
         with self.assertRaisesMessage(CommandError, "only one"):
@@ -300,6 +399,192 @@ class ImportHistoryCommandTests(TestCase):
             side_effect=OSError("no network"),
         ), self.assertRaisesMessage(CommandError, "YYYY-MM-DD"):
             call_command("import_history", "--since", "november 1st")
+
+
+class RouteHistoryTests(TestCase):
+    """The walk over the recorder's routes.json versions (#57)."""
+
+    def walk(self):
+        return importer.import_route_history(
+            ROUTE_COMMITS, lambda sha: ROUTE_PAYLOADS[sha]
+        )
+
+    def test_the_walk_records_versions_and_changes(self):
+        stats = self.walk()
+
+        self.assertEqual(stats.commits_seen, 3)
+        self.assertEqual(stats.versions_added, 5)
+        self.assertEqual(stats.changes_added, 3)
+        self.assertEqual(RouteStopList.objects.count(), 5)
+        # Route 3: first seen with the old list; 10:30 gains stop 1 (100
+        # Church Street South); 10:35 loses stop 14 (Amistad / Church St South).
+        first_red = RouteStopList.objects.get(route_id=3, commit_sha=SHA_PRE)
+        self.assertEqual(first_red.stop_ids, ROUTE_3_STOPS)
+        self.assertEqual(first_red.route_name, "Red - Weekday Daytime")
+        self.assertEqual(RouteStopChange.objects.filter(route_id=3, changed_at=AT_PRE).count(), 0)
+        gain = RouteStopChange.objects.get(route_id=3, changed_at=AT_1030)
+        self.assertEqual(gain.added_stop_ids, [1])
+        self.assertEqual(gain.removed_stop_ids, [])
+        loss = RouteStopChange.objects.get(route_id=3, changed_at=AT_1035)
+        self.assertEqual(loss.added_stop_ids, [])
+        self.assertEqual(loss.removed_stop_ids, [14])
+        # Route 19: first seen with the old list, then stop 1 at 10:30; its
+        # identical 10:35 commit records nothing.
+        self.assertEqual(RouteStopList.objects.filter(route_id=19).count(), 2)
+        brown = RouteStopChange.objects.get(route_id=19)
+        self.assertEqual(brown.changed_at, AT_1030)
+        self.assertEqual(brown.added_stop_ids, [1])
+        # The sync state stops at the newest commit.
+        state = RouteSyncState.objects.get()
+        self.assertEqual(state.last_commit_sha, SHA_1035)
+        self.assertEqual(state.last_commit_at, AT_1035)
+
+    def test_current_stops_follows_the_newest_version(self):
+        self.assertIsNone(predictions.current_stops(3))  # nothing walked yet
+        self.walk()
+        self.assertEqual(predictions.current_stops(3), set([1] + ROUTE_3_STOPS[:-1]))
+        self.assertNotIn(14, predictions.current_stops(3))
+
+    def test_an_interrupted_walk_is_idempotent(self):
+        self.walk()
+        # A crash before the last save leaves the state at the first commit;
+        # reprocessing both commits adds nothing.
+        state = RouteSyncState.objects.get()
+        state.last_commit_sha, state.last_commit_at = SHA_1030, AT_1030
+        state.save()
+
+        stats = self.walk()
+
+        self.assertEqual(stats.versions_added, 0)
+        self.assertEqual(stats.changes_added, 0)
+        self.assertEqual(RouteStopList.objects.count(), 5)
+        self.assertEqual(RouteStopChange.objects.count(), 3)
+
+    def test_commits_at_or_before_the_state_are_never_fetched(self):
+        fetched = []
+        importer.import_route_history(
+            ROUTE_COMMITS, lambda sha: fetched.append(sha) or ROUTE_PAYLOADS[sha]
+        )
+        fetched.clear()
+        # A commit older than the state, as a re-listed history would repeat.
+        old = ("aaaa000000000000000000000000000000000000", AT_1030 - dt.timedelta(minutes=5))
+        stats = importer.import_route_history(
+            [old] + ROUTE_COMMITS, lambda sha: fetched.append(sha) or ROUTE_PAYLOADS[sha]
+        )
+
+        self.assertEqual(stats.commits_seen, 0)
+        self.assertEqual(fetched, [])
+
+    def test_a_pure_reorder_is_a_change_with_no_adds_or_removes(self):
+        first = [("c" * 40, AT_1030), ("d" * 40, AT_1035)]
+        payloads = {
+            first[0][0]: routes_payload(ROUTE_3_STOPS, ROUTE_19_STOPS),
+            first[1][0]: routes_payload(list(reversed(ROUTE_3_STOPS)), ROUTE_19_STOPS),
+        }
+
+        stats = importer.import_route_history(first, lambda sha: payloads[sha])
+
+        self.assertEqual(stats.changes_added, 1)
+        change = RouteStopChange.objects.get(route_id=3, changed_at=AT_1035)
+        self.assertEqual(change.added_stop_ids, [])
+        self.assertEqual(change.removed_stop_ids, [])
+
+
+class StopServingTests(TestCase):
+    """Predictions only trust stops the route still serves (#57)."""
+
+    def test_a_stop_the_route_no_longer_serves_gets_no_prediction(self):
+        seed_history()  # arrivals for route 1, stop 100
+        RouteStopList.objects.create(
+            route_id=1,
+            route_name="Test route",
+            stop_ids=[200],  # stop 100 has been dropped
+            first_seen=AT_1030,
+            commit_sha=SHA_1030,
+        )
+
+        self.assertIsNone(
+            predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 12))
+        )
+        # A stop still on the list predicts as usual.
+        ours = predictions.predict_minutes(1, 200, now=eastern(dt.date(2026, 11, 5), 12))
+        self.assertIsNone(ours)  # stop 200 itself has no arrival history
+
+    def test_a_currently_served_stop_predicts_as_before(self):
+        seed_history()
+        RouteStopList.objects.create(
+            route_id=1,
+            route_name="Test route",
+            stop_ids=[100, 200],
+            first_seen=AT_1030,
+            commit_sha=SHA_1030,
+        )
+
+        ours = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 12, 7))
+        self.assertIsNotNone(ours)
+        self.assertGreaterEqual(ours, 4)
+        self.assertLessEqual(ours, 8)
+
+    def test_without_a_walk_everything_counts_as_served(self):
+        seed_history()
+        ours = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 12, 7))
+        self.assertIsNotNone(ours)
+
+    def test_evaluation_skips_pairs_the_route_no_longer_serves(self):
+        seed_history()
+        RouteStopList.objects.create(
+            route_id=1,
+            route_name="Test route",
+            stop_ids=[200],
+            first_seen=AT_1030,
+            commit_sha=SHA_1030,
+        )
+
+        result = predictions.evaluate(holdout_modulus=3, stride=1, now=eastern(dt.date(2026, 11, 10), 12))
+
+        self.assertEqual(result["queries"], 0)
+        self.assertGreater(result["not_served"], 0)
+        self.assertIsNone(result["ours_mae"])
+
+
+class RouteSourcesTests(TestCase):
+    """The routes.json network reads, mocked like every other source."""
+
+    def test_list_route_commits_paginates_and_sorts_oldest_first(self):
+        # The API answers newest first, 100 per page; the last page is short.
+        page_one = [
+            {
+                "sha": f"{i:040x}",
+                "commit": {"author": {"date": f"2026-11-{13 - i // 50:02d}T00:00:00Z"}},
+            }
+            for i in range(100)
+        ]
+        page_two = [
+            {"sha": "b" * 40, "commit": {"author": {"date": "2026-11-10T00:00:00Z"}}},
+            {"sha": "a" * 40, "commit": {"author": {"date": "2026-11-09T00:00:00Z"}}},
+        ]
+        with mock.patch(
+            "history.sources._text_stream",
+            side_effect=[StringIO(json.dumps(page_one)), StringIO(json.dumps(page_two))],
+        ):
+            commits = sources.list_route_commits()
+
+        self.assertEqual(len(commits), 102)
+        self.assertEqual(commits[0], ("a" * 40, dt.datetime(2026, 11, 9, tzinfo=UTC)))
+        dates = [committed_at for _, committed_at in commits]
+        self.assertEqual(dates, sorted(dates))
+
+    def test_read_routes_json_fetches_the_version_at_that_commit(self):
+        payload = routes_payload(ROUTE_3_STOPS, ROUTE_19_STOPS)
+        with mock.patch(
+            "history.sources._text_stream", return_value=StringIO(json.dumps(payload))
+        ) as stream:
+            routes = sources.read_routes_json(SHA_1030)
+
+        self.assertEqual(routes, payload)
+        url = stream.call_args.args[0]
+        # The historical version, not the branch tip: the sha is the ref.
+        self.assertIn(f"/{SHA_1030}/data/routes.json", url)
 
 
 class SourceParsingTests(TestCase):

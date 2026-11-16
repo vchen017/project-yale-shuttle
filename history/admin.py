@@ -1,6 +1,14 @@
 from django.contrib import admin
 
-from .models import Announcement, BusPosition, Eta, Poll, RouteStatus
+from .models import (
+    Announcement,
+    BusPosition,
+    Eta,
+    Poll,
+    RouteStatus,
+    RouteStopChange,
+    RouteStopList,
+)
 
 
 @admin.register(Poll)
@@ -47,3 +55,29 @@ class EtaAdmin(admin.ModelAdmin):
 class AnnouncementAdmin(admin.ModelAdmin):
     list_display = ("polled_at", "announcement_id", "title")
     search_fields = ("title", "message")
+
+
+@admin.register(RouteStopList)
+class RouteStopListAdmin(admin.ModelAdmin):
+    list_display = ("route_id", "route_name", "first_seen", "stop_count", "short_sha")
+    list_filter = ("route_id",)
+    ordering = ("route_id", "-first_seen")
+
+    @admin.display(description="stops")
+    def stop_count(self, obj):
+        return len(obj.stop_ids)
+
+    @admin.display(description="commit")
+    def short_sha(self, obj):
+        return obj.commit_sha[:7]
+
+
+@admin.register(RouteStopChange)
+class RouteStopChangeAdmin(admin.ModelAdmin):
+    list_display = ("changed_at", "route_id", "added_stop_ids", "removed_stop_ids", "short_sha")
+    list_filter = ("route_id",)
+    ordering = ("-changed_at",)
+
+    @admin.display(description="commit")
+    def short_sha(self, obj):
+        return obj.commit_sha[:7]

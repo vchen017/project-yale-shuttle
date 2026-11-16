@@ -8,6 +8,9 @@ and gaps.csv keeps its polls stored as MISSING.
     python manage.py import_history --days 1     # the latest recorded day
     python manage.py import_history --since 2026-11-01
     python manage.py import_history --date 2026-11-10
+
+Also walks the recorder's routes.json git history, recording when a route's
+stop list changed (#57).
 """
 
 import datetime as dt
@@ -57,6 +60,19 @@ class Command(BaseCommand):
                 f"{stats.announcements} announcements); "
                 f"{stats.polls_skipped} polls already recorded"
             )
+
+        # The recorder's routes.json history: when routes gain or lose stops
+        # (#57), so predictions only trust stops the route still serves.
+        try:
+            commits = sources.list_route_commits()
+            routes_stats = importer.import_route_history(commits, sources.read_routes_json)
+        except OSError as error:
+            raise CommandError(f"Could not fetch routes.json history from GitHub: {error}")
+        self.stdout.write(
+            f"routes.json: {routes_stats.commits_seen} new commits walked, "
+            f"{routes_stats.versions_added} stop-list versions stored, "
+            f"{routes_stats.changes_added} changes recorded"
+        )
 
     def _dates_to_import(self, options):
         """Which UTC dates to fetch. Arguments are parsed and checked before

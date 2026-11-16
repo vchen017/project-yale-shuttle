@@ -16,7 +16,9 @@ has no data (late night, quiet stops). When even the neighbours are empty —
 outside service hours, mostly — there is no prediction: a route that isn't
 running has no wait to predict. It is
 history only: the live feed plays no part, so a prediction works even when
-the feed is down.
+the feed is down. A stop the route no longer serves gets no prediction:
+routes and stops change during the term (#57), and a moved stop's old
+arrivals must not look like a prediction.
 
 `evaluate()` scores the prediction on days held out from training and
 reports our average error next to the official ETA's; the
@@ -31,7 +33,7 @@ from zoneinfo import ZoneInfo
 
 from django.utils import timezone
 
-from .models import Eta
+from .models import Eta, RouteStopList
 
 ET = ZoneInfo("America/New_York")
 
@@ -42,12 +44,36 @@ DWELL_TOLERANCE = dt.timedelta(minutes=5)  # zero-ETAs this close are one bus dw
 HORIZON = dt.timedelta(hours=6)  # ground truth: next arrival within this long
 
 
+def current_stops(route_id):
+    """The stop ids in the route's latest observed stop list (#57), or None
+    when no routes.json walk has run yet.
+
+    Routes and stops change during the term (#57: on Nov 13 Red and Brown
+    gained 100 Church Street South and Red dropped Amistad / Church St
+    South), so a stop's history is only trustworthy while the route still
+    serves it.
+    """
+    row = RouteStopList.objects.filter(route_id=route_id).order_by("-first_seen", "-id").first()
+    return set(row.stop_ids) if row else None
+
+
+def _stop_is_served(route_id, stop_id):
+    """False only once the walk has run and shows the route no longer
+    serves the stop; before any walk, everything counts as served."""
+    current = current_stops(route_id)
+    return current is None or stop_id in current
+
+
 def predict_minutes(route_id, stop_id, now=None):
     """Our predicted minutes until the route's next bus reaches the stop.
 
-    None when there's nothing to learn from. `now` defaults to now; only
-    history from before it is used.
+    None when there's nothing to learn from, or when the route no longer
+    serves the stop (#57): a moved or removed stop's old arrivals must not
+    look like a prediction. `now` defaults to now; only history from before
+    it is used.
     """
+    if not _stop_is_served(route_id, stop_id):
+        return None
     now = now or timezone.now()
     rows = (
         Eta.objects.filter(
@@ -88,7 +114,7 @@ def evaluate(holdout_modulus=3, stride=2, days=HISTORY_DAYS, now=None):
         for pair, moments in arrivals_by_pair.items()
     }
 
-    queries = no_prediction = 0
+    queries = no_prediction = not_served = 0
     ours_error = official_error = 0.0
     for day in sorted(test_days):
         day_start = dt.datetime.combine(day, dt.time(0), tzinfo=ET)
@@ -105,6 +131,11 @@ def evaluate(holdout_modulus=3, stride=2, days=HISTORY_DAYS, now=None):
 
         for polled_at in sorted(by_poll)[::stride]:
             for pair, etas in sorted(by_poll[polled_at].items()):
+                # Pairs at stops the route no longer serves are skipped, so
+                # the score describes what riders would actually be told (#57).
+                if not _stop_is_served(*pair):
+                    not_served += 1
+                    continue
                 moments = arrivals_by_pair.get(pair, ())
                 index = bisect_left(moments, polled_at)
                 next_arrival = moments[index] if index < len(moments) else None
@@ -124,6 +155,7 @@ def evaluate(holdout_modulus=3, stride=2, days=HISTORY_DAYS, now=None):
         "history_days": len(history_days),
         "queries": queries,
         "no_prediction": no_prediction,
+        "not_served": not_served,
         "ours_mae": round(ours_error / queries, 2) if queries else None,
         "official_mae": round(official_error / queries, 2) if queries else None,
     }
