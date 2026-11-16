@@ -29,8 +29,11 @@ SEED_ADMIN_PASSWORD=pick-one SEED_RIDER_PASSWORD=pick-another .venv/bin/python m
 On Windows without uv: `python -m venv .venv`, then use
 `.venv\Scripts\python.exe` in place of `.venv/bin/python` everywhere.
 
-Run the tests with `DJANGO_DEBUG=1 .venv/bin/python manage.py test`. CI runs
-them against PostgreSQL on every pull request.
+Run the tests with `DJANGO_DEBUG=1 .venv/bin/python manage.py test`, and the
+linter with `uvx ruff check --fix .` (on Windows without uv:
+`uv pip install -r requirements-dev.txt` once, then
+`.venv\Scripts\ruff.exe check --fix .`). CI runs both on every pull request,
+the tests against PostgreSQL, and GitHub won't merge until they pass.
 
 ## Configuration
 
@@ -42,6 +45,8 @@ Everything comes from environment variables; nothing secret goes in git.
 | `SECRET_KEY` | Django's secret key (required unless `DJANGO_DEBUG=1`) |
 | `DJANGO_DEBUG` | `1` for local development only |
 | `ALLOWED_HOSTS` | extra host names, comma-separated; Render's own is added automatically |
+| `OPENROUTER_API_KEY` | key for the AI feature's LLM calls (OpenRouter); without it the assistant never notifies |
+| `OPENROUTER_MODEL` | OpenRouter model name; defaults to `openai/gpt-4o-mini` |
 | `SEED_ADMIN_PASSWORD`, `SEED_RIDER_PASSWORD` | grader account passwords, used by `manage.py seed` |
 | `HISTORY_RECORDER_REPO` | where to import history from; defaults to `vchen017/downtowner-recorder` |
 
@@ -107,9 +112,74 @@ Production's one-time setup, after `render.yaml` creates the service:
    `RENDER_PRODUCTION_DEPLOY_HOOK`, and its address as the variable
    `PRODUCTION_URL`.
 
+### When a deploy goes wrong
+
+A broken deploy shouldn't take a site down:
+
+- If `build.sh` fails (a package won't install, or a migration errors), Render
+  stops and keeps serving the previous deploy. On PostgreSQL each Django
+  migration runs in a transaction, so a failed one leaves the database as it
+  was.
+- If the new version builds but can't answer `/healthz`, Render never switches
+  traffic to it.
+
+To roll back a deploy that went live but misbehaves:
+
+- **Production:** open **Actions → promote to production → Run workflow** and
+  enter the last good commit, which is what production's `/healthz` showed
+  before. It redeploys exactly that commit and checks it, like any promotion.
+  In a hurry, the deploy list on the `yale-shuttle` service's Events page in
+  Render has a Rollback button that skips the rebuild.
+- **Staging:** revert the pull request on GitHub (its **Revert** button opens a
+  new pull request) and merge that. Staging redeploys from `main`, so a
+  rollback in Render would be undone by the next merge.
+
+Rolling back code doesn't undo migrations, so keep them safe for the previous
+version to run against: add tables and nullable columns freely, and remove or
+rename things in a later pull request, once nothing reads them.
+
 Before the graded A/B run, delete our own test visits on production with
 `python manage.py reset_abtest --yes`, run from a laptop with production's
 `DATABASE_URL` (Render's free plan has no shell). See #47.
+
+## Scheduled jobs
+
+`.github/workflows/jobs.yml` runs the app's scheduled jobs on GitHub's machines,
+against production's database (free for a public repo). Each app declares its
+jobs in its own `jobs.py`, and `python manage.py run_job --list` shows them all.
+
+| Job | When | What it does |
+|---|---|---|
+| `import_history` | daily, 9:17 UTC (4:17 AM Eastern) | loads the recorder's last three days of shuttle history (#22) |
+
+- **The run log** is at `/admin/` → Scheduled jobs: when each run started and
+  ended, what started it, and its summary or error. A failed run also fails its
+  workflow run in the Actions tab.
+- **Safe to repeat:** runs of the same job never overlap, and every job can run
+  late, twice, or after a skipped day without harm. GitHub sometimes starts a
+  scheduled run late, or drops one when it's busy.
+- **Code and schema stay in step:** the jobs run `main`'s code, and refuse to
+  start while the database is missing one of its migrations, as production's is
+  until the next promotion.
+- **By hand:** **Actions → scheduled jobs → Run workflow** runs any job on
+  production or staging. Locally, `python manage.py run_job import_history`.
+- **Setup:** the workflow reads a `DATABASE_URL` secret from each GitHub
+  environment (`production`, `staging`): Neon's direct (unpooled) connection
+  string for that site's database. It also passes its own token as
+  `GITHUB_TOKEN`, so the history import's GitHub API calls aren't held to the
+  60 an hour GitHub allows without one. Set `GITHUB_TOKEN` locally only if you
+  hit that limit.
+
+Mind Neon's free plan, which staging and production share:
+
+- **100 compute hours a month.** The database stays awake for 5 minutes after
+  each use, so a job that touched it every 5 minutes would keep it awake around
+  the clock, use the hours up, and suspend both databases. Database jobs run
+  hourly at most.
+- **1 GB of storage.** Each day of shuttle history adds about 10 MB to the
+  database it's imported into (measured on Nov 15, 2026), so the schedule
+  imports into production only. Past 1 GB, Neon blocks writes until space is
+  freed.
 
 ## Neon
 

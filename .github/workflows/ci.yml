@@ -1,6 +1,8 @@
 name: ci
 
-# Runs the tests against PostgreSQL on every pull request and push to main.
+# Lints the code and runs the tests against PostgreSQL on every pull request
+# and push to main. Branch protection requires this job, so a lint error or a
+# failing test blocks the merge.
 on:
   pull_request:
   push:
@@ -26,7 +28,9 @@ jobs:
         with:
           python-version-file: .python-version
           cache: pip
-      - run: pip install -r requirements.txt
+      - run: pip install -r requirements-dev.txt
+      - name: Lint (run `ruff check --fix .` to fix most of these)
+        run: ruff check --output-format github .
       - name: Check that migrations match the models
         run: python manage.py makemigrations --check --dry-run
       - run: python manage.py test

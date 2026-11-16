@@ -39,8 +39,10 @@ INSTALLED_APPS = [
     "accounts",
     "abtest",
     "core",
+    "jobs",
     "transit",
     "history",
+    "assistant",
 ]
 
 MIDDLEWARE = [
@@ -128,6 +130,11 @@ if SECURE_SSL_REDIRECT:
 
 # The GitHub repo whose recorded shuttle history we import (issue #22).
 HISTORY_RECORDER_REPO = os.environ.get("HISTORY_RECORDER_REPO", "vchen017/downtowner-recorder")
+# Optional: a GitHub token for the import's GitHub API calls. Without one, GitHub
+# allows 60 calls an hour per address, and the shared machines GitHub Actions
+# runs on often use that up. The scheduled-jobs workflow passes its own
+# read-only token (#40).
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 
 EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
 
@@ -144,3 +151,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # The live Downtowner feeds the transit app reads (issue #36).
 DOWNTOWNER_URL = os.environ.get("DOWNTOWNER_URL", "https://yale.downtownerapp.com")
+
+# The AI feature calls the LLM through OpenRouter, from the server only (issue #37).
+# The key is never in the repo; without it the assistant never notifies anyone.
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "openai/gpt-4o-mini")
