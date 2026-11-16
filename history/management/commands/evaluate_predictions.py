@@ -77,4 +77,9 @@ class Command(BaseCommand):
             )
         self.stdout.write("")
         self.stdout.write(f"  our prediction:  average error {result['ours_mae']} min")
+        if result["history_mae"] is not None:
+            self.stdout.write(
+                f"  history only:    average error {result['history_mae']} min "
+                f"(what runs when no poll is fresh)"
+            )
         self.stdout.write(f"  official ETA:    average error {result['official_mae']} min")

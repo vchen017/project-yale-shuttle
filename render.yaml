@@ -22,6 +22,8 @@ services:
         sync: false
       - key: SEED_RIDER_PASSWORD
         sync: false
+      - key: SECURE_SSL_REDIRECT  # HTTPS-only behind Render; CI's tests stay plain HTTP
+        value: "1"
 
   - type: web
     name: yale-shuttle
@@ -42,3 +44,5 @@ services:
         sync: false
       - key: SEED_RIDER_PASSWORD
         sync: false
+      - key: SECURE_SSL_REDIRECT  # HTTPS-only behind Render; CI's tests stay plain HTTP
+        value: "1"

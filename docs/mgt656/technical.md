@@ -54,5 +54,6 @@ recorded and safe to repeat. Details to come with
   CSRF-protected form, the 50/50 split, and `preferred` chosen by click rate.
 - The seed command is tested for being safe to rerun and for refusing to run
   without passwords.
-- No external services are called yet. When we add the LLM and the Downtowner
-  feeds, tests will mock them.
+- The recorder's GitHub reads (`history/sources.py`) are the only network code,
+  and every test mocks them. The prediction evaluation
+  (`evaluate_predictions`) runs entirely on imported history.

@@ -26,9 +26,13 @@ SEED_ADMIN_PASSWORD=pick-one SEED_RIDER_PASSWORD=pick-another .venv/bin/python m
 .venv/bin/python manage.py runserver
 ```
 
+On Windows without uv: `python -m venv .venv`, then use
+`.venv\Scripts\python.exe` in place of `.venv/bin/python` everywhere.
+
 Run the tests with `DJANGO_DEBUG=1 .venv/bin/python manage.py test`, and the
-linter with `uvx ruff check --fix .` (or `uv pip install -r requirements-dev.txt`
-once, then `.venv/bin/ruff check --fix .`). CI runs both on every pull request,
+linter with `uvx ruff check --fix .` (on Windows without uv:
+`uv pip install -r requirements-dev.txt` once, then
+`.venv\Scripts\ruff.exe check --fix .`). CI runs both on every pull request,
 the tests against PostgreSQL, and GitHub won't merge until they pass.
 
 ## Configuration
@@ -44,8 +48,7 @@ Everything comes from environment variables; nothing secret goes in git.
 | `OPENROUTER_API_KEY` | key for the AI feature's LLM calls (OpenRouter); without it the assistant never notifies |
 | `OPENROUTER_MODEL` | OpenRouter model name; defaults to `openai/gpt-4o-mini` |
 | `SEED_ADMIN_PASSWORD`, `SEED_RIDER_PASSWORD` | grader account passwords, used by `manage.py seed` |
-| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | the site's key pair for push notifications, from `manage.py vapid_keys`; without them, notifications are off |
-| `VAPID_SUBJECT` | who push services should contact about our notifications; defaults to the production URL |
+| `HISTORY_RECORDER_REPO` | where to import history from; defaults to `vchen017/downtowner-recorder` |
 
 ## Pages
 
@@ -54,6 +57,35 @@ Everything comes from environment variables; nothing secret goes in git.
   and send themselves a test
 - `/ecc1032`: the A/B test page, and `/ecc1032/stats` for its live results
   (`ecc1032` is the start of the SHA-1 hash of our team nickname, cold-flower)
+
+## How the predictions work
+
+`history/predictions.py` answers in two layers, live first:
+
+- **Live:** first the Downtowner feed itself, through the transit app's
+  `etas()` helper (cached 30 seconds, so no per-request cost and no extra
+  database wake-ups); when the feed is down or has nothing for the route,
+  the freshest recorded polls take over. Each poll implies an absolute
+  arrival time (`polled_at + eta_minutes`), and that answer ages a minute
+  per minute between polls — a countdown that ticks, unlike the official
+  app's — moving only sooner, and expiring 3 minutes after coming due, so a
+  listing that never arrives can't hold the answer hostage.
+- **History:** the fallback when nothing live is fresh. Arrivals are
+  detected by countdown crossing (an ETA at or below 5 extrapolated to
+  zero — the recorder polls every 5 minutes, so most arrivals land between
+  polls), and learned as walk-up medians per (day type, half-hour bucket),
+  then conditioned on how long the stop has been without a bus.
+
+Score it against the official ETA on days held out from training:
+
+```sh
+DJANGO_DEBUG=1 python manage.py evaluate_predictions
+```
+
+This takes a couple of minutes and needs imported history. Numbers from
+before November 14, 2026 aren't comparable to later ones: the ground truth
+changed from "polls with eta 0" (which misses most arrivals) to crossing
+detection, which is also what the model trains on now.
 
 ## Deploying
 

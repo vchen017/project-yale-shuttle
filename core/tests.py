@@ -5,7 +5,7 @@ from unittest import mock
 from django.contrib.auth import get_user_model
 from django.core.management import CommandError, call_command
 from django.template.loader import render_to_string
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 
 PASSWORDS = {"SEED_ADMIN_PASSWORD": "test-admin-pass-1", "SEED_RIDER_PASSWORD": "test-rider-pass-2"}
 
@@ -91,3 +91,11 @@ class HealthTests(SimpleTestCase):
 
     def test_only_answers_reads(self):
         self.assertEqual(self.client.post("/healthz").status_code, 405)
+
+    def test_answers_over_plain_http_even_with_the_redirect_on(self):
+        # render.yaml turns SECURE_SSL_REDIRECT on in both environments;
+        # the exemption keeps Render's health check, which polls over plain
+        # HTTP, seeing the app instead of a 301 to it.
+        with override_settings(SECURE_SSL_REDIRECT=True, SECURE_REDIRECT_EXEMPT=[r"^healthz$"]):
+            response = self.client.get("/healthz")
+        self.assertEqual(response.status_code, 200)

@@ -118,6 +118,16 @@ STORAGES = {
 # Render terminates HTTPS and forwards plain HTTP with this header.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = not DEBUG
+# The site is HTTPS-only where the environment says so (Render sets it in
+# render.yaml). Keyed off an env var, not DEBUG: CI runs the tests with
+# DEBUG off, and a redirect there 301s every page a test asks for.
+SECURE_SSL_REDIRECT = os.environ.get("SECURE_SSL_REDIRECT", "") == "1"
+if SECURE_SSL_REDIRECT:
+    SECURE_HSTS_SECONDS = 60 * 60 * 24 * 30  # a month to start; raise once sure
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    # Render's health check polls /healthz over plain HTTP; a 301 there
+    # would have it checking the redirect, not the app.
+    SECURE_REDIRECT_EXEMPT = [r"^healthz$"]
 
 # The GitHub repo whose recorded shuttle history we import (issue #22).
 HISTORY_RECORDER_REPO = os.environ.get("HISTORY_RECORDER_REPO", "vchen017/downtowner-recorder")
