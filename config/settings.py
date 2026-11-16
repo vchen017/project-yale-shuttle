@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "accounts",
     "abtest",
+    "notifications",
     "core",
     "jobs",
     "transit",
@@ -137,6 +138,13 @@ HISTORY_RECORDER_REPO = os.environ.get("HISTORY_RECORDER_REPO", "vchen017/downto
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 
 EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
+
+# Browser push notifications (#27). Make a key pair with `python manage.py
+# vapid_keys`, one per site. Without both keys, the notifications page says
+# they aren't set up. Push services read VAPID_SUBJECT to know who's sending.
+VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
+VAPID_SUBJECT = os.environ.get("VAPID_SUBJECT", "https://yale-shuttle.onrender.com")
 
 # Logs go to stdout, where Render collects them.
 LOGGING = {

@@ -53,6 +53,8 @@ Everything comes from environment variables; nothing secret goes in git.
 ## Pages
 
 - `/`: home; `/signup/`, `/login/`; `/admin/` for admins
+- `/notifications/`: riders turn push notifications on or off for each device,
+  and send themselves a test
 - `/ecc1032`: the A/B test page, and `/ecc1032/stats` for its live results
   (`ecc1032` is the start of the SHA-1 hash of our team nickname, cold-flower)
 
@@ -141,6 +143,22 @@ rename things in a later pull request, once nothing reads them.
 Before the graded A/B run, delete our own test visits on production with
 `python manage.py reset_abtest --yes`, run from a laptop with production's
 `DATABASE_URL` (Render's free plan has no shell). See #47.
+
+## Push notifications
+
+Riders turn them on at `/notifications/`, once on each device. The browser
+gives us a subscription for that device, which `notifications.push.send()`
+uses to send it a notification through the browser's push service. A device
+whose subscription has lapsed is removed the next time we send to it.
+
+- **iPhone and iPad** only allow push for a site added to the Home Screen
+  (Share → Add to Home Screen), opened from there. The page tells riders so.
+- **Setup, once per site:** run `python manage.py vapid_keys` and set the two
+  lines it prints on the site's Environment page in Render. Each site gets its
+  own pair; changing a site's keys signs every device out of notifications.
+  Until they're set, the page says notifications aren't set up.
+- **Testing by hand:** "Send a test notification" on `/notifications/`, or the
+  action of that name on the devices in `/admin/`.
 
 ## Scheduled jobs
 
