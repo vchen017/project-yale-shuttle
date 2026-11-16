@@ -128,3 +128,9 @@
 @media (min-width: 768px) { .stop-map { height: 28rem; } }
 .stop-map .leaflet-popup-content { margin: 0.75rem 1rem; font-family: var(--bs-body-font-family); font-size: 0.95rem; }
 .route-chip { display: inline-block; margin: 0.15rem 0.25rem 0 0; padding: 0.05rem 0.5rem; border-radius: 999px; color: #fff; font-size: 0.8rem; }
+
+/* Service alerts on the home page (#13) */
+.service-alert {
+  border-left: 0.3rem solid var(--bs-warning);
+  overflow-wrap: anywhere;
+}

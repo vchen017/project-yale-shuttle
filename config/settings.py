@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "transit",
     "history",
     "assistant",
+    "alerts",
 ]
 
 MIDDLEWARE = [
