@@ -14,7 +14,10 @@
     {% if user.is_authenticated %}
       <p class="mb-0 flex-shrink-0">
         Welcome back, <strong>{{ user.username }}</strong>.
-        {% if user.is_staff %}<a class="link-light" href="{% url 'admin:index' %}">Open the admin</a>{% endif %}
+        {% if user.is_staff %}
+          <a class="link-light" href="{% url 'admin:index' %}">Open the admin</a>
+          · <a class="link-light" href="{% url 'admin:alerts_alert_add' %}">Post an alert</a>
+        {% endif %}
       </p>
     {% else %}
       <div class="d-flex flex-wrap gap-2 flex-shrink-0">
