@@ -1,15 +1,22 @@
 """The places riders type in the trip search (story #5): a stop's name, a
-building, or an address. Our own stops come first, then buildings and
-addresses from Photon, a free search over OpenStreetMap data
-(https://photon.komoot.io), kept to New Haven and the towns around it.
+building, or an address.
+
+As the rider types, the suggestions are our stops, from stops_named() through
+/places.json, then buildings and addresses that the rider's browser gets from
+Photon, a free search over OpenStreetMap data (https://photon.komoot.io).
+Photon refuses requests from our Render servers, so trip-search.js asks it
+directly, the way the map loads its tiles.
+
+search() is for a trip that arrives with a typed name and no coordinates,
+which happens without JavaScript: our stops, then Photon from the server,
+which works locally but not on Render.
 
     search("sterling", stops) -> [{"name": "Sterling Library",
                                    "detail": "York Street, New Haven",
                                    "lat": 41.3112, "lon": -72.9290}, ...]
 
-Searches go out from our server, so Photon never sees who is asking, and each
-answer is cached for a day. When Photon is down or slow, the search still
-finds our stops.
+Photon's answers are cached for a day, kept to New Haven and the towns around
+it, and nearer campus first. When Photon fails, our stops still come back.
 """
 
 import hashlib
@@ -42,11 +49,14 @@ def search(query, stops):
     query = " ".join(query.split())
     if len(query) < SHORTEST_QUERY:
         return []
-    return _stops_named(query, stops) + _photon(query)
+    return stops_named(query, stops) + _photon(query)
 
 
-def _stops_named(query, stops):
+def stops_named(query, stops):
+    """Our stops whose names have every word the rider typed, in any order."""
     words = query.casefold().split()
+    if len(" ".join(words)) < SHORTEST_QUERY:
+        return []
     named = [stop for stop in stops if all(word in stop["name"].casefold() for word in words)]
     return [
         {"name": stop["name"], "detail": "Shuttle stop", "lat": stop["lat"], "lon": stop["lon"]}
