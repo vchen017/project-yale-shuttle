@@ -63,6 +63,11 @@ when to leave.
   production every morning.
 - [#65](https://github.com/vchen017/project-yale-shuttle/pull/65): a font close to Yale's on
   every page.
+- [#70](https://github.com/vchen017/project-yale-shuttle/pull/70), closing
+  [#27](https://github.com/vchen017/project-yale-shuttle/issues/27): browser
+  push notifications. Riders turn them on or off per device at
+  `/notifications/`, see and remove their other devices there, and can send a
+  test notification; `/admin/` lists every device and can send a test too.
 
 Still in review:
 
@@ -92,8 +97,14 @@ section after the last merge and promotion.
 
 ## Working with our agents
 
-**TODO:** one concrete thing that worked or didn't with our agents this sprint,
-and what we changed.
+The countdown rework (#64) showed why every AI-made change needs a price tag.
+The agent added a cron to `render.yaml` that would import fresh polls every
+five minutes; the review caught that Render bills cron jobs separately, and
+that keeping our Neon database awake around the clock would burn about 180 of
+the free plan's 100 compute hours a month — enough to suspend both
+databases. We cut it and read the live feed through the `transit` helper
+instead, and `AGENTS.md` now tells every agent to touch the database hourly
+at most.
 
 ## Backlog changes for Sprint 3
 
@@ -127,8 +138,8 @@ and what we changed.
 - Put our Sprint 3 commitment, our MVP, in the Sprint 3 iteration on the
   board: the AI notification flow
   ([#11](https://github.com/vchen017/project-yale-shuttle/issues/11), through
-  [#27](https://github.com/vchen017/project-yale-shuttle/issues/27) (already in
-  review as [#70](https://github.com/vchen017/project-yale-shuttle/pull/70)),
+  [#27](https://github.com/vchen017/project-yale-shuttle/issues/27), shipped in
+  [#70](https://github.com/vchen017/project-yale-shuttle/pull/70),
   [#28](https://github.com/vchen017/project-yale-shuttle/issues/28) and
   [#29](https://github.com/vchen017/project-yale-shuttle/issues/29)), calendar
   trip plans ([#8](https://github.com/vchen017/project-yale-shuttle/issues/8),
