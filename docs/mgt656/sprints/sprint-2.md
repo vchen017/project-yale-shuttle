@@ -116,6 +116,9 @@ when to leave.
   lists of every stop. The trip page says which stop to walk to, which shuttle
   to take and where to get off, with the next buses there. Tapping a stop on
   the map fills either box.
+  [#95](https://github.com/vchen017/project-yale-shuttle/pull/95) then moved
+  the address suggestions into riders' browsers, because Photon, the free
+  OpenStreetMap search behind them, refuses requests from our Render servers.
 - [#80](https://github.com/vchen017/project-yale-shuttle/pull/80) and
   [#81](https://github.com/vchen017/project-yale-shuttle/pull/81): the map's tiles fixed for
   production, then the map redrawn with vector tiles, so it's sharp on any
@@ -135,6 +138,10 @@ when to leave.
 - [#91](https://github.com/vchen017/project-yale-shuttle/pull/91), closing
   [#12](https://github.com/vchen017/project-yale-shuttle/issues/12): riders
   report how busy their bus is at `/crowding/`, from empty to full.
+- [#96](https://github.com/vchen017/project-yale-shuttle/pull/96), closing
+  [#86](https://github.com/vchen017/project-yale-shuttle/issues/86): the home
+  page's hero no longer repeats the navbar's "Log in" and "Sign up" as
+  buttons, so a phone shows one set.
 
 ## What works on staging and production
 
@@ -148,7 +155,7 @@ runs. On both:
 - `/ecc1032` and `/ecc1032/stats`. Production counts its visits in its own
   database, apart from staging's test visits.
 
-On both sites, the home page shows any service alerts and the map of stops, and `/notifications/`
+On both sites, the home page shows any service alerts, the trip search and the map of stops, and `/notifications/`
 turns push notifications on for a device and sends a test. Both redirect plain
 HTTP to HTTPS. Production changes only through the promote workflow, which
 deploys a commit that passed CI and waits until production's `/healthz`
@@ -185,6 +192,13 @@ the free plan's 100 compute hours a month — enough to suspend both
 databases. We cut it and read the live feed through the `transit` helper
 instead, and `AGENTS.md` now tells every agent to touch the database hourly
 at most.
+
+The address search (#93) showed why we check staging after every merge, as
+`AGENTS.md` asks. The agent tested it on a laptop, where Photon, the free
+address search, answered. On staging, stop names worked but addresses never
+came back: Photon refuses requests from Render's servers. The staging check
+caught it within the hour, #95 moved the address lookups into riders'
+browsers, and `AGENTS.md` now lists Photon and why it's called from there.
 
 ## Backlog changes for Sprint 3
 
