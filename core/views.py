@@ -6,12 +6,27 @@ from django.templatetags.static import static
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_safe
 
+from alerts.services import admin_alerts, current_alerts
 from transit.downtowner import FeedUnavailable
 from transit.network import network
 
 
 def home(request):
-    return render(request, "core/home.html")
+    """The home page. Its service alerts start with the admins' own, from the
+    database, and the page then fetches the full list from home_alerts, so it
+    never waits on the shuttle feed (#13)."""
+    return render(request, "core/home.html", {"alerts": admin_alerts(), "feed_ok": True})
+
+
+@require_safe
+def home_alerts(request):
+    """The home page's service alerts (#13): the admins' and the Downtowner's,
+    newest first, as HTML the page swaps in. When the feed is down, the admins'
+    alerts still show, with a note that the feed's are missing."""
+    alerts, feed_ok = current_alerts()
+    response = render(request, "alerts/_list.html", {"alerts": alerts, "feed_ok": feed_ok})
+    response["Cache-Control"] = "max-age=30"
+    return response
 
 
 @require_safe
