@@ -94,6 +94,14 @@ when to leave.
   our shuttle data, below.
 - [#72](https://github.com/vchen017/project-yale-shuttle/pull/72): the Yale typeface, Yale 2024,
   on every page, with #65's Newsreader as the fallback.
+- [#83](https://github.com/vchen017/project-yale-shuttle/pull/83), closing
+  [#24](https://github.com/vchen017/project-yale-shuttle/issues/24): the next-buses page, for
+  story [#5](https://github.com/vchen017/project-yale-shuttle/issues/5). A rider picks a stop, and
+  optionally where they're going, and sees each running route's next buses,
+  with the official time next to our prediction. When the feed is down, the
+  page says so instead of failing. Every stop on the home page's map links
+  to it. **TODO:** while the feed has a bus, our prediction column currently
+  repeats the official time (see #83); say how we settled that.
 - [#82](https://github.com/vchen017/project-yale-shuttle/pull/82), closing
   [#13](https://github.com/vchen017/project-yale-shuttle/issues/13): service alerts on the home
   page. It shows the Downtowner's announcements and the alerts our admins post
@@ -156,10 +164,6 @@ at most.
 
 ## Backlog changes for Sprint 3
 
-- **TODO:** the next-buses page
-  ([#24](https://github.com/vchen017/project-yale-shuttle/issues/24)), which
-  completes #5, is due to land before the deadline. If it does, move it into
-  "What shipped"; if not, say it carried over to Sprint 3.
 - Added from Kyle's Sprint 1 feedback
   ([#71](https://github.com/vchen017/project-yale-shuttle/issues/71)) and done
   this sprint: the stops map (#73), the rider-workflow and feed tests (#75),
