@@ -1,0 +1,91 @@
+name: promote to production
+
+# Production never deploys on merge. To release, open the Actions tab, pick
+# "promote to production" and press "Run workflow". It deploys a commit that's
+# already on main and passed CI (so staging is already running it), then waits
+# until production serves it.
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Commit to promote (leave empty for the latest on main)
+        required: false
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  checks: read
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL }}
+    steps:
+      - name: Check the commit is on main and passed CI
+        id: commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WANTED: ${{ inputs.sha }}
+        run: |
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/${WANTED:-main}" --jq .sha)
+          on_main=$(gh api "repos/$GITHUB_REPOSITORY/compare/$sha...main" --jq .status)
+          case "$on_main" in
+            identical|ahead) ;;
+            *) echo "::error::${sha:0:7} isn't on main"; exit 1 ;;
+          esac
+          ci=$(gh api "repos/$GITHUB_REPOSITORY/commits/$sha/check-runs?check_name=test" \
+            --jq '[.check_runs[].conclusion] | first // "missing"')
+          if [ "$ci" != success ]; then
+            echo "::error::CI on ${sha:0:7} is \"$ci\", not success"
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Promoting ${sha:0:7}"
+
+      - name: Deploy it to production
+        env:
+          HOOK: ${{ secrets.RENDER_PRODUCTION_DEPLOY_HOOK }}
+          SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::error::Add the RENDER_PRODUCTION_DEPLOY_HOOK secret (Render: the yale-shuttle service's Settings, Deploy Hook)"
+            exit 1
+          fi
+          curl -fsS -X POST "$HOOK&ref=$SHA" -o /dev/null
+          echo "Render is deploying ${SHA:0:7} to production"
+
+      - name: Wait until production serves it
+        env:
+          URL: ${{ vars.PRODUCTION_URL }}
+          SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          if [ -z "$URL" ]; then
+            echo "::warning::Set the PRODUCTION_URL repository variable so this step can check the deploy"
+            exit 0
+          fi
+          want=${SHA:0:7}
+          live=""
+          for attempt in $(seq 1 80); do
+            live=$(curl -fsS -m 30 "$URL/healthz" 2>/dev/null | jq -r '.commit // empty' 2>/dev/null || true)
+            if [ "$live" = "$want" ]; then
+              break
+            fi
+            sleep 15
+          done
+          if [ "$live" != "$want" ]; then
+            echo "::error::After 20 minutes production still reports ${live:-nothing}, not $want"
+            exit 1
+          fi
+          echo "Production is serving $want"
+          # The A/B stats read the database, so this also checks migrations ran.
+          for page in /login/ /ecc1032 /ecc1032/stats; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -m 30 "$URL$page")
+            echo "$page $code"
+            [ "$code" = 200 ] || exit 1
+          done

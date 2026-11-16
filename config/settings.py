@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     "accounts",
     "abtest",
     "core",
+    "transit",
     "history",
 ]
 
@@ -121,6 +122,9 @@ SECURE_SSL_REDIRECT = os.environ.get("SECURE_SSL_REDIRECT", "") == "1"
 if SECURE_SSL_REDIRECT:
     SECURE_HSTS_SECONDS = 60 * 60 * 24 * 30  # a month to start; raise once sure
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    # Render's health check polls /healthz over plain HTTP; a 301 there
+    # would have it checking the redirect, not the app.
+    SECURE_REDIRECT_EXEMPT = [r"^healthz$"]
 
 # The GitHub repo whose recorded shuttle history we import (issue #22).
 HISTORY_RECORDER_REPO = os.environ.get("HISTORY_RECORDER_REPO", "vchen017/downtowner-recorder")
@@ -137,3 +141,6 @@ LOGGING = {
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# The live Downtowner feeds the transit app reads (issue #36).
+DOWNTOWNER_URL = os.environ.get("DOWNTOWNER_URL", "https://yale.downtownerapp.com")

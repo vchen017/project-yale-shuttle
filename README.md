@@ -11,6 +11,9 @@ the live Downtowner feeds, which
 every 5 minutes. MGT 656 team project: Django and PostgreSQL, with staging on
 Render and the database on Neon.
 
+**Working on it?** Read [AGENTS.md](AGENTS.md) first: where code goes, our
+rules, and what "done" means. Our AI agents read it too.
+
 ## Run it locally
 
 You need Python 3.12; [uv](https://docs.astral.sh/uv/) installs it for you.
@@ -52,12 +55,14 @@ Everything comes from environment variables; nothing secret goes in git.
 
 `history/predictions.py` answers in two layers, live first:
 
-- **Live:** the freshest recorded polls each imply an absolute arrival time
-  (`polled_at + eta_minutes`). The earliest one still ahead is the next bus,
-  and the answer ages a minute per minute between polls — a countdown that
-  ticks, unlike the official app's. Estimates only ever move sooner; ones
-  that come due expire after 3 minutes, so a listing that never arrives
-  can't hold the answer hostage.
+- **Live:** first the Downtowner feed itself, through the transit app's
+  `etas()` helper (cached 30 seconds, so no per-request cost and no extra
+  database wake-ups); when the feed is down or has nothing for the route,
+  the freshest recorded polls take over. Each poll implies an absolute
+  arrival time (`polled_at + eta_minutes`), and that answer ages a minute
+  per minute between polls — a countdown that ticks, unlike the official
+  app's — moving only sooner, and expiring 3 minutes after coming due, so a
+  listing that never arrives can't hold the answer hostage.
 - **History:** the fallback when nothing live is fresh. Arrivals are
   detected by countdown crossing (an ETA at or below 5 extrapolated to
   zero — the recorder polls every 5 minutes, so most arrivals land between
@@ -77,15 +82,34 @@ detection, which is also what the model trains on now.
 
 ## Deploying
 
-`render.yaml` defines the staging service, plus a cron job that imports the
-recorder's freshest polls every five minutes — the fresh data our live
-predictions read. The cron job bills separately from the free web service,
-so it is only created when the blueprint is applied with it enabled. Each
-deploy runs `build.sh`, which installs packages, collects static files,
-migrates the database, and runs `seed`. Seed is safe to run more than once.
+`render.yaml` defines both environments, each with its own Neon database:
 
-Before the graded A/B run, delete our own test visits with
-`python manage.py reset_abtest --yes`.
+- **Staging** (`yale-shuttle-staging`) deploys every merge to `main`. Its
+  database is the Neon project's `main` branch.
+- **Production** (`yale-shuttle`) never deploys on merge. To release, open
+  **Actions → promote to production → Run workflow**. It checks that the commit
+  is on `main` and passed CI, deploys exactly that commit, then waits until
+  production's `/healthz` reports it and the log-in and A/B pages answer. Its
+  database is `yale_shuttle` on the Neon branch `production`.
+
+Every deploy runs `build.sh`, which installs packages, collects static files,
+migrates the database, and runs `seed` (safe to run more than once). Render
+only switches to a new deploy once `/healthz` answers, and `/healthz` shows
+which commit each environment is running.
+
+Production's one-time setup, after `render.yaml` creates the service:
+
+1. On the `yale-shuttle` service's Environment page in Render, set
+   `DATABASE_URL` (Neon: branch `production`, database `yale_shuttle`, pooled
+   connection string), `SEED_ADMIN_PASSWORD` and `SEED_RIDER_PASSWORD`.
+2. In the GitHub repo's Actions settings, add its deploy hook (Render: the
+   service's Settings, Deploy Hook) as the secret
+   `RENDER_PRODUCTION_DEPLOY_HOOK`, and its address as the variable
+   `PRODUCTION_URL`.
+
+Before the graded A/B run, delete our own test visits on production with
+`python manage.py reset_abtest --yes`, run from a laptop with production's
+`DATABASE_URL` (Render's free plan has no shell). See #47.
 
 ## Neon
 

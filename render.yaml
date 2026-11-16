@@ -1,6 +1,8 @@
-# Render Blueprint for the staging environment; production comes in Sprint 2.
-# In Render: New > Blueprint, pick this repo. Render asks for the values marked
-# sync: false. The Python version comes from .python-version.
+# Render Blueprint. Staging deploys every merge to main; production changes only
+# when someone runs the "promote to production" workflow (see README).
+# Render asks for the values marked sync: false when a Blueprint is first
+# created; for a service added later, set them on that service's Environment
+# page. The Python version comes from .python-version.
 services:
   - type: web
     name: yale-shuttle-staging
@@ -10,34 +12,37 @@ services:
     branch: main
     buildCommand: ./build.sh
     startCommand: gunicorn config.wsgi --bind 0.0.0.0:$PORT --access-logfile -
+    healthCheckPath: /healthz
     envVars:
       - key: SECRET_KEY
         generateValue: true
-      - key: DATABASE_URL  # Neon connection string
+      - key: DATABASE_URL  # Neon connection string: the project's main branch
         sync: false
       - key: SEED_ADMIN_PASSWORD
         sync: false
       - key: SEED_RIDER_PASSWORD
         sync: false
-      - key: SECURE_SSL_REDIRECT  # HTTPS-only on staging; CI's tests stay plain HTTP
+      - key: SECURE_SSL_REDIRECT  # HTTPS-only behind Render; CI's tests stay plain HTTP
         value: "1"
 
-  # Import the recorder's freshest polls every five minutes, so predictions
-  # have live data to work from (history/predictions.py's live layer reads
-  # polls up to 15 minutes old). Two days, so a run just before UTC midnight
-  # and the polls that land during it are both covered. Re-running adds no
-  # duplicates (the importer skips known polls). Render bills cron jobs
-  # separately from free web services — this service is created only when
-  # the blueprint is applied with it enabled, and the team decides when.
-  - type: cron
-    name: yale-shuttle-import
+  - type: web
+    name: yale-shuttle
     runtime: python
+    plan: free
     region: ohio
-    schedule: "*/5 * * * *"
-    buildCommand: pip install -r requirements.txt
-    startCommand: python manage.py import_history --days 2
+    branch: main
+    autoDeployTrigger: "off"  # production only changes through the promote workflow
+    buildCommand: ./build.sh
+    startCommand: gunicorn config.wsgi --bind 0.0.0.0:$PORT --access-logfile -
+    healthCheckPath: /healthz
     envVars:
-      - key: DATABASE_URL  # the same Neon connection string
-        sync: false
       - key: SECRET_KEY
         generateValue: true
+      - key: DATABASE_URL  # production's own Neon database: branch "production", database "yale_shuttle"
+        sync: false
+      - key: SEED_ADMIN_PASSWORD
+        sync: false
+      - key: SEED_RIDER_PASSWORD
+        sync: false
+      - key: SECURE_SSL_REDIRECT  # HTTPS-only behind Render; CI's tests stay plain HTTP
+        value: "1"
