@@ -95,6 +95,7 @@
 .hero { background: linear-gradient(135deg, var(--ys-blue) 0%, var(--ys-blue-medium) 100%); color: #fff; }
 .hero .lead { max-width: 40rem; opacity: 0.9; }
 .hero h1, .hero .lead { text-wrap: balance; }
+.hero-compact p { opacity: 0.9; max-width: 36rem; }
 .feature { border: 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 16px rgba(0, 53, 107, 0.06); }
 .feature-icon {
   display: inline-flex;
@@ -126,5 +127,6 @@
 /* The home page's map of stops (#71) */
 .stop-map { height: 22rem; background: #e9eef4; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 16px rgba(0, 53, 107, 0.06); }
 @media (min-width: 768px) { .stop-map { height: 28rem; } }
-.stop-map .leaflet-popup-content { margin: 0.75rem 1rem; font-family: var(--bs-body-font-family); font-size: 0.95rem; }
+.stop-map .maplibregl-popup-content { padding: 0.75rem 1rem; border-radius: 0.75rem; font-family: var(--bs-body-font-family); font-size: 0.95rem; }
+.you-are-here { width: 16px; height: 16px; border-radius: 50%; background: #286dc0; border: 3px solid #fff; box-shadow: 0 0 0 3px rgba(40, 109, 192, 0.35); }
 .route-chip { display: inline-block; margin: 0.15rem 0.25rem 0 0; padding: 0.05rem 0.5rem; border-radius: 999px; color: #fff; font-size: 0.8rem; }
