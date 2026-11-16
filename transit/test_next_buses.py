@@ -77,7 +77,7 @@ class NextBusesPageTests(TestCase):
         self.assertContains(response, "2 min")
         self.assertContains(response, "then 9, 17 min")
         self.assertContains(response, ">Our prediction</div>", count=2)
-        predict.assert_any_call(1, 10)
+        predict.assert_any_call(1, 10, use_live_feed=False)
 
     @mock.patch("transit.next_buses.predict_minutes", return_value=None)
     def test_without_a_prediction_only_the_official_time_shows_labelled_as_such(self, predict, urlopen):
@@ -139,15 +139,16 @@ class NextBusesPageTests(TestCase):
         self.assertEqual(urlopen.call_count, calls)
         self.assertEqual({call.kwargs["timeout"] for call in urlopen.call_args_list}, {5})
 
-    def test_with_no_history_our_prediction_comes_from_predict_minutes(self, urlopen):
-        # Unmocked predict_minutes, empty database: its live layer reads the
-        # same feed, so our prediction for Blue is the feed's soonest bus,
-        # and Orange (no live bus, no history) has none.
+    def test_our_prediction_never_just_repeats_the_official_time(self, urlopen):
+        # Unmocked predict_minutes, empty database: the feed has Blue's next
+        # bus in 2 minutes, but our column comes from our own recorded data,
+        # which has nothing yet, so neither route gets a prediction.
         urlopen.side_effect = feed()
 
         rows = {row.route_id: row for row in self.get(10).context["board"].rows}
 
-        self.assertEqual(rows[1].ours, 2)
+        self.assertEqual(rows[1].official[0], 2)
+        self.assertIsNone(rows[1].ours)
         self.assertIsNone(rows[2].ours)
 
 

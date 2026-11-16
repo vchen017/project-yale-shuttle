@@ -117,7 +117,7 @@ def _stop_is_served(route_id, stop_id):
     return current is None or stop_id in current
 
 
-def predict_minutes(route_id, stop_id, now=None):
+def predict_minutes(route_id, stop_id, now=None, use_live_feed=True):
     """Our predicted minutes until the route's next bus reaches the stop.
 
     None when nothing live is fresh and history has nothing to learn from,
@@ -126,12 +126,17 @@ def predict_minutes(route_id, stop_id, now=None):
     now, and only data from before it is used — the live feed answers only
     calls that take the default, because its countdown is about the
     present, not a simulated moment.
+
+    `use_live_feed=False` skips the feed's own countdown, so the answer comes
+    only from our recorded polls and history. Pages that show the official
+    time next to ours use it (the next-buses page, #83): with the feed, our
+    number would just repeat the official one.
     """
     if not _stop_is_served(route_id, stop_id):
         return None
     asked_about_now = now is None
     now = now or timezone.now()
-    if asked_about_now:
+    if asked_about_now and use_live_feed:
         live = _live_feed_minutes(route_id, stop_id)
         if live is not None:
             return live
