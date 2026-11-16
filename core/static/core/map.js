@@ -13,8 +13,13 @@
   let youAreHere = null;
 
   const map = L.map(section.querySelector("[data-map]"), { scrollWheelZoom: false }).setView(CENTRAL_CAMPUS, 15);
+  // OpenStreetMap's tile servers turn away browser requests that don't say
+  // which site they're for, and our pages tell browsers not to say by default
+  // (Django's Referrer-Policy: same-origin). So the tiles send our site's
+  // address, and nothing more.
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
+    referrerPolicy: "strict-origin-when-cross-origin",
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
   }).addTo(map);
 
