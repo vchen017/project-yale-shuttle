@@ -12,6 +12,7 @@ from collections import defaultdict
 from zoneinfo import ZoneInfo
 
 from django.core.management.base import BaseCommand, CommandError
+from django.utils import formats
 
 from history import quality, sources
 
@@ -19,7 +20,15 @@ EASTERN = ZoneInfo("America/New_York")
 
 
 def _eastern(moment):
-    return moment.astimezone(EASTERN).strftime("%a %b %-d, %-I:%M %p")
+    """A moment in Eastern time, like "Mon Nov 16, 2:00 PM". Django's formats
+    rather than strftime, whose %-d and %-I are glibc extensions Windows
+    rejects."""
+    return formats.date_format(moment.astimezone(EASTERN), "D M j, f A")
+
+
+def _eastern_time(moment):
+    """Just the clock time, like "2:00 PM"."""
+    return formats.time_format(moment.astimezone(EASTERN), "f A")
 
 
 class Command(BaseCommand):
@@ -121,5 +130,5 @@ class Command(BaseCommand):
         for route, stop, bus, after, by, arrival in examples[:5]:
             self._write(
                 f"- {names.get(stop, stop)}: GPS says the bus got there between {_eastern(after)} "
-                f"and {by.astimezone(EASTERN):%-I:%M %p}; we inferred {arrival.astimezone(EASTERN):%-I:%M %p}."
+                f"and {_eastern_time(by)}; we inferred {_eastern_time(arrival)}."
             )
