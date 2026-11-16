@@ -68,14 +68,15 @@ when to leave.
   push notifications. Riders turn them on or off per device at
   `/notifications/`, see and remove their other devices there, and can send a
   test notification; `/admin/` lists every device and can send a test too.
-
-Still in review:
-
 - [#64](https://github.com/vchen017/project-yale-shuttle/pull/64), extending
-  [#23](https://github.com/vchen017/project-yale-shuttle/issues/23), approved: predictions that
-  read the live feed first, then the latest recorded polls, then the history,
-  and HTTPS-only on both sites. **TODO:** if it merges by Nov 18, move it into
-  the list above.
+  [#23](https://github.com/vchen017/project-yale-shuttle/issues/23): predictions read
+  the live feed first, through the `transit` helper (no imports and no extra
+  database wake-ups), then the freshest recorded polls — each implies an
+  absolute arrival time, so the countdown ticks instead of jumping — then the
+  history, conditioned on how long the stop has been without a bus. Arrivals
+  are learned from countdown crossings, not zero-ETAs, because most happen
+  between the recorder's five-minute polls. Both sites are now HTTPS-only
+  behind Render, with `/healthz` left plain for the health check.
 
 ## What works on staging and production
 
@@ -90,10 +91,11 @@ runs. On both:
   database, apart from staging's test visits.
 
 The history, predictions and live feed have no page yet; #24 adds one in
-Sprint 3. `/admin/` lists the history tables, but they're empty on both
-servers so far. Once production runs today's `main`, #69's daily job fills
-production's, starting with the last three days. **TODO:** re-check this
-section after the last merge and promotion.
+Sprint 3. Both sites now run the Nov 16 `main` (the countdown merge, promoted
+to production the same hour), and both redirect plain HTTP to HTTPS.
+`/admin/` lists the history tables, still empty on both: #69's daily import
+has its first run tomorrow morning, 4:17 AM Eastern, and fills production's
+from then on, starting with the last three days.
 
 ## Working with our agents
 
@@ -112,18 +114,14 @@ at most.
   ([#24](https://github.com/vchen017/project-yale-shuttle/issues/24)), which
   completes #5, and service alerts on the home screen
   ([#13](https://github.com/vchen017/project-yale-shuttle/issues/13)).
-  Predictions (#23) continue in
-  [#64](https://github.com/vchen017/project-yale-shuttle/pull/64). The board
-  now has #5, #13 and #24 in the Sprint 3 iteration.
+  The board now has #5, #13 and #24 in the Sprint 3 iteration.
 - New backlog items from what we found in the recorded data:
   [#54](https://github.com/vchen017/project-yale-shuttle/issues/54) (the real
   stops, not just the official list),
   [#55](https://github.com/vchen017/project-yale-shuttle/issues/55) (where to
-  get off during a detour),
-  [#57](https://github.com/vchen017/project-yale-shuttle/issues/57) (keep the
-  history and predictions right when stops change) and
+  get off during a detour) and
   [#58](https://github.com/vchen017/project-yale-shuttle/issues/58) (how old a
-  bus's location is). We folded
+  bus's location is). #57 shipped with #61. We folded
   [#56](https://github.com/vchen017/project-yale-shuttle/issues/56) into #54
   and [#19](https://github.com/vchen017/project-yale-shuttle/issues/19) into
   [#16](https://github.com/vchen017/project-yale-shuttle/issues/16), so each is
@@ -149,5 +147,5 @@ at most.
   custom alerts
   ([#20](https://github.com/vchen017/project-yale-shuttle/issues/20)), saved
   places ([#7](https://github.com/vchen017/project-yale-shuttle/issues/7)),
-  #57, #58, and demo data for graders
+  #58, and demo data for graders
   ([#46](https://github.com/vchen017/project-yale-shuttle/issues/46)).
