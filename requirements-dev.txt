@@ -1,0 +1,3 @@
+# Tools for development and CI only; the servers install requirements.txt.
+-r requirements.txt
+ruff==0.17.5

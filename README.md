@@ -26,8 +26,10 @@ SEED_ADMIN_PASSWORD=pick-one SEED_RIDER_PASSWORD=pick-another .venv/bin/python m
 .venv/bin/python manage.py runserver
 ```
 
-Run the tests with `DJANGO_DEBUG=1 .venv/bin/python manage.py test`. CI runs
-them against PostgreSQL on every pull request.
+Run the tests with `DJANGO_DEBUG=1 .venv/bin/python manage.py test`, and the
+linter with `uvx ruff check --fix .` (or `uv pip install -r requirements-dev.txt`
+once, then `.venv/bin/ruff check --fix .`). CI runs both on every pull request,
+the tests against PostgreSQL, and GitHub won't merge until they pass.
 
 ## Configuration
 
@@ -73,6 +75,32 @@ Production's one-time setup, after `render.yaml` creates the service:
    service's Settings, Deploy Hook) as the secret
    `RENDER_PRODUCTION_DEPLOY_HOOK`, and its address as the variable
    `PRODUCTION_URL`.
+
+### When a deploy goes wrong
+
+A broken deploy shouldn't take a site down:
+
+- If `build.sh` fails (a package won't install, or a migration errors), Render
+  stops and keeps serving the previous deploy. On PostgreSQL each Django
+  migration runs in a transaction, so a failed one leaves the database as it
+  was.
+- If the new version builds but can't answer `/healthz`, Render never switches
+  traffic to it.
+
+To roll back a deploy that went live but misbehaves:
+
+- **Production:** open **Actions → promote to production → Run workflow** and
+  enter the last good commit, which is what production's `/healthz` showed
+  before. It redeploys exactly that commit and checks it, like any promotion.
+  In a hurry, the deploy list on the `yale-shuttle` service's Events page in
+  Render has a Rollback button that skips the rebuild.
+- **Staging:** revert the pull request on GitHub (its **Revert** button opens a
+  new pull request) and merge that. Staging redeploys from `main`, so a
+  rollback in Render would be undone by the next merge.
+
+Rolling back code doesn't undo migrations, so keep them safe for the previous
+version to run against: add tables and nullable columns freely, and remove or
+rename things in a later pull request, once nothing reads them.
 
 Before the graded A/B run, delete our own test visits on production with
 `python manage.py reset_abtest --yes`, run from a laptop with production's
