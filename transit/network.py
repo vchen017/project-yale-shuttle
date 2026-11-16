@@ -70,6 +70,13 @@ def stop_url(stop_id):
         return None
 
 
+def text_color(color):
+    """Text that reads on a route colour (six hex digits): dark on a light
+    colour, white on a dark one."""
+    r, g, b = (int(color[i : i + 2], 16) / 255 for i in (0, 2, 4))
+    return "#212529" if 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.6 else "#fff"
+
+
 def _color(value):
     """The route's colour as six hex digits; the map puts it in a style."""
     return value if isinstance(value, str) and _HEX_COLOR.match(value) else DEFAULT_COLOR

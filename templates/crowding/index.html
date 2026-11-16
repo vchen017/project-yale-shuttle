@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Crowding · Yale Shuttle{% endblock %}
+{% block content %}
+<h1 class="h3 mb-1">How busy are the buses?</h1>
+<p class="text-body-secondary mb-4">Riders report how busy their bus is. You see each route's crowding now, from the last 30 minutes, and what it's usually like at each time of day.</p>
+
+{% for message in messages %}
+  <div class="alert alert-success d-flex gap-2" role="status">
+    <i class="bi bi-check-circle-fill" aria-hidden="true"></i><div>{{ message }}</div>
+  </div>
+{% endfor %}
+
+<div class="row g-4">
+  <div class="col-lg-4">
+    <h2 class="h6 text-body-secondary text-uppercase mb-2">On a bus? Report it</h2>
+    {% if not running %}
+      <div class="card"><div class="card-body text-body-secondary">
+        {% if feed_ok %}
+          <i class="bi bi-moon-stars me-1" aria-hidden="true"></i>No shuttles are running now, so there's nothing to report.
+        {% else %}
+          <i class="bi bi-wifi-off me-1" aria-hidden="true"></i>We can't load the routes running now, so reporting is paused. Try again in a minute.
+        {% endif %}
+      </div></div>
+    {% elif not user.is_authenticated %}
+      <div class="card"><div class="card-body">
+        <p class="mb-3">Log in to tell other riders how busy your bus is.</p>
+        <a class="btn btn-primary w-100" href="{% url 'login' %}?next={{ request.path|urlencode }}">Log in to report</a>
+      </div></div>
+    {% else %}
+      <form method="post" action="{% url 'crowding-report' %}" class="card" novalidate>
+        <div class="card-body">
+          {% csrf_token %}
+          {% for error in form.non_field_errors %}
+            <div class="alert alert-danger py-2" role="alert">{{ error }}</div>
+          {% endfor %}
+          <div class="mb-3">
+            <label class="form-label fw-medium" for="{{ form.route.id_for_label }}">{{ form.route.label }}</label>
+            {{ form.route }}
+            {% for error in form.route.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+          </div>
+          <fieldset class="mb-3">
+            <legend class="form-label fs-6 fw-medium">{{ form.level.label }}</legend>
+            <div class="crowd-choices">
+              {% for value, label in form.fields.level.choices %}
+                <input type="radio" class="btn-check" name="{{ form.level.html_name }}" id="level-{{ value }}" value="{{ value }}"
+                       autocomplete="off"{% if form.level.value|stringformat:"s" == value|stringformat:"s" %} checked{% endif %}>
+                <label class="btn btn-outline-secondary crowd-choice crowd-{{ value }}" for="level-{{ value }}">
+                  <span class="crowd-dot" aria-hidden="true"></span>{{ label }}
+                </label>
+              {% endfor %}
+            </div>
+            {% for error in form.level.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+          </fieldset>
+          <button class="btn btn-primary w-100" type="submit">
+            <i class="bi bi-send me-1" aria-hidden="true"></i>Send report
+          </button>
+          <p class="form-text mb-0 mt-2">One report per route every 10 minutes.</p>
+        </div>
+      </form>
+    {% endif %}
+  </div>
+
+  <div class="col-lg-8">
+    <h2 class="h6 text-body-secondary text-uppercase mb-2">
+      {% if running %}Routes running now{% else %}Routes with recent reports{% endif %} · as of {{ now|date:"g:i A" }}
+    </h2>
+    {% if not routes %}
+      <p class="text-body-secondary">No reports in the last four weeks yet.</p>
+    {% endif %}
+    <ul class="list-group">
+      {% for route in routes %}
+        <li class="list-group-item py-3" data-route="{{ route.route_id }}">
+          <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+            <span class="route-chip m-0" style="background-color: #{{ route.color }}; color: {{ route.text_color }};">{{ route.label }}</span>
+            <span class="fw-semibold">{{ route.name }}</span>
+          </div>
+          <div class="row g-2">
+            <div class="col-sm-6">
+              <div class="small text-body-secondary">Now</div>
+              {% if route.current_level is not None %}
+                <div class="fw-bold crowd-{{ route.current_level }}"><span class="crowd-dot" aria-hidden="true"></span>{{ route.current_label }}</div>
+                <div class="small text-body-secondary">
+                  {{ route.current_count }} report{{ route.current_count|pluralize }} in the last 30 minutes, latest {{ route.latest_at|date:"g:i A" }}
+                </div>
+              {% else %}
+                <div class="text-body-secondary">No reports in the last 30 minutes</div>
+              {% endif %}
+            </div>
+            <div class="col-sm-6">
+              <div class="small text-body-secondary">Usually around {{ now|date:"g A" }}</div>
+              {% if route.typical_now %}
+                <div class="fw-bold crowd-{{ route.typical_now.level }}"><span class="crowd-dot" aria-hidden="true"></span>{{ route.typical_now.label }}</div>
+                <div class="small text-body-secondary">from {{ route.typical_now.count }} past reports</div>
+              {% else %}
+                <div class="text-body-secondary">Not enough past reports for this hour</div>
+              {% endif %}
+            </div>
+          </div>
+          {% if route.by_hour %}
+            <details class="mt-2">
+              <summary class="small">Typical crowding by time of day</summary>
+              <table class="table table-sm crowd-hours mt-2 mb-1">
+                <thead><tr><th scope="col">Time</th><th scope="col">Usually</th><th scope="col" class="text-end">Reports</th></tr></thead>
+                <tbody>
+                  {% for hour in route.by_hour %}
+                    <tr>
+                      <th scope="row" class="fw-normal">{{ hour.hour_label }}</th>
+                      <td><span class="crowd-bar crowd-{{ hour.level }}" aria-hidden="true"></span> {{ hour.label }}</td>
+                      <td class="text-end text-body-secondary">{{ hour.count }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+              {% if route.includes_samples %}
+                <p class="small text-body-secondary mb-0"><i class="bi bi-info-circle me-1" aria-hidden="true"></i>Includes sample reports from our demo data.</p>
+              {% endif %}
+            </details>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock %}

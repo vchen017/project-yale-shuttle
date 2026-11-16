@@ -11,4 +11,5 @@ urlpatterns = [
     path("", include("core.urls")),
     path("", include("notifications.urls")),
     path("", include("transit.urls")),
+    path("", include("crowding.urls")),
 ]

@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "history",
     "assistant",
     "alerts",
+    "crowding",
 ]
 
 MIDDLEWARE = [
