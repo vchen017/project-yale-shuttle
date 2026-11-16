@@ -1,0 +1,8 @@
+<form method="get" action="{% url 'stops' %}" class="card">
+  <div class="card-body">
+    {% include "registration/_fields.html" %}
+    <button class="btn btn-primary w-100" type="submit">
+      <i class="bi bi-search me-1" aria-hidden="true"></i>Show the next buses
+    </button>
+  </div>
+</form>

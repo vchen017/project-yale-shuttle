@@ -1,5 +1,5 @@
 """Tests for the map's view of the shuttle network (#71). In their own file, so
-they don't collide with the next-buses page's tests in transit/tests.py."""
+they don't collide with the next-buses page's tests in transit/test_next_buses.py."""
 
 from unittest import mock
 
@@ -8,8 +8,8 @@ from django.urls import path
 
 from transit import network
 
-# A URL list with the next-buses page's name, standing in until #24 adds it.
-urlpatterns = [path("stops/<int:stop_id>/", lambda request, stop_id: None, name="stop")]
+# A URL list without the next-buses page, to check stops then link nowhere.
+urlpatterns = [path("elsewhere/", lambda request: None, name="elsewhere")]
 
 ROUTES = [
     {"id": 1, "name": "Blue - Weekday Daytime", "color": "4472C4", "active": True, "stops": [10, 11], "path": [41.3, -72.9, 41.31, -72.92]},
@@ -54,10 +54,10 @@ class NetworkTests(SimpleTestCase):
         self.assertIn(13, [stop["id"] for stop in result["stops"]])
 
     @mock.patch("transit.downtowner.routes", return_value=ROUTES)
-    def test_stops_link_nowhere_until_the_next_buses_page_exists(self, routes, stops):
-        self.assertEqual({stop["url"] for stop in network.network()["stops"]}, {None})
+    def test_stops_link_to_their_next_buses_page(self, routes, stops):
+        self.assertEqual(network.network()["stops"][0]["url"], "/stops/10/")
         with override_settings(ROOT_URLCONF="transit.test_network"):
-            self.assertEqual(network.network()["stops"][0]["url"], "/stops/10/")
+            self.assertEqual({stop["url"] for stop in network.network()["stops"]}, {None})
 
     @mock.patch("transit.downtowner.routes", side_effect=network.downtowner.FeedUnavailable("down"))
     def test_an_unavailable_feed_raises(self, routes, stops):

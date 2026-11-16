@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}{{ stop.name }} · Next buses · Yale Shuttle{% endblock %}
+{% block content %}
+<div class="row g-4">
+  <div class="col-lg-8 order-lg-2">
+    <h1 class="h3 mb-1">Next buses at {{ stop.name }}</h1>
+    <p class="text-body-secondary mb-3">
+      {% if destination %}To {{ destination.name }} · {% endif %}As of {{ updated_at|date:"g:i A" }}
+      · <a href="{{ request.get_full_path }}">Refresh</a>
+    </p>
+
+    {% if not board.running %}
+      <div class="alert alert-info" role="status">
+        <i class="bi bi-moon-stars me-1" aria-hidden="true"></i>No shuttles are running right now.
+      </div>
+    {% elif not board.rows %}
+      <div class="alert alert-info" role="status">
+        <i class="bi bi-info-circle me-1" aria-hidden="true"></i>
+        {% if destination %}No route running now goes from {{ stop.name }} to {{ destination.name }}.{% else %}No route running now stops here.{% endif %}
+      </div>
+    {% else %}
+      <ul class="list-group next-buses mb-3">
+        {% for row in board.rows %}
+          <li class="list-group-item py-3" data-route="{{ row.route_id }}">
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+              <span class="route-chip m-0" style="background-color: #{{ row.color }}; color: {{ row.text_color }};">{{ row.label }}</span>
+              <span class="fw-semibold">{{ row.name }}</span>
+            </div>
+            <div class="row g-2">
+              <div class="{% if row.ours is None %}col-12{% else %}col-6{% endif %}">
+                <div class="small text-body-secondary">{% if row.ours is None %}Official time only{% else %}Official{% endif %}</div>
+                {% if row.next_official is None %}
+                  <div class="fw-semibold">No bus on the way</div>
+                {% else %}
+                  <div class="fs-4 fw-bold lh-sm">{% if row.next_official == 0 %}Now{% else %}{{ row.next_official }} min{% endif %}</div>
+                  {% if row.later_official %}
+                    <div class="small text-body-secondary">then {{ row.later_official|join:", " }} min</div>
+                  {% endif %}
+                {% endif %}
+              </div>
+              {% if row.ours is not None %}
+                <div class="col-6">
+                  <div class="small text-body-secondary">Our prediction</div>
+                  <div class="fs-4 fw-bold lh-sm text-primary">{% if row.ours == 0 %}Now{% else %}{{ row.ours }} min{% endif %}</div>
+                </div>
+              {% else %}
+                <div class="col-12 small text-body-secondary">
+                  <i class="bi bi-info-circle me-1" aria-hidden="true"></i>We don't have a prediction for this route at this stop yet.
+                </div>
+              {% endif %}
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+      <p class="small text-body-secondary mb-0">
+        Official times come from the Downtowner. Our prediction learns from four weeks of recorded arrivals and today's live data.
+      </p>
+    {% endif %}
+  </div>
+  <div class="col-lg-4 order-lg-1">
+    <h2 class="h6 text-body-secondary text-uppercase mb-2">Change trip</h2>
+    {% include "transit/_trip_form.html" %}
+  </div>
+</div>
+{% endblock %}
