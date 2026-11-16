@@ -41,30 +41,36 @@ when to leave.
   `AGENTS.md`, one guide that each of our AI agents reads, plus a pull request
   template in the course's format and issue templates.
 
-**TODO:** these pull requests are still open. Move each one that merges by
-Nov 18 into the list above (for #66, write "closing #37"). Keep #66 either way,
-since it shows the AI feature started; delete the others or keep them as in
-review.
+- [#66](https://github.com/vchen017/project-yale-shuttle/pull/66), closing
+  [#37](https://github.com/vchen017/project-yale-shuttle/issues/37): the start of our AI feature.
+  The `assistant` app asks an LLM, through OpenRouter and only from our server,
+  whether and when to notify a rider about a trip. It checks the shape of the
+  answer and treats a bad answer or an outage as "don't notify". An evaluation
+  set of seven made-up trips runs in CI with the LLM mocked.
+- [#61](https://github.com/vchen017/project-yale-shuttle/pull/61), closing
+  [#57](https://github.com/vchen017/project-yale-shuttle/issues/57): the history import records
+  when a route changes its stops, and predictions skip stops a route no longer
+  serves.
+- [#67](https://github.com/vchen017/project-yale-shuttle/pull/67), closing
+  [#38](https://github.com/vchen017/project-yale-shuttle/issues/38): every pull request is now
+  linted with Ruff as well as tested, and the README says how to roll back each
+  environment. With #63, that finishes our first technical-challenge item, CI
+  and CD.
+- [#69](https://github.com/vchen017/project-yale-shuttle/pull/69), for
+  [#40](https://github.com/vchen017/project-yale-shuttle/issues/40): scheduled jobs. A `jobs`
+  app runs them and keeps a run log in `/admin/`, and a GitHub Actions workflow
+  starts them. The first job imports the newest shuttle history into
+  production every morning.
+- [#65](https://github.com/vchen017/project-yale-shuttle/pull/65): a font close to Yale's on
+  every page.
 
-- [#66](https://github.com/vchen017/project-yale-shuttle/pull/66), for
-  [#37](https://github.com/vchen017/project-yale-shuttle/issues/37), approved:
-  the start of our AI feature. The `assistant` app asks an LLM, through
-  OpenRouter and only from our server, whether and when to notify a rider
-  about a trip. It checks the shape of the answer and treats a bad answer or
-  an outage as "don't notify". An evaluation set of seven made-up trips runs
-  in CI with the LLM mocked.
-- [#61](https://github.com/vchen017/project-yale-shuttle/pull/61), for
-  [#57](https://github.com/vchen017/project-yale-shuttle/issues/57), approved:
-  the history import records when a route changes its stops, and predictions
-  skip stops a route no longer serves.
-- [#64](https://github.com/vchen017/project-yale-shuttle/pull/64), stacked on
-  #61: predictions that count down from the latest live polls before falling
-  back on the history, and an import every five minutes.
-- [#65](https://github.com/vchen017/project-yale-shuttle/pull/65): a font close
-  to Yale's on every page.
-- [#67](https://github.com/vchen017/project-yale-shuttle/pull/67), for
-  [#38](https://github.com/vchen017/project-yale-shuttle/issues/38): lint in
-  CI, and how to roll back each environment.
+Still in review:
+
+- [#64](https://github.com/vchen017/project-yale-shuttle/pull/64), extending
+  [#23](https://github.com/vchen017/project-yale-shuttle/issues/23), approved: predictions that
+  read the live feed first, then the latest recorded polls, then the history,
+  and HTTPS-only on both sites. **TODO:** if it merges by Nov 18, move it into
+  the list above.
 
 ## What works on staging and production
 
@@ -80,9 +86,9 @@ runs. On both:
 
 The history, predictions and live feed have no page yet; #24 adds one in
 Sprint 3. `/admin/` lists the history tables, but they're empty on both
-servers until we run the import there. **TODO:** update this paragraph if we
-run `import_history` on staging or #64's five-minute import merges, and
-re-check this section after the last merge and promotion.
+servers so far. Once production runs today's `main`, #69's daily job fills
+production's, starting with the last three days. **TODO:** re-check this
+section after the last merge and promotion.
 
 ## Working with our agents
 
@@ -96,7 +102,6 @@ and what we changed.
   completes #5, and service alerts on the home screen
   ([#13](https://github.com/vchen017/project-yale-shuttle/issues/13)).
   Predictions (#23) continue in
-  [#61](https://github.com/vchen017/project-yale-shuttle/pull/61) and
   [#64](https://github.com/vchen017/project-yale-shuttle/pull/64).
   **TODO:** move #5, #13 and #24 to the Sprint 3 iteration on the board.
 - New backlog items from what we found in the recorded data:
@@ -114,16 +119,16 @@ and what we changed.
   built once.
 - Chose our three technical-challenge items, which Sprint 3 needs started:
   [#38](https://github.com/vchen017/project-yale-shuttle/issues/38) CI and CD
-  (the deploy half shipped in #63),
+  (done: #63 and #67),
   [#39](https://github.com/vchen017/project-yale-shuttle/issues/39) an
   evaluation set for the AI (started in #66) and
   [#40](https://github.com/vchen017/project-yale-shuttle/issues/40) scheduled
-  jobs. **TODO:** once #67 merges, add that `docs/mgt656/technical.md` lists
-  them.
+  jobs (started in #69). `docs/mgt656/technical.md` lists all three.
 - Put our Sprint 3 commitment, our MVP, in the Sprint 3 iteration on the
   board: the AI notification flow
   ([#11](https://github.com/vchen017/project-yale-shuttle/issues/11), through
-  [#27](https://github.com/vchen017/project-yale-shuttle/issues/27),
+  [#27](https://github.com/vchen017/project-yale-shuttle/issues/27) (already in
+  review as [#70](https://github.com/vchen017/project-yale-shuttle/pull/70)),
   [#28](https://github.com/vchen017/project-yale-shuttle/issues/28) and
   [#29](https://github.com/vchen017/project-yale-shuttle/issues/29)), calendar
   trip plans ([#8](https://github.com/vchen017/project-yale-shuttle/issues/8),
