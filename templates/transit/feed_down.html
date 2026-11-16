@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Next buses · Yale Shuttle{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-8 col-lg-6">
+    <h1 class="h3 mb-3">Next buses</h1>
+    <div class="alert alert-warning d-flex gap-3" role="alert">
+      <i class="bi bi-wifi-off fs-4" aria-hidden="true"></i>
+      <div>
+        <p class="fw-bold mb-1">Live shuttle times are unavailable right now.</p>
+        <p class="mb-0">The Downtowner's feed isn't answering. Try again in a minute.</p>
+      </div>
+    </div>
+    <a class="btn btn-primary" href="{% if stop_id %}{% url 'stop' stop_id %}{% else %}{% url 'stops' %}{% endif %}{% if request.GET.to %}?to={{ request.GET.to|urlencode }}{% endif %}">
+      <i class="bi bi-arrow-clockwise me-1" aria-hidden="true"></i>Try again
+    </a>
+  </div>
+</div>
+{% endblock %}

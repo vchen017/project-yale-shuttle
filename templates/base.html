@@ -38,6 +38,7 @@
       </button>
       <div class="collapse navbar-collapse" id="nav">
         <ul class="navbar-nav ms-auto align-items-sm-center">
+          <li class="nav-item"><a class="nav-link" href="{% url 'stops' %}">Next buses</a></li>
           {% if user.is_authenticated %}
             {% if user.is_staff %}
               <li class="nav-item"><a class="nav-link" href="{% url 'admin:index' %}">Admin</a></li>

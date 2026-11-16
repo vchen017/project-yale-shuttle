@@ -10,4 +10,5 @@ urlpatterns = [
     path("", include("abtest.urls")),
     path("", include("core.urls")),
     path("", include("notifications.urls")),
+    path("", include("transit.urls")),
 ]
