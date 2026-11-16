@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     "accounts",
     "abtest",
     "core",
+    "jobs",
     "transit",
     "history",
 ]
@@ -118,6 +119,11 @@ SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = not DEBUG
 
 # The GitHub repo whose recorded shuttle history we import (issue #22).
 HISTORY_RECORDER_REPO = os.environ.get("HISTORY_RECORDER_REPO", "vchen017/downtowner-recorder")
+# Optional: a GitHub token for the import's GitHub API calls. Without one, GitHub
+# allows 60 calls an hour per address, and the shared machines GitHub Actions
+# runs on often use that up. The scheduled-jobs workflow passes its own
+# read-only token (#40).
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 
 EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
 

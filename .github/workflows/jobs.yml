@@ -1,0 +1,72 @@
+name: scheduled jobs
+
+# Runs the app's scheduled jobs (each app's jobs.py; see jobs/registry.py) on
+# GitHub's machines, against production's database. Free for a public repo.
+# GitHub can start a scheduled run late or skip one when it's busy, so every
+# job is safe to run late, twice, or after a skipped run.
+#
+# Each cron line below belongs to the jobs whose `schedule` matches it exactly;
+# a test checks they agree. Avoid minute 0: the start of the hour is when
+# GitHub is busiest.
+#
+# To run jobs by hand, on production or staging: Actions → scheduled jobs →
+# Run workflow. Every run shows up in /admin/ → Scheduled jobs.
+on:
+  schedule:
+    - cron: "17 9 * * *"  # import_history: daily, 4:17 AM Eastern
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Which site's database
+        type: choice
+        options: [production, staging]
+        default: production
+      jobs:
+        description: Jobs to run, separated by spaces (python manage.py run_job --list)
+        required: true
+        default: import_history
+
+concurrency:
+  group: jobs-${{ inputs.environment || 'production' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: ${{ inputs.environment || 'production' }}
+    env:
+      ENVIRONMENT: ${{ inputs.environment || 'production' }}
+    steps:
+      # The jobs run main's code. If main has a migration the database doesn't
+      # yet (production before its next promotion), run_job refuses to start,
+      # so new code never runs against an old schema.
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Run the jobs
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GITHUB_TOKEN: ${{ github.token }}
+          SCHEDULE: ${{ github.event.schedule }}
+          JOBS: ${{ inputs.jobs }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Add a DATABASE_URL secret to the $ENVIRONMENT environment (Settings → Environments)"
+            exit 1
+          fi
+          # Django needs a secret key to start; jobs sign nothing, so any one will do.
+          export SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(50))')"
+          if [ -n "$SCHEDULE" ]; then
+            python manage.py run_job --schedule "$SCHEDULE" --trigger schedule
+          else
+            # $JOBS is unquoted on purpose: one argument per job name.
+            python manage.py run_job $JOBS --trigger "Actions, by $GITHUB_ACTOR"
+          fi

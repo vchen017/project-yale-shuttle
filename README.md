@@ -78,6 +78,45 @@ Before the graded A/B run, delete our own test visits on production with
 `python manage.py reset_abtest --yes`, run from a laptop with production's
 `DATABASE_URL` (Render's free plan has no shell). See #47.
 
+## Scheduled jobs
+
+`.github/workflows/jobs.yml` runs the app's scheduled jobs on GitHub's machines,
+against production's database (free for a public repo). Each app declares its
+jobs in its own `jobs.py`, and `python manage.py run_job --list` shows them all.
+
+| Job | When | What it does |
+|---|---|---|
+| `import_history` | daily, 9:17 UTC (4:17 AM Eastern) | loads the recorder's last three days of shuttle history (#22) |
+
+- **The run log** is at `/admin/` → Scheduled jobs: when each run started and
+  ended, what started it, and its summary or error. A failed run also fails its
+  workflow run in the Actions tab.
+- **Safe to repeat:** runs of the same job never overlap, and every job can run
+  late, twice, or after a skipped day without harm. GitHub sometimes starts a
+  scheduled run late, or drops one when it's busy.
+- **Code and schema stay in step:** the jobs run `main`'s code, and refuse to
+  start while the database is missing one of its migrations, as production's is
+  until the next promotion.
+- **By hand:** **Actions → scheduled jobs → Run workflow** runs any job on
+  production or staging. Locally, `python manage.py run_job import_history`.
+- **Setup:** the workflow reads a `DATABASE_URL` secret from each GitHub
+  environment (`production`, `staging`): Neon's direct (unpooled) connection
+  string for that site's database. It also passes its own token as
+  `GITHUB_TOKEN`, so the history import's GitHub API calls aren't held to the
+  60 an hour GitHub allows without one. Set `GITHUB_TOKEN` locally only if you
+  hit that limit.
+
+Mind Neon's free plan, which staging and production share:
+
+- **100 compute hours a month.** The database stays awake for 5 minutes after
+  each use, so a job that touched it every 5 minutes would keep it awake around
+  the clock, use the hours up, and suspend both databases. Database jobs run
+  hourly at most.
+- **1 GB of storage.** Each day of shuttle history adds about 10 MB to the
+  database it's imported into (measured on Nov 15, 2026), so the schedule
+  imports into production only. Past 1 GB, Neon blocks writes until space is
+  freed.
+
 ## Neon
 
 The staging database is the `yale-shuttle` project on Neon (AWS US East, Ohio).
