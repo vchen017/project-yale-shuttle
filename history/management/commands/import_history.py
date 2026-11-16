@@ -8,6 +8,12 @@ and gaps.csv keeps its polls stored as MISSING.
     python manage.py import_history --days 1     # the latest recorded day
     python manage.py import_history --since 2026-11-01
     python manage.py import_history --date 2026-11-10
+    python manage.py import_history --days 3 --backfill 5   # the daily job
+
+--backfill N also imports up to N earlier UTC dates from the predictions'
+window (the last 28 days) that have no recorded polls yet, newest first. The
+import is slow (minutes a day), so the daily job fills a missing history a few
+days at a time instead of in one run that could time out.
 
 Also walks the recorder's routes.json git history, recording when a route's
 stop list changed (#57).
@@ -16,8 +22,12 @@ stop list changed (#57).
 import datetime as dt
 
 from django.core.management.base import BaseCommand, CommandError
+from django.db.models.functions import TruncDate
+from django.utils import timezone
 
 from history import importer, sources
+from history.models import Poll
+from history.predictions import HISTORY_DAYS
 
 
 class Command(BaseCommand):
@@ -34,9 +44,19 @@ class Command(BaseCommand):
         parser.add_argument(
             "--since", help="Import only UTC dates on or after this date (YYYY-MM-DD)."
         )
+        parser.add_argument(
+            "--backfill",
+            type=int,
+            help=(
+                f"Also import up to N earlier UTC dates from the last {HISTORY_DAYS} days "
+                "that have no recorded polls yet, newest first."
+            ),
+        )
 
     def handle(self, *args, **options):
         wanted = self._dates_to_import(options)
+        backfill, still_missing = self._backfill(options, wanted)
+        wanted += backfill
 
         try:
             gaps = importer.import_gaps(sources.read_gaps())
@@ -59,6 +79,12 @@ class Command(BaseCommand):
                 f"{stats.route_statuses} route statuses, "
                 f"{stats.announcements} announcements); "
                 f"{stats.polls_skipped} polls already recorded"
+            )
+
+        if options["backfill"] is not None:
+            days = "day" if len(backfill) == 1 else "days"
+            self.stdout.write(
+                f"backfill: {len(backfill)} earlier {days} imported, {still_missing} still to import"
             )
 
         # The recorder's routes.json history: when routes gain or lose stops
@@ -89,15 +115,42 @@ class Command(BaseCommand):
             raise CommandError("Dates look like YYYY-MM-DD (UTC dates).")
         if days_arg is not None and days_arg < 1:
             raise CommandError("--days must be at least 1.")
+        if options["backfill"] is not None and options["backfill"] < 1:
+            raise CommandError("--backfill must be at least 1.")
 
         try:
             dates = sources.list_dates()
         except OSError as error:
             raise CommandError(f"Could not reach GitHub: {error}")
+        self.recorded_dates = dates
         if date:
             return [date]
         if days_arg is not None:
             return dates[-days_arg:]
         if since:
             return [day for day in dates if day >= since]
-        return dates
+        return list(dates)
+
+    def _backfill(self, options, wanted):
+        """([dates], how many more are missing): with --backfill N, up to N
+        recorded dates from the predictions' window that aren't in `wanted` and
+        have no recorded polls yet, newest first."""
+        most = options["backfill"]
+        if most is None:
+            return [], 0
+        oldest = timezone.now().date() - dt.timedelta(days=HISTORY_DAYS)
+        start = dt.datetime.combine(oldest, dt.time(0), tzinfo=dt.UTC)
+        # Only RECORDED polls count: gaps.csv stores MISSING polls for days
+        # whose recorded rows were never imported.
+        loaded = set(
+            Poll.objects.filter(status=Poll.Status.RECORDED, polled_at__gte=start)
+            .annotate(day=TruncDate("polled_at", tzinfo=dt.UTC))
+            .values_list("day", flat=True)
+            .distinct()
+        )
+        missing = [
+            day
+            for day in reversed(self.recorded_dates)
+            if day >= oldest and day not in wanted and day not in loaded
+        ]
+        return missing[:most], max(0, len(missing) - most)
