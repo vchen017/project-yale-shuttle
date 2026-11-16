@@ -9,7 +9,7 @@ from urllib.error import URLError
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
-from django.test import TestCase
+from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -203,3 +203,135 @@ class AlertModelTests(TestCase):
         alert = Alert.objects.get()
         # Entered in Eastern time, stored in UTC.
         self.assertEqual(alert.starts_at, dt.datetime(2026, 11, 16, 22, 0, tzinfo=dt.UTC))
+
+
+def admin_form(title, message, starts_at, ends_at):
+    """The admin's add/change form for an alert, with times entered in Eastern."""
+    starts, ends = timezone.localtime(starts_at), timezone.localtime(ends_at)
+    return {
+        "title": title,
+        "message": message,
+        "starts_at_0": f"{starts:%Y-%m-%d}",
+        "starts_at_1": f"{starts:%H:%M:%S}",
+        "ends_at_0": f"{ends:%Y-%m-%d}",
+        "ends_at_1": f"{ends:%H:%M:%S}",
+    }
+
+
+@mock.patch("django.utils.timezone.now", return_value=NOW)
+@mock.patch("transit.downtowner.urlopen")
+class CustomAlertTests(TestCase):
+    """Admins post, edit and remove custom alerts, and riders see each one on
+    the home page only between its start and end (#20)."""
+
+    def setUp(self):
+        cache.clear()
+        self.admin = get_user_model().objects.create_user(
+            "admin@example.com", is_staff=True, is_superuser=True
+        )
+        self.rider = Client()
+
+    def home_alerts(self):
+        cache.clear()
+        return self.rider.get(reverse("home-alerts")).content.decode()
+
+    def test_an_alert_shows_only_between_its_start_and_end(self, urlopen, now):
+        urlopen.side_effect = lambda *args, **kwargs: feed_answer([])
+        post_alert("Commencement road closures", NOW + dt.timedelta(hours=1), NOW + dt.timedelta(hours=3))
+
+        self.assertNotIn("Commencement", self.home_alerts())
+        self.assertNotIn("Commencement", self.rider.get("/").content.decode())
+        now.return_value = NOW + dt.timedelta(hours=1)
+        self.assertIn("Commencement", self.home_alerts())
+        self.assertIn("Commencement", self.rider.get("/").content.decode())
+        now.return_value = NOW + dt.timedelta(hours=3)
+        self.assertNotIn("Commencement", self.home_alerts())
+
+    def test_admins_edit_an_alert_and_riders_see_the_change(self, urlopen, now):
+        urlopen.side_effect = lambda *args, **kwargs: feed_answer([])
+        alert = post_alert("Football game", NOW - dt.timedelta(hours=1), NOW + dt.timedelta(hours=2))
+        self.client.force_login(self.admin)
+
+        response = self.client.post(
+            reverse("admin:alerts_alert_change", args=[alert.pk]),
+            admin_form("Football game: Chapel St closed", "Board at College & Elm instead.",
+                       alert.starts_at, alert.ends_at),
+        )
+
+        self.assertEqual(response.status_code, 302)
+        shown = self.home_alerts()
+        self.assertIn("Football game: Chapel St closed", shown)
+        self.assertIn("Board at College &amp; Elm instead.", shown)
+
+    def test_admins_delete_an_alert(self, urlopen, now):
+        urlopen.side_effect = lambda *args, **kwargs: feed_answer([])
+        alert = post_alert("Football game", NOW - dt.timedelta(hours=1), NOW + dt.timedelta(hours=2))
+        self.client.force_login(self.admin)
+
+        response = self.client.post(reverse("admin:alerts_alert_delete", args=[alert.pk]), {"post": "yes"})
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Alert.objects.exists())
+        self.assertNotIn("Football game", self.home_alerts())
+
+    def test_end_now_takes_alerts_down_but_keeps_them(self, urlopen, now):
+        urlopen.side_effect = lambda *args, **kwargs: feed_answer([])
+        showing = post_alert("Showing", NOW - dt.timedelta(hours=1), NOW + dt.timedelta(hours=2))
+        scheduled = post_alert("Scheduled", NOW + dt.timedelta(hours=1), NOW + dt.timedelta(hours=2))
+        ended = post_alert("Ended", NOW - dt.timedelta(hours=3), NOW - dt.timedelta(hours=2))
+        self.client.force_login(self.admin)
+
+        response = self.client.post(
+            reverse("admin:alerts_alert_changelist"),
+            {"action": "end_now", "_selected_action": [showing.pk, scheduled.pk, ended.pk]},
+            follow=True,
+        )
+
+        self.assertContains(response, "Ended 2 alerts.")
+        showing.refresh_from_db()
+        scheduled.refresh_from_db()
+        ended.refresh_from_db()
+        self.assertEqual((showing.starts_at, showing.ends_at), (NOW - dt.timedelta(hours=1), NOW))
+        self.assertEqual((scheduled.starts_at, scheduled.ends_at), (NOW, NOW))
+        self.assertEqual(ended.ends_at, NOW - dt.timedelta(hours=2))
+        self.assertEqual(Alert.objects.count(), 3)
+        now.return_value = NOW + dt.timedelta(hours=1, minutes=30)  # when "Scheduled" would have shown
+        shown = self.home_alerts()
+        self.assertNotIn("Showing", shown)
+        self.assertNotIn("Scheduled", shown)
+
+    def test_the_admin_list_shows_and_filters_by_status(self, urlopen, now):
+        post_alert("Later", NOW + dt.timedelta(hours=1), NOW + dt.timedelta(hours=2))
+        post_alert("Up now", NOW - dt.timedelta(hours=1), NOW + dt.timedelta(hours=2))
+        post_alert("Over", NOW - dt.timedelta(hours=3), NOW - dt.timedelta(hours=2))
+        self.client.force_login(self.admin)
+        url = reverse("admin:alerts_alert_changelist")
+
+        everything = self.client.get(url)
+        for label in ["Scheduled", "Showing now", "Ended"]:
+            self.assertContains(everything, f'<td class="field-status">{label}</td>')
+
+        def titles(response):
+            return [alert.title for alert in response.context["cl"].result_list]
+
+        self.assertEqual(titles(self.client.get(url, {"status": "scheduled"})), ["Later"])
+        self.assertEqual(titles(self.client.get(url, {"status": "showing"})), ["Up now"])
+        self.assertEqual(titles(self.client.get(url, {"status": "ended"})), ["Over"])
+        urlopen.assert_not_called()
+
+    def test_the_form_says_times_are_eastern(self, urlopen, now):
+        self.client.force_login(self.admin)
+        self.assertContains(self.client.get(reverse("admin:alerts_alert_add")), "Eastern time.", count=2)
+
+    def test_admins_get_a_post_an_alert_link_on_the_home_page_and_riders_dont(self, urlopen, now):
+        link = f'href="{reverse("admin:alerts_alert_add")}"'
+        self.client.force_login(self.admin)
+        self.assertContains(self.client.get("/"), link)
+        self.rider.force_login(get_user_model().objects.create_user("rider@example.com"))
+        self.assertNotContains(self.rider.get("/"), link)
+        urlopen.assert_not_called()
+
+    def test_riders_cant_reach_the_alert_admin(self, urlopen, now):
+        self.rider.force_login(get_user_model().objects.create_user("rider@example.com"))
+        response = self.rider.get(reverse("admin:alerts_alert_add"))
+        self.assertRedirects(response, f"/admin/login/?next={reverse('admin:alerts_alert_add')}")

@@ -15,14 +15,20 @@ class AlertQuerySet(models.QuerySet):
 
 
 class Alert(models.Model):
-    """A service alert an admin posts in /admin/, such as a detour or a cancelled run."""
+    """A service alert an admin posts in /admin/, such as a detour, a cancelled
+    run, an event or a road closure (#13, #20)."""
+
+    SCHEDULED = "Scheduled"
+    SHOWING = "Showing now"
+    ENDED = "Ended"
 
     title = models.CharField(max_length=200)
     message = models.TextField()
     starts_at = models.DateTimeField(
-        default=timezone.now, help_text="Riders see it from this time, which is shown as its posting time."
+        default=timezone.now,
+        help_text="Eastern time. Riders see it from this time, which is shown as its posting time.",
     )
-    ends_at = models.DateTimeField(help_text="It's hidden from riders after this time.")
+    ends_at = models.DateTimeField(help_text="Eastern time. It's hidden from riders after this time.")
     created_at = models.DateTimeField(auto_now_add=True)
 
     objects = AlertQuerySet.as_manager()
@@ -36,6 +42,13 @@ class Alert(models.Model):
     def clean(self):
         if self.starts_at and self.ends_at and self.ends_at <= self.starts_at:
             raise ValidationError({"ends_at": "The end has to be after the start."})
+
+    def status(self, now=None):
+        """Scheduled, showing now, or ended: what riders see at `now`."""
+        now = now or timezone.now()
+        if now < self.starts_at:
+            return self.SCHEDULED
+        return self.SHOWING if now < self.ends_at else self.ENDED
 
 
 class FeedAnnouncement(models.Model):
