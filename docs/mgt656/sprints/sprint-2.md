@@ -107,6 +107,13 @@ when to leave.
   page. It shows the Downtowner's announcements and the alerts our admins post
   in `/admin/`, newest first. The admins' alerts show at once, and the feed's
   are added after the page loads, so it never waits on the feed.
+- [#93](https://github.com/vchen017/project-yale-shuttle/pull/93), closing
+  [#92](https://github.com/vchen017/project-yale-shuttle/issues/92), a story we
+  added this sprint: riders type where they're starting and where they're
+  going, as an address, a Yale building or a stop, instead of picking from
+  lists of every stop. The trip page says which stop to walk to, which shuttle
+  to take and where to get off, with the next buses there. Tapping a stop on
+  the map fills either box.
 - [#80](https://github.com/vchen017/project-yale-shuttle/pull/80) and
   [#81](https://github.com/vchen017/project-yale-shuttle/pull/81): the map's tiles fixed for
   production, then the map redrawn with vector tiles, so it's sharp on any
