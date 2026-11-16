@@ -1,7 +1,14 @@
 // The trip search (story #5): two boxes, where the rider is starting and where
 // they're going. They type an address, a building or a stop, and pick from the
-// places suggested as they type (from /places.json). Picking fills in the
-// place's coordinates; once both boxes have a place, the search runs.
+// places suggested as they type: our stops (from /places.json), then buildings
+// and addresses from Photon. Picking fills in the place's coordinates; once
+// both boxes have a place, the search runs. A place typed but not picked gets
+// its top suggestion when the rider presses Find my bus.
+//
+// Photon (https://photon.komoot.io), a free search over OpenStreetMap data,
+// refuses requests from our Render servers, so the browser asks it directly,
+// the way the map loads its tiles. Its results are kept to New Haven and its
+// neighbours, nearer campus first, as in transit/places.py.
 //
 // "Use my location" fills the first box, and the home page's map fills either
 // one with a "trip:pick" event: {end: "from" or "to", place: {name, lat, lon}}.
@@ -12,6 +19,9 @@
   const canLocate = "geolocation" in navigator;
   const MY_LOCATION = { name: "Use my location", detail: "Start where you are now", mine: true };
   const WAIT_MS = 200; // typing pause before asking for suggestions
+  const PHOTON_URL = "https://photon.komoot.io/api/";
+  const PHOTON_AREA = { lat: "41.3111", lon: "-72.9267", zoom: "14", bbox: "-73.05,41.24,-72.83,41.40" };
+  const MOST_PLACES = 5;
   const boxes = {};
 
   for (const end of ["from", "to"]) {
@@ -49,6 +59,27 @@
     locateButton.addEventListener("click", () => useMyLocation(boxes.from));
   }
 
+  // A place typed but not picked: take its top suggestion, as Enter would, so
+  // the server doesn't have to look it up (it can't reach Photon).
+  form.addEventListener("submit", async (event) => {
+    const unpicked = Object.values(boxes).filter((box) => box.input.value.trim().length >= 2 && !box.at.value);
+    if (!unpicked.length) return;
+    event.preventDefault();
+    if (form.dataset.finding) return;
+    form.dataset.finding = "yes";
+    for (const box of unpicked) {
+      close(box);
+      const [top] = await orNothing(findPlaces(box.input.value.trim()));
+      if (top) {
+        box.input.value = top.name;
+        box.at.value = `${top.lat},${top.lon}`;
+      }
+    }
+    form.submit(); // anything still unfound, the server says so
+  });
+  // Back on this page from the trip, the form can search again.
+  window.addEventListener("pageshow", () => delete form.dataset.finding);
+
   document.addEventListener("trip:pick", (event) => {
     const { end, place } = event.detail;
     if (boxes[end]) choose(boxes[end], place, { fromMap: true });
@@ -70,15 +101,68 @@
     if (box.request) box.request.abort();
     box.request = new AbortController();
     try {
-      const url = `${placesUrl}?${new URLSearchParams({ q: query })}`;
-      const response = await fetch(url, { signal: box.request.signal, headers: { Accept: "application/json" } });
-      if (!response.ok) throw new Error(`the server answered ${response.status}`);
-      const { places } = await response.json();
+      const places = await findPlaces(query, box.request.signal);
       if (box.input.value.trim() !== query || document.activeElement !== box.input) return;
       show(box, places, places.length ? "" : "No places found near New Haven. Try a building, a street or a stop.");
     } catch (error) {
       if (error.name !== "AbortError") show(box, [], "Suggestions aren't available right now. Type the place and press Find my bus.");
     }
+  }
+
+  // Our stops matching the query, then Photon's buildings and addresses.
+  // Either can fail without taking the other with it.
+  async function findPlaces(query, signal) {
+    const [stops, addresses] = await Promise.all([
+      orNothing(ourStops(query, signal)),
+      orNothing(photon(query, signal)),
+    ]);
+    return [...stops, ...addresses];
+  }
+
+  async function orNothing(promise) {
+    try {
+      return await promise;
+    } catch (error) {
+      if (error.name === "AbortError") throw error;
+      return [];
+    }
+  }
+
+  async function ourStops(query, signal) {
+    const url = `${placesUrl}?${new URLSearchParams({ q: query })}`;
+    const response = await fetch(url, { signal, headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error(`the server answered ${response.status}`);
+    return (await response.json()).places;
+  }
+
+  async function photon(query, signal) {
+    const params = new URLSearchParams({ q: query, limit: "10", lang: "en", ...PHOTON_AREA });
+    const response = await fetch(`${PHOTON_URL}?${params}`, { signal });
+    if (!response.ok) throw new Error(`Photon answered ${response.status}`);
+    return distinct((await response.json()).features.map(photonPlace)).slice(0, MOST_PLACES);
+  }
+
+  // One of Photon's results as a place: "Sterling Library", "York Street, New Haven".
+  function photonPlace(feature) {
+    const about = feature.properties || {};
+    const [lon, lat] = feature.geometry.coordinates;
+    const street = [about.housenumber, about.street].filter(Boolean).join(" ");
+    const name = about.name || street || about.city || "";
+    const detail = [about.name ? street : "", about.city].filter(Boolean).join(", ");
+    return { name, detail: detail === name ? "" : detail, lat, lon };
+  }
+
+  // Without nameless places or repeats: OpenStreetMap often has a station, its
+  // building and its platforms under one name, and a street in pieces.
+  function distinct(places) {
+    const seen = new Set();
+    return places.filter((place) => {
+      const name = place.name.toLowerCase();
+      const keys = [`${name}|${place.detail.toLowerCase()}`, `${name}|${place.lat.toFixed(2)}|${place.lon.toFixed(2)}`];
+      if (!place.name || keys.some((key) => seen.has(key))) return false;
+      keys.forEach((key) => seen.add(key));
+      return true;
+    });
   }
 
   function offerMyLocation(box) {

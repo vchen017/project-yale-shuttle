@@ -178,6 +178,11 @@ working with the AI: its first tests called the real feed, so i had it mock the 
   [downtowner-recorder](https://github.com/vchen017/downtowner-recorder), under
   `data/<UTC date>/`. Its README describes each CSV's columns, and
   `data/gaps.csv` lists the polls that are missing.
+- **Buildings and addresses** for the trip search come from
+  [Photon](https://photon.komoot.io), a free search over OpenStreetMap data.
+  Riders' browsers ask it directly (`core/static/core/trip-search.js`),
+  because it refuses requests from our Render servers. `transit/places.py`
+  matches our stops.
 - **Feed quirks we've found** in the recorded data:
   - Route short names aren't unique: "BW" is both Blue – Weekend Daytime
     (route 4) and Blue West (route 16). Always identify routes by their

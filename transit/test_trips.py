@@ -218,18 +218,21 @@ class PlacesJsonTests(TestCase):
     def setUp(self):
         cache.clear()
 
-    def test_suggests_our_stops_then_places(self, feed_urlopen, photon_urlopen):
+    def test_suggests_our_stops_and_leaves_addresses_to_the_browser(self, feed_urlopen, photon_urlopen):
         feed_urlopen.side_effect = feed()
-        response = self.client.get(reverse("places"), {"q": "union"})
-        names = [place["name"] for place in response.json()["places"]]
-        self.assertEqual(names[0], "Union Station")
-        self.assertIn("Sterling Library", names)
+        response = self.client.get(reverse("places"), {"q": " UNION  "})
+        self.assertEqual([place["name"] for place in response.json()["places"]], ["Union Station"])
         self.assertEqual(response["Cache-Control"], "max-age=300")
+        photon_urlopen.assert_not_called()  # Photon refuses our servers: the browser asks it
 
-    def test_places_still_come_when_the_feed_is_down(self, feed_urlopen, photon_urlopen):
+    def test_a_single_letter_suggests_nothing(self, feed_urlopen, photon_urlopen):
+        feed_urlopen.side_effect = feed()
+        self.assertEqual(self.client.get(reverse("places"), {"q": "u"}).json()["places"], [])
+
+    def test_when_the_feed_is_down_it_suggests_no_stops_instead_of_failing(self, feed_urlopen, photon_urlopen):
         feed_urlopen.side_effect = URLError("down")
-        response = self.client.get(reverse("places"), {"q": "sterling"})
-        self.assertEqual(response.json()["places"][0]["name"], "Sterling Library")
+        response = self.client.get(reverse("places"), {"q": "union"})
+        self.assertEqual((response.status_code, response.json()["places"]), (200, []))
 
 
 @mock.patch("transit.downtowner.urlopen")

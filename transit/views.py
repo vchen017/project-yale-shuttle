@@ -114,13 +114,14 @@ def trip(request):
 
 @require_safe
 def places_json(request):
-    """Suggestions for the trip search as the rider types ?q= (story #5): our
-    stops by name, then buildings and addresses."""
+    """Our stops whose names match what the rider types, ?q=, for the trip
+    search's suggestions (story #5). The browser adds buildings and addresses
+    from Photon itself (see transit/places.py)."""
     try:
         choices = served_stops()
     except FeedUnavailable:
-        choices = []  # buildings and addresses still work without the feed
-    response = JsonResponse({"places": places.search(request.GET.get("q", ""), choices)})
+        choices = []  # the browser's buildings and addresses still work
+    response = JsonResponse({"places": places.stops_named(request.GET.get("q", ""), choices)})
     response["Cache-Control"] = "max-age=300"
     return response
 
