@@ -1,8 +1,37 @@
 /* Yale blue on top of Bootstrap's defaults. */
 
-/* Newsreader, the closest free match to the Yale typeface (whose license
-   doesn't allow it on a public site or in a public repo). Self-hosted, with
-   its SIL Open Font License in fonts/OFL.txt. */
+/* Yale 2024, the Yale typeface, on every page. Newsreader, a free serif close
+   to it (SIL Open Font License, in fonts/OFL.txt), fills in any character Yale
+   2024 doesn't have. */
+@font-face {
+  font-family: "Yale 2024";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/Yale2024-Roman.otf") format("opentype");
+}
+@font-face {
+  font-family: "Yale 2024";
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/Yale2024-Italic.otf") format("opentype");
+}
+@font-face {
+  font-family: "Yale 2024";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("fonts/Yale2024-Bold.otf") format("opentype");
+}
+@font-face {
+  font-family: "Yale 2024";
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: url("fonts/Yale2024-BoldItalic.otf") format("opentype");
+}
+
 @font-face {
   font-family: "Newsreader";
   font-style: normal;
@@ -40,7 +69,7 @@
   --ys-blue: #00356b;
   --ys-blue-dark: #00264d;
   --ys-blue-medium: #286dc0;
-  --ys-font: "Newsreader", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --ys-font: "Yale 2024", "Newsreader", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
   --bs-font-sans-serif: var(--ys-font);  /* tooltips and popovers use this one */
   --bs-body-font-family: var(--ys-font);
   --bs-body-font-size: 1.0625rem;  /* a serif reads smaller than Bootstrap's sans at 16px */
