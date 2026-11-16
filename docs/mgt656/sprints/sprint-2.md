@@ -100,8 +100,10 @@ when to leave.
   optionally where they're going, and sees each running route's next buses,
   with the official time next to our prediction. When the feed is down, the
   page says so instead of failing. Every stop on the home page's map links
-  to it. **TODO:** while the feed has a bus, our prediction column currently
-  repeats the official time (see #83); say how we settled that.
+  to it. [#88](https://github.com/vchen017/project-yale-shuttle/pull/88) then
+  settled a question from #83's review: while the feed had a bus, the
+  prediction column repeated the official time. It now always shows our own
+  prediction, from the recorded history.
 - [#82](https://github.com/vchen017/project-yale-shuttle/pull/82), closing
   [#13](https://github.com/vchen017/project-yale-shuttle/issues/13): service alerts on the home
   page. It shows the Downtowner's announcements and the alerts our admins post
@@ -111,6 +113,21 @@ when to leave.
   [#81](https://github.com/vchen017/project-yale-shuttle/pull/81): the map's tiles fixed for
   production, then the map redrawn with vector tiles, so it's sharp on any
   screen, with bolder routes. The home page leads with the hook again.
+- [#84](https://github.com/vchen017/project-yale-shuttle/pull/84), closing
+  [#20](https://github.com/vchen017/project-yale-shuttle/issues/20): admins
+  manage the alerts they post. `/admin/` shows whether each one is scheduled,
+  showing or ended, "End now" takes one down early, and times are in Eastern
+  time.
+- [#90](https://github.com/vchen017/project-yale-shuttle/pull/90): the home
+  page's service alerts take one slim line each, with the full text a tap
+  away, so they no longer push the map down.
+- [#89](https://github.com/vchen017/project-yale-shuttle/pull/89), closing
+  [#46](https://github.com/vchen017/project-yale-shuttle/issues/46): `seed`
+  adds demo data for graders, starting with a welcome alert, and each app can
+  add its own.
+- [#91](https://github.com/vchen017/project-yale-shuttle/pull/91), closing
+  [#12](https://github.com/vchen017/project-yale-shuttle/issues/12): riders
+  report how busy their bus is at `/crowding/`, from empty to full.
 
 ## What works on staging and production
 
@@ -130,10 +147,10 @@ HTTP to HTTPS. Production changes only through the promote workflow, which
 deploys a commit that passed CI and waits until production's `/healthz`
 reports it. For example, [this run on Nov 16](https://github.com/vchen017/project-yale-shuttle/actions/runs/43925739876) promoted `26718d4`.
 
-The history and predictions get their page with the next-buses page
-([#24](https://github.com/vchen017/project-yale-shuttle/issues/24)). #69's
-daily import runs at 4:17 AM Eastern and fills production's history tables,
-starting with the last three days.
+Production's history has held Nov 14–16 since
+[this import on Nov 16](https://github.com/vchen017/project-yale-shuttle/actions/runs/43941907407),
+and #69's daily import adds each new day at 4:17 AM Eastern. The next-buses
+page (#83) shows the predictions it feeds.
 
 ## Our data
 
@@ -168,6 +185,8 @@ at most.
   ([#71](https://github.com/vchen017/project-yale-shuttle/issues/71)) and done
   this sprint: the stops map (#73), the rider-workflow and feed tests (#75),
   and the data report (#74).
+- Pulled forward from our Sprint 3 commitment and done this sprint: crowd
+  reports (#12), custom alerts (#20) and demo data for graders (#46).
 - New backlog items from what we found in the recorded data:
   [#54](https://github.com/vchen017/project-yale-shuttle/issues/54) (the real
   stops, not just the official list),
