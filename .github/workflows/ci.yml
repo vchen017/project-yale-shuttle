@@ -31,6 +31,8 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - name: Lint (run `ruff check --fix .` to fix most of these)
         run: ruff check --output-format github .
-      - name: Check that migrations match the models
+      - name: Check that every model change has a migration
         run: python manage.py makemigrations --check --dry-run
+      - name: Apply every migration to an empty PostgreSQL database
+        run: python manage.py migrate --no-input && python manage.py migrate --check
       - run: python manage.py test

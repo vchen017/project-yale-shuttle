@@ -54,6 +54,25 @@ recorded and safe to repeat. Details to come with
   CSRF-protected form, the 50/50 split, and `preferred` chosen by click rate.
 - The seed command is tested for being safe to rerun and for refusing to run
   without passwords.
-- The recorder's GitHub reads (`history/sources.py`) are the only network code,
-  and every test mocks them. The prediction evaluation
-  (`evaluate_predictions`) runs entirely on imported history.
+- The main rider workflows run end to end through Django's test client
+  (`core/test_rider_workflows.py`): signing up and landing on the stops map,
+  turning notifications on and sending a test, logging out, logging back in,
+  and a wrong password.
+- When the shuttle feed is slow, down or answers garbage, every page still
+  loads, because none waits on the feed; the map's data answers 503 and the
+  map says live data is unavailable. Requests time out after 5 seconds.
+  Answers are reused for 30 seconds at most, so once the feed goes down,
+  riders never see old times as if they were live. Stale bus positions get
+  their own warning in
+  [#58](https://github.com/vchen017/project-yale-shuttle/issues/58).
+- Every outside service is mocked: the Downtowner feed
+  (`transit.downtowner.urlopen`), OpenRouter (`assistant.openrouter.urlopen`),
+  push services (`notifications.push.webpush`) and the recorder's GitHub reads
+  (`history/sources.py`). The prediction evaluation (`evaluate_predictions`)
+  runs entirely on imported history.
+- CI, on every pull request: Ruff; a check that every model change has a
+  migration; every migration applied to an empty PostgreSQL database; then all
+  the tests against PostgreSQL 17.
+- Not tested automatically: the browser JavaScript (the map, the notification
+  switch) and real push delivery. We check those by hand, in a phone-sized
+  and a desktop-sized window, before each submission.
