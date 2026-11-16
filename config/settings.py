@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "jobs",
     "transit",
     "history",
+    "assistant",
 ]
 
 MIDDLEWARE = [
@@ -140,3 +141,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # The live Downtowner feeds the transit app reads (issue #36).
 DOWNTOWNER_URL = os.environ.get("DOWNTOWNER_URL", "https://yale.downtownerapp.com")
+
+# The AI feature calls the LLM through OpenRouter, from the server only (issue #37).
+# The key is never in the repo; without it the assistant never notifies anyone.
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "openai/gpt-4o-mini")
