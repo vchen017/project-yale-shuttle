@@ -62,6 +62,7 @@ or create clashing migrations:
 | `transit` | Vivian, then Ishita | The live Downtowner feed (#36) and the next-buses page (#24) |
 | `history` | Ayush | The imported shuttle history (#22) and our predictions (#23) |
 | `alerts` | Ishita | Service alerts (#13, #20) |
+| `notifications` | Vivian | Browser push: riders' devices and sending to them (#27), and the trip-notification job (#29) |
 | `assistant` | Austin | The AI feature (#37, #28) |
 | `jobs` | Vivian | The scheduled-job runner and its run log (#40). Each app's own jobs go in its `jobs.py` |
 
@@ -84,7 +85,8 @@ another app's code or migrations when your issue says to, and tell its owner.
   `config/settings.py`. Keys, passwords and connection strings never go in the
   repo, tests or fixtures.
 - **Tests never reach the outside world.** Mock the Downtowner feed, OpenRouter,
-  push services and anything else on the network. The course checks this.
+  push services (`notifications.push.webpush`) and anything else on the
+  network. The course checks this.
 - **The LLM is called from the server only**, through OpenRouter, with the key
   in `OPENROUTER_API_KEY`. Never from browser JavaScript.
 - **Scheduled jobs** go in your app's `jobs.py`, with `@job(schedule=...)` and the
