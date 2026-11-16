@@ -1,14 +1,17 @@
 """The places riders type in the trip search (story #5): a stop's name, a
 building, or an address.
 
-As the rider types, the suggestions are our stops, from stops_named() through
-/places.json, then buildings and addresses that the rider's browser gets from
-Photon, a free search over OpenStreetMap data (https://photon.komoot.io).
+As the rider types, the suggestions are our stops and Yale buildings, from
+our_places() through /places.json, then buildings and addresses that the rider's
+browser gets from Photon, a free search over OpenStreetMap data
+(https://photon.komoot.io). Our buildings (issue #98, the buildings app) go
+first so "es harkness" finds Edward S. Harkness Memorial Hall, which Photon
+doesn't.
 Photon refuses requests from our Render servers, so trip-search.js asks it
 directly, the way the map loads its tiles.
 
 search() is for a trip that arrives with a typed name and no coordinates,
-which happens without JavaScript: our stops, then Photon from the server,
+which happens without JavaScript: our stops and buildings, then Photon from the server,
 which works locally but not on Render.
 
     search("sterling", stops) -> [{"name": "Sterling Library",
@@ -26,6 +29,7 @@ from http.client import HTTPException
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from buildings.search import search as find_buildings
 from django.core.cache import cache
 
 PHOTON_URL = "https://photon.komoot.io/api/"
@@ -49,7 +53,13 @@ def search(query, stops):
     query = " ".join(query.split())
     if len(query) < SHORTEST_QUERY:
         return []
-    return stops_named(query, stops) + _photon(query)
+    return our_places(query, stops) + _photon(query)
+
+
+def our_places(query, stops):
+    """Our stops, then the Yale buildings matching what the rider typed (issue #98).
+    Nothing here reaches the network, so it works when Photon is down."""
+    return stops_named(query, stops) + find_buildings(query)
 
 
 def stops_named(query, stops):

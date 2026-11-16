@@ -1,7 +1,7 @@
 // The trip search (story #5): two boxes, where the rider is starting and where
 // they're going. They type an address, a building or a stop, and pick from the
-// places suggested as they type: our stops (from /places.json), then buildings
-// and addresses from Photon. Picking fills in the place's coordinates; once
+// places suggested as they type: our stops and Yale buildings (from
+// /places.json), then buildings and addresses from Photon. Picking fills in the place's coordinates; once
 // both boxes have a place, the search runs. A place typed but not picked gets
 // its top suggestion when the rider presses Find my bus.
 //
@@ -109,14 +109,16 @@
     }
   }
 
-  // Our stops matching the query, then Photon's buildings and addresses.
-  // Either can fail without taking the other with it.
+  // Our stops and buildings matching the query, then Photon's buildings and
+  // addresses, without the ones we already named. Either can fail without
+  // taking the other with it.
   async function findPlaces(query, signal) {
-    const [stops, addresses] = await Promise.all([
+    const [ours, addresses] = await Promise.all([
       orNothing(ourStops(query, signal)),
       orNothing(photon(query, signal)),
     ]);
-    return [...stops, ...addresses];
+    const named = new Set(ours.map((place) => place.name.toLowerCase()));
+    return [...ours, ...addresses.filter((place) => !named.has(place.name.toLowerCase()))];
   }
 
   async function orNothing(promise) {
