@@ -131,8 +131,19 @@
 .you-are-here { width: 16px; height: 16px; border-radius: 50%; background: #286dc0; border: 3px solid #fff; box-shadow: 0 0 0 3px rgba(40, 109, 192, 0.35); }
 .route-chip { display: inline-block; margin: 0.15rem 0.25rem 0 0; padding: 0.05rem 0.5rem; border-radius: 999px; color: #fff; font-size: 0.8rem; }
 
-/* Service alerts on the home page (#13) */
-.service-alert {
-  border-left: 0.3rem solid var(--bs-warning);
-  overflow-wrap: anywhere;
-}
+/* Service alerts on the home page (#13): one slim box, one line per alert */
+#service-alerts [data-alerts] { background: #fff8e6; border: 1px solid #f1d58a; border-radius: 0.75rem; padding: 0.25rem 0.9rem; }
+.service-alert { padding: 0.4rem 0; border-top: 1px solid rgba(0, 0, 0, 0.06); overflow-wrap: anywhere; }
+[data-alerts] > .service-alert:first-child { border-top: 0; }
+.service-alert summary, .service-alerts-more summary { cursor: pointer; list-style: none; }
+.service-alert summary::-webkit-details-marker, .service-alerts-more summary::-webkit-details-marker { display: none; }
+.service-alert summary { display: flex; align-items: baseline; gap: 0.5rem; }
+.service-alert summary .bi { color: #b07d00; flex-shrink: 0; }
+.service-alert-line { display: flex; gap: 0.4rem; min-width: 0; flex: 1; }
+.service-alert-line strong { flex-shrink: 0; max-width: 60%; }
+.service-alert-preview { color: var(--bs-secondary-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.service-alert details[open] .service-alert-preview { display: none; }
+.service-alert-body { padding: 0.3rem 0 0.1rem 1.6rem; }
+.service-alerts-more { padding: 0.4rem 0 0.2rem; border-top: 1px solid rgba(0, 0, 0, 0.06); }
+.service-alerts-more > details > summary { color: var(--ys-blue-medium); font-size: 0.9rem; }
+.service-alerts-more .service-alert:first-child { border-top: 0; }

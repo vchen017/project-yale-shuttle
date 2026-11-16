@@ -30,7 +30,7 @@
 
 <section class="mb-4" aria-labelledby="alerts-title" id="service-alerts"
          data-alerts-url="{% url 'home-alerts' %}"{% if not alerts %} hidden{% endif %}>
-  <h2 class="h5 mb-2" id="alerts-title"><i class="bi bi-megaphone-fill me-1" aria-hidden="true"></i>Service alerts</h2>
+  <h2 class="h6 mb-2" id="alerts-title"><i class="bi bi-megaphone-fill me-1" aria-hidden="true"></i>Service alerts</h2>
   <ul class="list-unstyled mb-0" data-alerts aria-live="polite">
     {% include "alerts/_list.html" %}
   </ul>
