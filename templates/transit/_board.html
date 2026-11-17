@@ -23,6 +23,9 @@
               <div class="fw-semibold">No bus on the way</div>
             {% else %}
               <div class="fs-4 fw-bold lh-sm">{% if row.next_official == 0 %}Now{% else %}{{ row.next_official }} min{% endif %}</div>
+              {% if row.last_seen is not None %}
+                <div class="small text-warning-emphasis last-seen"><i class="bi bi-clock-history me-1" aria-hidden="true"></i>last seen {{ row.last_seen }} min ago</div>
+              {% endif %}
               {% if row.later_official %}
                 <div class="small text-body-secondary">then {{ row.later_official|join:", " }} min</div>
               {% endif %}
@@ -32,6 +35,10 @@
             <div class="col-6">
               <div class="small text-body-secondary">Our prediction</div>
               <div class="fs-4 fw-bold lh-sm text-primary">{% if row.ours == 0 %}Now{% else %}{{ row.ours }} min{% endif %}</div>
+            </div>
+          {% elif row.ours_hidden %}
+            <div class="col-12 small text-body-secondary">
+              <i class="bi bi-info-circle me-1" aria-hidden="true"></i>No prediction: this bus hasn't reported its position in over 10 minutes, so we can't tell where it is.
             </div>
           {% else %}
             <div class="col-12 small text-body-secondary">

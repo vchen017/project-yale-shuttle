@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 ROUTES = [
     {"id": 1, "name": "Blue - Weekday Daytime", "short_name": "BD", "color": "4472C4", "active": True,
@@ -34,15 +35,19 @@ ETAS_AT_SCIENCE_HILL = {
 }
 
 
-def feed(routes=ROUTES, stops=STOPS, etas=ETAS_AT_SCIENCE_HILL):
-    """A urlopen stand-in that answers each feed endpoint."""
+def feed(routes=ROUTES, stops=STOPS, etas=ETAS_AT_SCIENCE_HILL, buses=()):
+    """A urlopen stand-in that answers each feed endpoint. `buses` is the
+    buses answer, or None to make that one endpoint fail."""
     answers = {
         "/routes_routes.php": routes,
         "/routes_stops.php": stops,
         "/routes_eta.php": etas,
+        "/routes_buses.php": list(buses) if buses is not None else None,
     }
 
     def urlopen(request, timeout):
+        if answers[urlsplit(request.full_url).path] is None:
+            raise URLError("buses feed down")
         response = mock.MagicMock()
         response.__enter__.return_value = response
         response.read.return_value = json.dumps(answers[urlsplit(request.full_url).path]).encode()
@@ -150,6 +155,108 @@ class NextBusesPageTests(TestCase):
         self.assertEqual(rows[1].official[0], 2)
         self.assertIsNone(rows[1].ours)
         self.assertIsNone(rows[2].ours)
+
+
+NOW = timezone.now()  # the clock these tests run at, so ages are exact
+
+
+def bus(bus_id, seconds_ago, route=1):
+    """A bus from the buses feed whose position is `seconds_ago` old."""
+    return {"id": bus_id, "name": str(bus_id), "route": route, "lat": 41.3, "lon": -72.9,
+            "heading": 0, "lastStop": 10, "lastUpdate": NOW.timestamp() - seconds_ago}
+
+
+@mock.patch("transit.next_buses.timezone.now", return_value=NOW)
+@mock.patch("transit.next_buses.predict_minutes", return_value=4.4)
+@mock.patch("transit.downtowner.urlopen")
+class BusAgeTests(TestCase):
+    """How old a bus's position is (#58): "last seen N min ago" past 3 minutes,
+    and no prediction of ours past 10. Blue's soonest bus here is 815."""
+
+    def setUp(self):
+        cache.clear()
+
+    def blue(self, buses):
+        response = self.client.get(reverse("stop", args=[10]))
+        return response, response.context["board"].rows[0]
+
+    def test_a_bus_seen_within_3_minutes_shows_no_age(self, urlopen, predict, now):
+        urlopen.side_effect = feed(buses=[bus(815, 100)])
+        response, blue = self.blue(None)
+        self.assertIsNone(blue.last_seen)
+        self.assertNotContains(response, "last seen")
+        self.assertEqual(blue.ours, 4)
+
+    def test_exactly_3_minutes_is_not_yet_old(self, urlopen, predict, now):
+        urlopen.side_effect = feed(buses=[bus(815, 180)])
+        self.assertNotContains(self.blue(None)[0], "last seen")
+
+    def test_a_bus_seen_5_minutes_ago_says_so_and_keeps_our_prediction(self, urlopen, predict, now):
+        urlopen.side_effect = feed(buses=[bus(815, 5 * 60 + 20)])
+        response, blue = self.blue(None)
+        self.assertContains(response, "last seen 5 min ago", count=1)
+        self.assertEqual(blue.ours, 4)
+        self.assertContains(response, ">Our prediction</div>", count=2)
+
+    def test_past_10_minutes_our_prediction_is_not_shown(self, urlopen, predict, now):
+        urlopen.side_effect = feed(buses=[bus(815, 12 * 60)])
+        response, blue = self.blue(None)
+        self.assertContains(response, "last seen 12 min ago")
+        self.assertIsNone(blue.ours)
+        self.assertTrue(blue.ours_hidden)
+        self.assertContains(response, "hasn't reported its position in over 10 minutes")
+        self.assertContains(response, ">Our prediction</div>", count=1)  # Orange's only
+        self.assertEqual(blue.official[0], 2)  # the official time still shows
+
+    def test_exactly_10_minutes_still_shows_our_prediction(self, urlopen, predict, now):
+        urlopen.side_effect = feed(buses=[bus(815, 600)])
+        response, blue = self.blue(None)
+        self.assertEqual(blue.ours, 4)
+        self.assertContains(response, "last seen 10 min ago")
+
+    def test_only_the_soonest_bus_counts(self, urlopen, predict, now):
+        # 812 (9 min away) froze, but 815 (2 min away) is live.
+        urlopen.side_effect = feed(buses=[bus(812, 30 * 60), bus(815, 30)])
+        response, blue = self.blue(None)
+        self.assertIsNone(blue.last_seen)
+        self.assertEqual(blue.ours, 4)
+
+    def test_no_prediction_to_hide_means_the_usual_message(self, urlopen, predict, now):
+        predict.return_value = None
+        urlopen.side_effect = feed(buses=[bus(815, 12 * 60)])
+        response, blue = self.blue(None)
+        self.assertFalse(blue.ours_hidden)
+        self.assertContains(response, "We don't have a prediction for this route at this stop yet.")
+
+    def test_a_bus_the_buses_feed_doesnt_list_shows_no_age(self, urlopen, predict, now):
+        urlopen.side_effect = feed(buses=[bus(999, 3600)])
+        response, blue = self.blue(None)
+        self.assertIsNone(blue.last_seen)
+        self.assertEqual(blue.ours, 4)
+
+    def test_unreadable_update_times_are_ignored(self, urlopen, predict, now):
+        broken = [dict(bus(815, 0), lastUpdate=value) for value in (None, "soon", "")]
+        for value in broken:
+            cache.clear()
+            urlopen.side_effect = feed(buses=[value])
+            self.assertIsNone(self.blue(None)[1].last_seen)
+
+    def test_when_only_the_buses_feed_is_down_the_page_still_works(self, urlopen, predict, now):
+        urlopen.side_effect = feed(buses=None)
+        response, blue = self.blue(None)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(blue.official[0], 2)
+        self.assertEqual(blue.ours, 4)
+        self.assertNotContains(response, "last seen")
+
+    def test_a_position_dated_in_the_future_counts_as_fresh(self, urlopen, predict, now):
+        urlopen.side_effect = feed(buses=[bus(815, -600)])
+        self.assertIsNone(self.blue(None)[1].last_seen)
+
+    def test_the_trip_page_shows_it_too(self, urlopen, predict, now):
+        urlopen.side_effect = feed(buses=[bus(815, 6 * 60)])
+        response = self.client.get(reverse("stop", args=[10]), {"to": 20})
+        self.assertContains(response, "last seen 6 min ago")
 
 
 @mock.patch("transit.downtowner.urlopen")

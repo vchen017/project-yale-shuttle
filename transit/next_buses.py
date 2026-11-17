@@ -5,10 +5,17 @@ Each route that serves both stops gets a row: its name and colour, the
 official ETAs from the live feed (transit.downtowner.etas), and our own
 prediction from history.predictions.predict_minutes (#23), or None when we
 have none. Routes are identified by their numeric id, never their short name.
+
+A bus's position can be minutes old (#58): the feed's last-update time says
+how old. The soonest bus in a row shows "last seen N min ago" once that's more
+than STALE_AFTER_MINUTES, and past HIDE_PREDICTION_AFTER_MINUTES we don't show
+our prediction, since a frozen bus tells us nothing about where the route is.
 """
 
 from collections import defaultdict
 from dataclasses import dataclass, field
+
+from django.utils import timezone
 
 from history.predictions import predict_minutes
 
@@ -16,6 +23,8 @@ from . import downtowner
 from .network import network, text_color
 
 LATER_BUSES = 2  # official times shown after the next one
+STALE_AFTER_MINUTES = 3  # older than this, say when the bus was last seen
+HIDE_PREDICTION_AFTER_MINUTES = 10  # older than this, don't show our prediction
 
 
 @dataclass
@@ -26,6 +35,10 @@ class Row:
     color: str  # six hex digits, already checked by network()
     official: list = field(default_factory=list)  # minutes, soonest first
     ours: int | None = None  # whole minutes, or None when we have no prediction
+    # Whole minutes since the soonest bus's GPS last reported, once that's
+    # older than STALE_AFTER_MINUTES; None when it's fresh or we can't tell.
+    last_seen: int | None = None
+    ours_hidden: bool = False  # we had a prediction but the bus's position is too old
 
     @property
     def text_color(self):
@@ -63,6 +76,28 @@ def served_stops():
     return sorted(stops, key=lambda stop: stop["name"].casefold())
 
 
+def bus_ages(now=None):
+    """Seconds since each bus's last position, by bus id: {bus_id: seconds}.
+
+    The feed's lastUpdate is a Unix time in seconds. A bus without a usable
+    one is left out, and so is everything when the buses feed is down: the
+    page then simply shows no ages, as it did before (the arrival times come
+    from a different feed answer and still work).
+    """
+    now = (now or timezone.now()).timestamp()
+    try:
+        buses = downtowner.buses()
+    except downtowner.FeedUnavailable:
+        return {}
+    ages = {}
+    for bus in buses if isinstance(buses, list) else []:
+        try:
+            ages[int(bus["id"])] = max(0, now - float(bus["lastUpdate"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return ages
+
+
 def next_buses(stop_id, destination_id=None):
     """The next buses at the stop, on routes that also serve the destination.
 
@@ -80,9 +115,12 @@ def next_buses(stop_id, destination_id=None):
         return Board(running=True, rows=[])
 
     minutes = defaultdict(list)
-    for arrival in downtowner.etas(stop_id):
+    soonest_bus = {}  # route id -> bus id of its soonest arrival
+    for arrival in downtowner.etas(stop_id):  # soonest first
         if arrival["minutes"] >= 0:
             minutes[arrival["route_id"]].append(arrival["minutes"])
+            soonest_bus.setdefault(arrival["route_id"], arrival["bus_id"])
+    ages = bus_ages()
 
     rows = []
     for route in net["routes"]:
@@ -91,6 +129,8 @@ def next_buses(stop_id, destination_id=None):
         # Ours comes from our own data, not the feed: the official column
         # already shows the feed's countdown.
         ours = predict_minutes(route["id"], stop_id, use_live_feed=False)
+        age = ages.get(soonest_bus.get(route["id"]))
+        too_old = age is not None and age > HIDE_PREDICTION_AFTER_MINUTES * 60
         rows.append(
             Row(
                 route_id=route["id"],
@@ -98,7 +138,9 @@ def next_buses(stop_id, destination_id=None):
                 label=route["label"],
                 color=route["color"],
                 official=sorted(minutes[route["id"]]),
-                ours=None if ours is None else round(ours),
+                ours=None if ours is None or too_old else round(ours),
+                last_seen=int(age // 60) if age is not None and age > STALE_AFTER_MINUTES * 60 else None,
+                ours_hidden=too_old and ours is not None,
             )
         )
     rows.sort(key=lambda row: (row.soonest, row.name))
