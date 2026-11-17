@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}{{ old_name }} · My places · Yale Shuttle{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-8 col-lg-6">
+    <p class="mb-2"><a href="{% url 'my-places' %}"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>My places</a></p>
+    <h1 class="h3 mb-3">Change {{ old_name }}</h1>
+    {% url 'place-edit' place.pk as action %}
+    {% include "places/_form.html" with action=action button="Save changes" %}
+  </div>
+</div>
+{% endblock %}

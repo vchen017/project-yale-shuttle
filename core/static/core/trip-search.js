@@ -1,14 +1,11 @@
 // The trip search (story #5): two boxes, where the rider is starting and where
 // they're going. They type an address, a building or a stop, and pick from the
-// places suggested as they type: our stops (from /places.json), then buildings
-// and addresses from Photon. Picking fills in the place's coordinates; once
-// both boxes have a place, the search runs. A place typed but not picked gets
-// its top suggestion when the rider presses Find my bus.
-//
-// Photon (https://photon.komoot.io), a free search over OpenStreetMap data,
-// refuses requests from our Render servers, so the browser asks it directly,
-// the way the map loads its tiles. Its results are kept to New Haven and its
-// neighbours, nearer campus first, as in transit/places.py.
+// places suggested as they type (place-search.js): a logged-in rider's saved
+// places (#7), our stops, then buildings and addresses from Photon. A
+// logged-in rider sees their saved places as soon as they tap an empty box.
+// Picking fills in the place's coordinates; once both boxes have a place, the
+// search runs. A place typed but not picked gets its top suggestion when the
+// rider presses Find my bus.
 //
 // "Use my location" fills the first box, and the home page's map fills either
 // one with a "trip:pick" event: {end: "from" or "to", place: {name, lat, lon}}.
@@ -19,9 +16,8 @@
   const canLocate = "geolocation" in navigator;
   const MY_LOCATION = { name: "Use my location", detail: "Start where you are now", mine: true };
   const WAIT_MS = 200; // typing pause before asking for suggestions
-  const PHOTON_URL = "https://photon.komoot.io/api/";
-  const PHOTON_AREA = { lat: "41.3111", lon: "-72.9267", zoom: "14", bbox: "-73.05,41.24,-72.83,41.40" };
-  const MOST_PLACES = 5;
+  const { find, item, orNothing } = window.placeSearch;
+  const findPlaces = (query, signal) => find(query, { placesUrl, signal });
   const boxes = {};
 
   for (const end of ["from", "to"]) {
@@ -41,7 +37,7 @@
     input.addEventListener("input", () => typed(box));
     input.addEventListener("keydown", (event) => keyed(box, event));
     input.addEventListener("focus", () => {
-      if (!input.value.trim()) offerMyLocation(box);
+      if (!input.value.trim()) offerWithoutTyping(box);
     });
     input.addEventListener("blur", () => close(box));
   }
@@ -91,7 +87,7 @@
     clearTimeout(box.timer);
     const query = box.input.value.trim();
     if (query.length < 2) {
-      offerMyLocation(box);
+      offerWithoutTyping(box);
       return;
     }
     box.timer = setTimeout(() => suggest(box, query), WAIT_MS);
@@ -109,96 +105,34 @@
     }
   }
 
-  // Our stops matching the query, then Photon's buildings and addresses.
-  // Either can fail without taking the other with it.
-  async function findPlaces(query, signal) {
-    const [stops, addresses] = await Promise.all([
-      orNothing(ourStops(query, signal)),
-      orNothing(photon(query, signal)),
-    ]);
-    return [...stops, ...addresses];
-  }
-
-  async function orNothing(promise) {
+  // Before the rider types: "Use my location" for where they're starting,
+  // and a logged-in rider's saved places, so they needn't type at all.
+  async function offerWithoutTyping(box) {
+    const mine = box.end === "from" && canLocate ? [MY_LOCATION] : [];
+    show(box, mine);
+    if (form.dataset.savedPlaces !== "yes") return;
+    if (box.request) box.request.abort();
+    box.request = new AbortController();
     try {
-      return await promise;
+      const url = new URL(placesUrl, window.location.href);
+      url.searchParams.set("q", "");
+      const response = await fetch(url, { signal: box.request.signal, headers: { Accept: "application/json" } });
+      const saved = response.ok ? (await response.json()).places : [];
+      if (box.input.value.trim() || document.activeElement !== box.input) return;
+      show(box, [...mine, ...saved]);
     } catch (error) {
-      if (error.name === "AbortError") throw error;
-      return [];
+      // Without them, the rider types as before.
     }
   }
 
-  async function ourStops(query, signal) {
-    const url = `${placesUrl}?${new URLSearchParams({ q: query })}`;
-    const response = await fetch(url, { signal, headers: { Accept: "application/json" } });
-    if (!response.ok) throw new Error(`the server answered ${response.status}`);
-    return (await response.json()).places;
-  }
-
-  async function photon(query, signal) {
-    const params = new URLSearchParams({ q: query, limit: "10", lang: "en", ...PHOTON_AREA });
-    const response = await fetch(`${PHOTON_URL}?${params}`, { signal });
-    if (!response.ok) throw new Error(`Photon answered ${response.status}`);
-    return distinct((await response.json()).features.map(photonPlace)).slice(0, MOST_PLACES);
-  }
-
-  // One of Photon's results as a place: "Sterling Library", "York Street, New Haven".
-  function photonPlace(feature) {
-    const about = feature.properties || {};
-    const [lon, lat] = feature.geometry.coordinates;
-    const street = [about.housenumber, about.street].filter(Boolean).join(" ");
-    const name = about.name || street || about.city || "";
-    const detail = [about.name ? street : "", about.city].filter(Boolean).join(", ");
-    return { name, detail: detail === name ? "" : detail, lat, lon };
-  }
-
-  // Without nameless places or repeats: OpenStreetMap often has a station, its
-  // building and its platforms under one name, and a street in pieces.
-  function distinct(places) {
-    const seen = new Set();
-    return places.filter((place) => {
-      const name = place.name.toLowerCase();
-      const keys = [`${name}|${place.detail.toLowerCase()}`, `${name}|${place.lat.toFixed(2)}|${place.lon.toFixed(2)}`];
-      if (!place.name || keys.some((key) => seen.has(key))) return false;
-      keys.forEach((key) => seen.add(key));
-      return true;
-    });
-  }
-
-  function offerMyLocation(box) {
-    show(box, box.end === "from" && canLocate ? [MY_LOCATION] : []);
-  }
-
-  // The suggestions under a box, built from DOM nodes: the names come from outside.
+  // The suggestions under a box.
   function show(box, places, message = "") {
     box.places = places;
     box.active = -1;
     const items = places.map((place, index) => {
-      const item = document.createElement("li");
-      item.className = "list-group-item list-group-item-action";
-      item.id = `${box.list.id}-${index}`;
-      item.setAttribute("role", "option");
-      item.setAttribute("aria-selected", "false");
-      const name = document.createElement("div");
-      name.className = place.mine ? "fw-semibold text-primary" : "fw-semibold";
-      if (place.mine) {
-        const icon = document.createElement("i");
-        icon.className = "bi bi-crosshair me-2";
-        icon.setAttribute("aria-hidden", "true");
-        name.append(icon);
-      }
-      name.append(place.name);
-      item.append(name);
-      if (place.detail) {
-        const detail = document.createElement("div");
-        detail.className = "small text-body-secondary";
-        detail.textContent = place.detail;
-        item.append(detail);
-      }
-      // Keep the box focused while the rider taps, so the list stays open.
-      item.addEventListener("mousedown", (event) => event.preventDefault());
-      item.addEventListener("click", () => choose(box, place));
-      return item;
+      const option = item(place, `${box.list.id}-${index}`);
+      option.addEventListener("click", () => choose(box, place));
+      return option;
     });
     if (message) {
       const note = document.createElement("li");

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}My places · Yale Shuttle{% endblock %}
+{% block content %}
+<h1 class="h3 mb-1">My places</h1>
+<p class="text-body-secondary mb-4">Save your Home and the places you often go. They come up first in <a href="{% url 'stops' %}">Find your bus</a>, so you don't have to search for them. Only you can see them.</p>
+
+{% for message in messages %}
+  <div class="alert alert-success d-flex gap-2" role="status">
+    <i class="bi bi-check-circle-fill" aria-hidden="true"></i><div>{{ message }}</div>
+  </div>
+{% endfor %}
+
+<div class="row g-4">
+  <div class="col-lg-7 order-lg-2">
+    <h2 class="h6 text-body-secondary text-uppercase mb-2">Saved places · {{ places|length }} of {{ most }}</h2>
+    {% if places %}
+      <ul class="list-group" data-places>
+        {% for place in places %}
+          <li class="list-group-item py-3 d-flex flex-wrap align-items-center gap-2" data-place="{{ place.pk }}">
+            <i class="bi {% if place.is_home %}bi-house-door-fill{% else %}bi-star-fill{% endif %} text-primary fs-5" aria-hidden="true"></i>
+            <div class="flex-grow-1 me-auto text-break" style="min-width: 10rem;">
+              <div class="fw-semibold">
+                {{ place.name }}{% if place.is_home %} <span class="badge text-bg-primary ms-1">Home</span>{% endif %}
+              </div>
+              {% if place.address %}<div class="small text-body-secondary">{{ place.address }}</div>{% endif %}
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+              {% if not place.is_home %}
+                <form method="post" action="{% url 'place-home' place.pk %}">
+                  {% csrf_token %}
+                  <button class="btn btn-sm btn-outline-primary" type="submit">
+                    <i class="bi bi-house-door me-1" aria-hidden="true"></i>Make Home
+                  </button>
+                </form>
+              {% endif %}
+              <a class="btn btn-sm btn-outline-secondary" href="{% url 'place-edit' place.pk %}">
+                <i class="bi bi-pencil me-1" aria-hidden="true"></i>Rename or move<span class="visually-hidden"> {{ place.name }}</span>
+              </a>
+              <a class="btn btn-sm btn-outline-danger" href="{% url 'place-delete' place.pk %}">
+                <i class="bi bi-trash me-1" aria-hidden="true"></i>Delete<span class="visually-hidden"> {{ place.name }}</span>
+              </a>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="card"><div class="card-body text-body-secondary">
+        <i class="bi bi-bookmark me-1" aria-hidden="true"></i>No saved places yet. Add your Home to start.
+      </div></div>
+    {% endif %}
+  </div>
+
+  <div class="col-lg-5 order-lg-1">
+    <h2 class="h6 text-body-secondary text-uppercase mb-2">Add a place</h2>
+    {% url 'my-places' as action %}
+    {% include "places/_form.html" with action=action button="Save place" %}
+  </div>
+</div>
+{% endblock %}

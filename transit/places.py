@@ -52,6 +52,16 @@ def search(query, stops):
     return stops_named(query, stops) + _photon(query)
 
 
+def point(value):
+    """"41.3112,-72.9290", as the trip search and saved places (#7) send a
+    picked place, as (41.3112, -72.929), or None if it isn't a point on Earth."""
+    try:
+        lat, lon = (float(part) for part in value.split(","))
+    except ValueError:
+        return None
+    return (lat, lon) if -90 <= lat <= 90 and -180 <= lon <= 180 else None
+
+
 def stops_named(query, stops):
     """Our stops whose names have every word the rider typed, in any order."""
     words = query.casefold().split()

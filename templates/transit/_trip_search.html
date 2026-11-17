@@ -1,8 +1,9 @@
 {% load static %}
 {% comment %}
 The trip search (story #5): where the rider is starting and where they're
-going, typed as an address, a building or a stop. trip-search.js suggests
-places as they type and fills in each place's coordinates; the map on the home
+going, typed as an address, a building, a stop or, once logged in, one of the
+rider's saved places (#7). trip-search.js suggests places as they type and
+fills in each place's coordinates; the map on the home
 page can fill a box too. Without the script, the coordinates stay disabled and
 the server looks up what was typed.
 
@@ -11,7 +12,8 @@ boxes in, search_errors ({"from": ..., "to": ...}) says what's wrong, and wide
 puts the boxes side by side on wider screens.
 {% endcomment %}
 <form method="get" action="{% url 'trip' %}" class="trip-search card" role="search" autocomplete="off"
-      data-trip-search data-places-url="{% url 'places' %}">
+      data-trip-search data-places-url="{% url 'places' %}{% if user.is_authenticated %}?mine=1{% endif %}"
+      data-saved-places="{% if user.is_authenticated %}yes{% else %}no{% endif %}">
   <div class="card-body">
     <div class="{% if wide %}row g-2{% else %}d-grid gap-2{% endif %}">
       <div class="{% if wide %}col-md{% endif %}">
@@ -51,7 +53,11 @@ puts the boxes side by side on wider screens.
         </button>
       </div>
     </div>
-    <p class="form-text mb-0 mt-2">An address, a Yale building or a stop{% if wide %}, or tap a stop on the map{% endif %}.</p>
+    <p class="form-text mb-0 mt-2">
+      An address, a Yale building or a stop{% if wide %}, or tap a stop on the map{% endif %}.
+      {% if user.is_authenticated %}Your <a href="{% url 'my-places' %}">saved places</a> come up first.{% endif %}
+    </p>
   </div>
 </form>
+<script src="{% static 'core/place-search.js' %}" defer></script>
 <script src="{% static 'core/trip-search.js' %}" defer></script>

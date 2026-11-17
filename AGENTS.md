@@ -63,6 +63,7 @@ or create clashing migrations:
 | `history` | Ayush | The imported shuttle history (#22) and our predictions (#23) |
 | `alerts` | Ishita | Service alerts (#13, #20) |
 | `crowding` | Ishita | Riders' crowding reports, and crowding now and by time of day (#12) |
+| `places` | Ishita | Riders' saved places: Home and favourites (#7) |
 | `notifications` | Vivian | Browser push: riders' devices and sending to them (#27), and the trip-notification job (#29) |
 | `assistant` | Austin | The AI feature (#37, #28) |
 | `jobs` | Vivian | The scheduled-job runner and its run log (#40). Each app's own jobs go in its `jobs.py` |
@@ -180,7 +181,7 @@ working with the AI: its first tests called the real feed, so i had it mock the 
   `data/gaps.csv` lists the polls that are missing.
 - **Buildings and addresses** for the trip search come from
   [Photon](https://photon.komoot.io), a free search over OpenStreetMap data.
-  Riders' browsers ask it directly (`core/static/core/trip-search.js`),
+  Riders' browsers ask it directly (`core/static/core/place-search.js`),
   because it refuses requests from our Render servers. `transit/places.py`
   matches our stops.
 - **Feed quirks we've found** in the recorded data:
