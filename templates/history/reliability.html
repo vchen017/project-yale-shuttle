@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% load tz %}
+{% block title %}Missed bus · Yale Shuttle{% endblock %}
+{% block content %}
+<h1 class="h3 mb-1">A bus never came or skipped your stop?</h1>
+<p class="text-body-secondary mb-4">
+  Tell us, and it counts towards how well the official predictions really serve each route and stop.
+  {% if user.is_staff %}<a href="{% url 'accuracy-dashboard' %}"><i class="bi bi-graph-up me-1" aria-hidden="true"></i>See the accuracy dashboard</a>{% endif %}
+</p>
+
+{% for message in messages %}
+  <div class="alert alert-success d-flex gap-2" role="status">
+    <i class="bi bi-check-circle-fill" aria-hidden="true"></i><div>{{ message }}</div>
+  </div>
+{% endfor %}
+
+<div class="row g-4">
+  <div class="col-lg-4">
+    <h2 class="h6 text-body-secondary text-uppercase mb-2">Report it</h2>
+    {% if not running %}
+      <div class="card"><div class="card-body text-body-secondary">
+        {% if feed_ok %}
+          <i class="bi bi-moon-stars me-1" aria-hidden="true"></i>No shuttles are running now, so there's nothing to report.
+        {% else %}
+          <i class="bi bi-wifi-off me-1" aria-hidden="true"></i>We can't load the routes running now, so reporting is paused. Try again in a minute.
+        {% endif %}
+      </div></div>
+    {% elif not user.is_authenticated %}
+      <div class="card"><div class="card-body">
+        <p class="mb-3">Log in to report a bus that never came or skipped your stop.</p>
+        <a class="btn btn-primary w-100" href="{% url 'login' %}?next={{ request.path|urlencode }}">Log in to report</a>
+      </div></div>
+    {% else %}
+      <form method="post" action="{% url 'reliability-report' %}" class="card" novalidate>
+        <div class="card-body">
+          {% csrf_token %}
+          {% for error in form.non_field_errors %}
+            <div class="alert alert-danger py-2" role="alert">{{ error }}</div>
+          {% endfor %}
+          <div class="mb-3">
+            <label class="form-label fw-medium" for="{{ form.route.id_for_label }}">{{ form.route.label }}</label>
+            {{ form.route }}
+            {% for error in form.route.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-medium" for="{{ form.stop.id_for_label }}">{{ form.stop.label }}</label>
+            {{ form.stop }}
+            {% for error in form.stop.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+          </div>
+          <fieldset class="mb-3">
+            <legend class="form-label fs-6 fw-medium">{{ form.kind.label }}</legend>
+            {% for value, label in form.fields.kind.choices %}
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="{{ form.kind.html_name }}" id="kind-{{ value }}"
+                       value="{{ value }}"{% if form.kind.value|stringformat:"s" == value|stringformat:"s" %} checked{% endif %}
+                       autocomplete="off">
+                <label class="form-check-label" for="kind-{{ value }}">{{ label }}</label>
+              </div>
+            {% endfor %}
+            {% for error in form.kind.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+          </fieldset>
+          <button class="btn btn-primary w-100" type="submit">
+            <i class="bi bi-send me-1" aria-hidden="true"></i>Send report
+          </button>
+          <p class="form-text mb-0 mt-2">One report per route and stop every 15 minutes.</p>
+        </div>
+      </form>
+    {% endif %}
+  </div>
+
+  <div class="col-lg-8">
+    <h2 class="h6 text-body-secondary text-uppercase mb-2">Reported in the last 24 hours</h2>
+    {% if not recent %}
+      <p class="text-body-secondary">No reports yet today. A quiet list is good news.</p>
+    {% endif %}
+    <ul class="list-group">
+      {% for report in recent %}
+        <li class="list-group-item py-3">
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            {% if report.kind == "never_came" %}
+              <i class="bi bi-x-octagon text-danger" aria-hidden="true"></i>
+            {% else %}
+              <i class="bi bi-skip-forward text-warning-emphasis" aria-hidden="true"></i>
+            {% endif %}
+            <span class="fw-semibold">{{ report.route_name }}</span>
+            <span class="text-body-secondary">at {{ report.stop_name }}</span>
+            <span class="badge text-bg-light border ms-auto">{{ report.get_kind_display }}</span>
+          </div>
+          <div class="small text-body-secondary mt-1">{{ report.created_at|localtime|date:"D g:i A" }}</div>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock %}

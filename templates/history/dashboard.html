@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Prediction accuracy · Yale Shuttle{% endblock %}
+{% block content %}
+<h1 class="h3 mb-1">Prediction accuracy</h1>
+<p class="text-body-secondary mb-2">
+  Where the official ETA and our prediction miss, per route, stop and hour — next to riders'
+  missed-bus reports. Scored like the evaluation set (#39): every third day is scored, the rest
+  train on, so a run here matches <code>evaluate_predictions</code> over the same days.
+</p>
+<p class="small text-body-secondary">
+  Error is predicted minus actual minutes until the bus: <strong>positive = we said it was farther
+  than it was</strong>, negative = it came sooner than we said. MAE ignores the sign. Actual
+  arrivals are estimated from the recorded countdowns.
+</p>
+
+<div class="card mb-4"><div class="card-body">
+  <form class="row g-2 align-items-end" method="get">
+    <div class="col-6 col-sm-3">
+      <label class="form-label fw-medium mb-1" for="from">From</label>
+      <input class="form-control" type="date" id="from" name="from" value="{{ start|date:'Y-m-d' }}">
+    </div>
+    <div class="col-6 col-sm-3">
+      <label class="form-label fw-medium mb-1" for="to">To</label>
+      <input class="form-control" type="date" id="to" name="to" value="{{ end|date:'Y-m-d' }}">
+    </div>
+    <div class="col-12 col-sm-auto">
+      <button class="btn btn-primary w-100" type="submit"><i class="bi bi-search me-1" aria-hidden="true"></i>Show this range</button>
+    </div>
+  </form>
+  {% if error %}<div class="alert alert-warning py-2 mt-3 mb-0" role="alert">{{ error }} Showing the default range.</div>{% endif %}
+</div></div>
+
+{% if result %}
+<p class="small text-body-secondary">
+  <i class="bi bi-clock-history me-1" aria-hidden="true"></i>
+  Saved {{ snapshot.computed_eastern|date:'M j, g:i A' }} ET — scoring took {{ snapshot.duration_seconds|floatformat:0 }}s.
+</p>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3"><div class="card h-100"><div class="card-body">
+    <div class="small text-body-secondary">Queries scored</div>
+    <div class="fs-4 fw-bold">{{ result.overall.queries }}</div>
+    <div class="small text-body-secondary">
+      {{ result.scored_days|length }} of {{ result.history_days }} days with history
+      {% if result.scored_days %}({{ result.scored_days.0|date:'M j' }} – {{ result.scored_days|last|date:'M j' }}){% endif %}
+    </div>
+  </div></div></div>
+  <div class="col-6 col-md-3"><div class="card h-100"><div class="card-body">
+    <div class="small text-body-secondary">Riders' reports</div>
+    <div class="fs-4 fw-bold">{{ result.reports }}</div>
+    <div class="small text-body-secondary">{% if result.sample_reports %}plus {{ result.sample_reports }} demo (counted apart){% else %}in this range{% endif %}</div>
+  </div></div></div>
+  <div class="col-6 col-md-3"><div class="card h-100"><div class="card-body">
+    <div class="small text-body-secondary">No prediction of ours</div>
+    <div class="fs-4 fw-bold">{{ result.no_prediction }}</div>
+    <div class="small text-body-secondary">asks with nothing to answer from</div>
+  </div></div></div>
+  <div class="col-6 col-md-3"><div class="card h-100"><div class="card-body">
+    <div class="small text-body-secondary">Stale stop pairs</div>
+    <div class="fs-4 fw-bold">{{ result.not_served }}</div>
+    <div class="small text-body-secondary">the route no longer serves (#57)</div>
+  </div></div></div>
+</div>
+
+<h2 class="h6 text-body-secondary text-uppercase mb-2">Overall</h2>
+{% include "history/_accuracy_table.html" with rows=result.overall_list row_label="Whole range" %}
+
+<h2 class="h6 text-body-secondary text-uppercase mb-2 mt-4">By route</h2>
+{% include "history/_accuracy_table.html" with rows=result.by_route row_label="Route" key_label="route" %}
+
+<h2 class="h6 text-body-secondary text-uppercase mb-2 mt-4">By stop</h2>
+{% include "history/_accuracy_table.html" with rows=result.by_stop row_label="Route · stop" key_label="stop" %}
+
+<h2 class="h6 text-body-secondary text-uppercase mb-2 mt-4">By hour of day (Eastern)</h2>
+{% include "history/_accuracy_table.html" with rows=result.by_hour row_label="Hour" key_label="hour" %}
+
+<p class="small text-body-secondary mt-4 mb-0">
+  <i class="bi bi-info-circle me-1" aria-hidden="true"></i>
+  Each cell reads <em>mean error / MAE (queries scored)</em>. "History" is our history layer
+  alone — it can beat the live-inclusive number on held-out days. The nightly
+  <code>score_accuracy</code> job saves each range's score after the history import; this page
+  only reads what it saved. Reports are the riders' own (#6), demo ones counted apart.
+</p>
+{% else %}
+<div class="card"><div class="card-body">
+  <h2 class="h5 mb-2"><i class="bi bi-hourglass-split me-1" aria-hidden="true"></i>No saved score for this range</h2>
+  <p class="text-body-secondary mb-3">
+    This page shows the score the nightly job saved — it never computes while you wait, because
+    scoring a week of history takes minutes. The job scores the last 7 days every morning after
+    the history import, and the longest range (31 days) on Mondays.
+  </p>
+  {% if saved %}
+    <h3 class="h6 text-body-secondary text-uppercase mb-2">Saved scores</h3>
+    <ul class="list-unstyled mb-0">
+      {% for snap in saved %}
+      <li class="mb-1">
+        <a href="?from={{ snap.range_start|date:'Y-m-d' }}&amp;to={{ snap.range_end|date:'Y-m-d' }}">
+          {{ snap.range_start|date:'M j' }} – {{ snap.range_end|date:'M j' }}</a>
+        <span class="text-body-secondary">scored {{ snap.computed_eastern|date:'M j, g:i A' }} ET</span>
+      </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="text-body-secondary mb-0">
+      Nothing saved yet. Run <code>score_accuracy</code> by hand — Actions → scheduled jobs →
+      Run workflow — to save one.
+    </p>
+  {% endif %}
+</div></div>
+{% endif %}
+{% endblock %}

@@ -1,10 +1,13 @@
 from django.contrib import admin
+from django.utils import timezone
 
 from .models import (
+    AccuracySnapshot,
     Announcement,
     BusPosition,
     Eta,
     Poll,
+    RiderReport,
     RouteStatus,
     RouteStopChange,
     RouteStopList,
@@ -81,3 +84,25 @@ class RouteStopChangeAdmin(admin.ModelAdmin):
     @admin.display(description="commit")
     def short_sha(self, obj):
         return obj.commit_sha[:7]
+
+
+@admin.register(AccuracySnapshot)
+class AccuracySnapshotAdmin(admin.ModelAdmin):
+    """The saved scores the score_accuracy job wrote (#17), which the dashboard reads."""
+
+    list_display = ("range_start", "range_end", "computed_eastern", "duration_seconds")
+    ordering = ("-range_end",)
+
+    @admin.display(description="computed (Eastern)")
+    def computed_eastern(self, obj):
+        return timezone.localtime(obj.computed_at)
+
+
+@admin.register(RiderReport)
+class RiderReportAdmin(admin.ModelAdmin):
+    """The missed-bus reports riders filed (#6), which the accuracy dashboard (#17) counts."""
+
+    list_display = ("created_at", "route_name", "stop_name", "kind", "user", "is_sample")
+    list_filter = ("kind", "is_sample")
+    search_fields = ("route_name", "stop_name", "user__username")
+    raw_id_fields = ("user",)

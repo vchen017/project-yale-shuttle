@@ -22,3 +22,14 @@ def import_history():
     output = StringIO()
     call_command("import_history", days=3, backfill=BACKFILL_DAYS, stdout=output)
     return output.getvalue().strip()
+
+
+@job(schedule="53 10 * * *", timeout=dt.timedelta(minutes=45))
+def score_accuracy():
+    """Save the dashboard's accuracy scores (#17): daily, 10:53 UTC (5:53 AM
+    Eastern), after the import has brought in the day's history. The dashboard
+    only shows what this saves — scoring a week takes minutes, too long for a
+    page request."""
+    output = StringIO()
+    call_command("score_accuracy", stdout=output)
+    return output.getvalue().strip()
