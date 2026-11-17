@@ -17,7 +17,9 @@ rewarding a model for matching our own rule of thumb.
 
 from datetime import datetime, timedelta, timezone
 
+from .agent import decide_with_tools
 from .decide import Trip, decide_notification, leave_by
+from .tools import DataSource, TripRequest
 
 EASTERN = timezone(timedelta(hours=-5))  # EST, the offset on Nov 16, 2026
 
@@ -107,3 +109,37 @@ def run(decide=decide_notification):
         ok, why = check(case_, decision)
         results.append((case_, decision, ok, why))
     return results
+
+
+# The same cases through the agent (#28): its tools answer from each case's
+# trip, as of AGENT_NOW, instead of the live feed.
+AGENT_NOW = at(7, 0)
+
+
+class CaseData(DataSource):
+    """Tool data for one evaluation trip: its arrival times, as minutes from AGENT_NOW."""
+
+    def __init__(self, trip):
+        self.trip = trip
+
+    def _minutes(self, moment):
+        return None if moment is None else (moment - AGENT_NOW).total_seconds() / 60
+
+    def official_minutes(self, trip):
+        return self._minutes(self.trip.official_arrival)
+
+    def predicted_minutes(self, trip):
+        return self._minutes(self.trip.predicted_arrival)
+
+    def crowding(self, trip):
+        return None
+
+
+def agent_decide(*, strict=False):
+    """A `decide` for run(): asks the agent about the case's trip."""
+
+    def decide(trip):
+        request = TripRequest(trip.route, trip.stop, trip.needed_at, trip.walking_minutes)
+        return decide_with_tools(request, CaseData(trip), now=AGENT_NOW, strict=strict)
+
+    return decide

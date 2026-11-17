@@ -51,6 +51,15 @@ def leave_by(trip):
     return arrival - timedelta(minutes=trip.walking_minutes)
 
 
+REPLY_FORMAT = f"""\
+Reply with only a JSON object with exactly these keys:
+  "notify": true or false
+  "notify_at": an ISO 8601 time with a UTC offset, e.g. "2026-11-16T08:40:00-05:00"
+               (null when notify is false)
+  "message": a short plain-text notification, at most {MAX_MESSAGE_LENGTH} characters
+             (empty when notify is false)
+"""
+
 SYSTEM_PROMPT = f"""\
 You decide whether and when to notify a Yale shuttle rider about an upcoming trip.
 
@@ -68,13 +77,7 @@ the bus will arrive too late for them. Stay quiet when they have plenty of room.
 When you notify, send it early enough to act on, always before "Leave for the stop by"
 and never after it. The message names the bus, says when it arrives and when to leave.
 
-Reply with only a JSON object with exactly these keys:
-  "notify": true or false
-  "notify_at": an ISO 8601 time with a UTC offset, e.g. "2026-11-16T08:40:00-05:00"
-               (null when notify is false)
-  "message": a short plain-text notification, at most {MAX_MESSAGE_LENGTH} characters
-             (empty when notify is false)
-"""
+{REPLY_FORMAT}"""
 
 
 def _local(moment):
