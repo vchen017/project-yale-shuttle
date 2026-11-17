@@ -28,26 +28,59 @@ def chat(messages, *, model=None):
     Asks for a JSON object, which most models honour; callers still validate.
     Raises OpenRouterError for every failure, so callers have one thing to catch.
     """
-    api_key = settings.OPENROUTER_API_KEY
-    if not api_key:
-        raise OpenRouterError("OPENROUTER_API_KEY is not set")
-
-    body = json.dumps({
+    body = {
         "model": model or settings.OPENROUTER_MODEL,
         "messages": messages,
         "response_format": {"type": "json_object"},
         "temperature": 0,
-    }).encode()
+    }
+    try:
+        return _post(body)["content"]
+    except KeyError as error:
+        raise OpenRouterError("OpenRouter's answer had no message in it") from error
+
+
+def chat_message(messages, *, tools=None, model=None):
+    """Like chat(), for an agent: returns the model's whole reply message
+    ({"role", "content", and "tool_calls" when it wants a tool run}).
+
+    `tools` are MCP-style definitions ({"name", "description", "inputSchema"});
+    they're sent in OpenRouter's function-calling format. Without tools, the
+    model has to answer, and the reply is asked to be a JSON object as in chat().
+    """
+    body = {"model": model or settings.OPENROUTER_MODEL, "messages": messages, "temperature": 0}
+    if tools:
+        body["tools"] = [
+            {
+                "type": "function",
+                "function": {"name": tool["name"], "description": tool["description"],
+                             "parameters": tool["inputSchema"]},
+            }
+            for tool in tools
+        ]
+    else:
+        body["response_format"] = {"type": "json_object"}
+    return _post(body)
+
+
+def _post(body):
+    """POST the body to OpenRouter and return the reply message (a dict)."""
+    api_key = settings.OPENROUTER_API_KEY
+    if not api_key:
+        raise OpenRouterError("OPENROUTER_API_KEY is not set")
     request = Request(
         API_URL,
-        data=body,
+        data=json.dumps(body).encode(),
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
         method="POST",
     )
     try:
         with urlopen(request, timeout=TIMEOUT_SECONDS) as response:
             data = json.load(response)
-        return data["choices"][0]["message"]["content"]
+        message = data["choices"][0]["message"]
+        if not isinstance(message, dict):
+            raise TypeError("message is not an object")
+        return message
     except (OSError, ValueError, HTTPException) as error:
         # OSError covers timeouts, refused connections and HTTP errors (HTTPError
         # is one); ValueError covers an answer that isn't JSON.

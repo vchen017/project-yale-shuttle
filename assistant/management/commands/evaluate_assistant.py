@@ -11,12 +11,21 @@ class Command(BaseCommand):
         "Needs OPENROUTER_API_KEY. CI runs the same cases with the LLM mocked."
     )
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--agent", action="store_true",
+            help="Run the cases through the tool-using agent (#28) instead of the one-shot decision (#37).",
+        )
+
     def handle(self, *args, **options):
         if not settings.OPENROUTER_API_KEY:
             raise CommandError("Set OPENROUTER_API_KEY to run the evaluation against the real model.")
-        self.stdout.write(f"Model: {settings.OPENROUTER_MODEL}")
+        self.stdout.write(f"Model: {settings.OPENROUTER_MODEL} ({'agent with tools' if options['agent'] else 'one-shot'})")
         try:
-            results = evals.run(lambda trip: decide_notification(trip, strict=True))
+            decide = evals.agent_decide(strict=True) if options["agent"] else (
+                lambda trip: decide_notification(trip, strict=True)
+            )
+            results = evals.run(decide)
         except openrouter.OpenRouterError as error:
             # An outage isn't a "don't notify" answer, so don't score it as one.
             raise CommandError(f"Couldn't reach the model, so nothing was evaluated: {error.__cause__ or error}")
