@@ -53,6 +53,12 @@ Everything comes from environment variables; nothing secret goes in git.
 ## Pages
 
 - `/`: home; `/signup/`, `/login/`; `/admin/` for admins
+- `/stops/`: the next buses and the trip search; `/stops/<id>/` for one stop,
+  `/trip/` for a trip
+- `/crowding/`: how busy each route is, from riders' reports
+- `/reliability/`: riders report a bus that never came or skipped their stop;
+  `/reliability/dashboard/` is the prediction accuracy dashboard, for admins
+- `/places/`: riders' saved places, Home and favourites
 - `/notifications/`: riders turn push notifications on or off for each device,
   and send themselves a test
 - `/ecc1032`: the A/B test page, and `/ecc1032/stats` for its live results
