@@ -1,7 +1,12 @@
-"""Where riders report a bus that never came or skipped their stop (#6)."""
+"""Where riders report a bus that never came or skipped their stop (#6), and
+where admins see how the predictions really serve each route and stop (#17)."""
+
+import datetime as dt
 
 from django.contrib import messages
+from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.utils.formats import time_format
@@ -9,9 +14,13 @@ from django.views.decorators.http import require_POST, require_safe
 
 from transit import downtowner
 
-from . import reports
+from . import accuracy, reports
 from .forms import ReliabilityForm
 from .models import RiderReport
+from .predictions import ET
+
+ACCURACY_CACHE_SECONDS = 6 * 3600  # recorded history only moves when an import runs
+ACCURACY_MAX_RANGE_DAYS = 31  # bounds the work one dashboard load does
 
 
 @require_safe
@@ -72,3 +81,52 @@ def _render(request, routes, running, feed_ok, form=None):
             "now": timezone.now(),
         },
     )
+
+
+@staff_member_required
+@require_safe
+def accuracy_dashboard(request):
+    """Per-route, per-stop and per-hour accuracy over a chosen date range (#17)."""
+    start, end, error = _range(request)
+    since = _eastern_midnight(start)
+    until = _eastern_midnight(end + dt.timedelta(days=1))
+    result = cache.get_or_set(
+        f"history-accuracy:{start}:{end}",
+        lambda: accuracy.accuracy(since, until),
+        ACCURACY_CACHE_SECONDS,
+    )
+    return render(
+        request,
+        "history/dashboard.html",
+        {"result": result, "start": start, "end": end, "error": error, "today": timezone.localdate()},
+    )
+
+
+def _range(request):
+    """(start, end, error): the Eastern date range to score, defaulting to
+    the last seven days. A bad or oversized range falls back to the default
+    with a message."""
+    today = timezone.localdate()
+    default_start, default_end = today - dt.timedelta(days=6), today
+    start, end = _date(request.GET.get("from")), _date(request.GET.get("to"))
+    if start is None and request.GET.get("from"):
+        return default_start, default_end, "Use YYYY-MM-DD dates, like 2026-11-10."
+    if end is None and request.GET.get("to"):
+        return default_start, default_end, "Use YYYY-MM-DD dates, like 2026-11-16."
+    start, end = start or default_start, end or default_end
+    if start > end:
+        return default_start, default_end, "'From' is after 'To'."
+    if (end - start).days >= ACCURACY_MAX_RANGE_DAYS:
+        return default_start, default_end, f"Pick at most {ACCURACY_MAX_RANGE_DAYS} days at a time."
+    return start, end, None
+
+
+def _date(value):
+    try:
+        return dt.date.fromisoformat(value) if value else None
+    except ValueError:
+        return None
+
+
+def _eastern_midnight(day):
+    return dt.datetime.combine(day, dt.time(0), tzinfo=ET).astimezone(dt.timezone.utc)

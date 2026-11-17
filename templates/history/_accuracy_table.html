@@ -1,0 +1,30 @@
+{% if not rows %}
+  <p class="text-body-secondary">Nothing scored here yet.</p>
+{% else %}
+  <div class="table-responsive">
+    <table class="table table-sm table-striped align-middle mb-2">
+      <thead><tr>
+        <th scope="col">{{ row_label }}</th>
+        <th scope="col" class="text-end">Queries</th>
+        <th scope="col">Ours</th>
+        <th scope="col">Official ETA</th>
+        <th scope="col">History layer</th>
+        <th scope="col">Reports</th>
+      </tr></thead>
+      <tbody>
+      {% for row in rows %}
+        <tr>
+          <th scope="row" class="fw-normal">
+            {% if key_label == "stop" %}<a href="{% url 'stop' row.key.1 %}">{{ row.label }}</a>{% else %}{{ row.label }}{% endif %}
+          </th>
+          <td class="text-end">{{ row.queries }}</td>
+          <td>{% if row.ours %}{{ row.ours.mean_display }} / {{ row.ours.mae_display }} <span class="text-body-secondary">({{ row.ours.answered }})</span>{% else %}<span class="text-body-secondary">–</span>{% endif %}</td>
+          <td>{% if row.official %}{{ row.official.mean_display }} / {{ row.official.mae_display }} <span class="text-body-secondary">({{ row.official.answered }})</span>{% else %}<span class="text-body-secondary">–</span>{% endif %}</td>
+          <td>{% if row.history %}{{ row.history.mean_display }} / {{ row.history.mae_display }} <span class="text-body-secondary">({{ row.history.answered }})</span>{% else %}<span class="text-body-secondary">–</span>{% endif %}</td>
+          <td>{% if row.reports or row.sample_reports %}{{ row.reports }}{% if row.sample_reports %} <span class="text-body-secondary">+{{ row.sample_reports }} demo</span>{% endif %}{% else %}<span class="text-body-secondary">–</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}

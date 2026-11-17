@@ -3,7 +3,10 @@
 {% block title %}Missed bus · Yale Shuttle{% endblock %}
 {% block content %}
 <h1 class="h3 mb-1">A bus never came or skipped your stop?</h1>
-<p class="text-body-secondary mb-4">Tell us, and it counts towards how well the official predictions really serve each route and stop.</p>
+<p class="text-body-secondary mb-4">
+  Tell us, and it counts towards how well the official predictions really serve each route and stop.
+  {% if user.is_staff %}<a href="{% url 'accuracy-dashboard' %}"><i class="bi bi-graph-up me-1" aria-hidden="true"></i>See the accuracy dashboard</a>{% endif %}
+</p>
 
 {% for message in messages %}
   <div class="alert alert-success d-flex gap-2" role="status">
