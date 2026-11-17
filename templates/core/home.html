@@ -5,17 +5,17 @@
         integrity="sha384-uTttxo/aOKbdE5RlD/SPzSDoDmNvGlUYPjONi2MN/b7c9HPSvW07OIuyP7uL6jxK" crossorigin="anonymous">
 {% endblock %}
 {% block content %}
-<section class="hero hero-compact rounded-4 px-4 py-4 mb-4">
-  <div class="d-md-flex align-items-center justify-content-between gap-4">
+<section class="hero mb-4">
+  <div class="d-md-flex align-items-end justify-content-between gap-4">
     <div>
-      <h1 class="h2 fw-bold mb-2">Never miss the Yale shuttle again.</h1>
-      <p class="{% if user.is_staff %}mb-3 mb-md-0{% else %}mb-0{% endif %}">See when your bus will actually arrive, so you can leave at just the right time.</p>
+      <h1 class="display-6 fw-bold mb-2">Never miss the Yale shuttle again.</h1>
+      <p class="lead {% if user.is_staff %}mb-3 mb-md-0{% else %}mb-0{% endif %}">See when your bus will actually arrive, so you can leave at just the right time.</p>
     </div>
     {# Logging in, signing up and the "Welcome back" greeting live in the navbar, on every page (#86). #}
     {% if user.is_staff %}
       <p class="mb-0 flex-shrink-0">
-        <a class="link-light" href="{% url 'admin:index' %}">Open the admin</a>
-        · <a class="link-light" href="{% url 'admin:alerts_alert_add' %}">Post an alert</a>
+        <a href="{% url 'admin:index' %}">Open the admin</a>
+        · <a href="{% url 'admin:alerts_alert_add' %}">Post an alert</a>
       </p>
     {% endif %}
   </div>
@@ -51,40 +51,24 @@
 </section>
 
 
-<h2 class="h4 mb-3">What we're building</h2>
-<div class="row g-3 mb-4">
-  <div class="col-md-4">
-    <div class="card feature h-100">
-      <div class="card-body">
-        <div class="feature-icon" aria-hidden="true"><i class="bi bi-clock-history"></i></div>
-        <h3 class="h5 card-title">Arrival times you can trust</h3>
-        <p class="card-text">Our prediction next to the official one, so you can see when the bus will really reach your stop.</p>
-      </div>
+<section class="mb-4" aria-labelledby="features-title">
+  <h2 class="h4 mb-3" id="features-title">What you can do</h2>
+  <div class="row g-4 features">
+    <div class="col-md-4">
+      <h3 class="h6 mb-1"><a href="{% url 'stops' %}">Next buses</a></h3>
+      <p class="mb-0 text-body-secondary">Our predicted arrival next to the official one, at every stop.</p>
+    </div>
+    <div class="col-md-4">
+      <h3 class="h6 mb-1"><a href="{% url 'crowding' %}">Crowding</a></h3>
+      <p class="mb-0 text-body-secondary">How busy each route is right now, from riders' reports, so you know whether you'll get a seat.</p>
+    </div>
+    <div class="col-md-4">
+      <h3 class="h6 mb-1"><a href="{% url 'reliability' %}">Missed bus</a></h3>
+      <p class="mb-0 text-body-secondary">Tell us when a bus never came or skipped your stop. It shows where the official times fall short.</p>
     </div>
   </div>
-  <div class="col-md-4">
-    <div class="card feature h-100">
-      <div class="card-body">
-        <div class="feature-icon" aria-hidden="true"><i class="bi bi-people-fill"></i></div>
-        <h3 class="h5 card-title">How busy is the bus?</h3>
-        <p class="card-text">Riders report crowding, so you know whether you'll get a seat, or get on at all.</p>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-4">
-    <div class="card feature h-100">
-      <div class="card-body">
-        <div class="feature-icon" aria-hidden="true"><i class="bi bi-bell-fill"></i></div>
-        <h3 class="h5 card-title">Leave on time</h3>
-        <p class="card-text">Connect your class schedule and get a nudge when it's time to walk to your stop.</p>
-      </div>
-    </div>
-  </div>
-</div>
-
-<p class="text-body-secondary small mb-0">
-  Yale Shuttle is in development, and these features arrive over the coming sprints. You can already create an account and log in.
-</p>
+  <p class="small text-body-secondary mt-3 mb-0">Coming next: connect your class schedule and get a nudge when it's time to walk to your stop.</p>
+</section>
 <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.1/dist/maplibre-gl.js"
         integrity="sha384-nXMl9YiLoSG5KBPTFgvxVuIqQQcqIvo0bFrvoEaGJC6r7IibIzF1S36Zbf/sKBtL" crossorigin="anonymous" defer></script>
 <script src="{% static 'core/map.js' %}" defer></script>
