@@ -169,6 +169,7 @@ jobs in its own `jobs.py`, and `python manage.py run_job --list` shows them all.
 | Job | When | What it does |
 |---|---|---|
 | `import_history` | daily, 9:17 UTC (4:17 AM Eastern) | loads the recorder's last three days of shuttle history (#22), plus up to five older days from the last four weeks that aren't loaded yet |
+| `score_accuracy` | daily, 10:53 UTC (5:53 AM Eastern) | scores our predictions over the last seven days for the accuracy dashboard (#17), and over the last 31 days on Mondays; the dashboard only shows these saved scores |
 
 - **The run log** is at `/admin/` → Scheduled jobs: when each run started and
   ended, what started it, and its summary or error. A failed run also fails its
