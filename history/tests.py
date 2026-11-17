@@ -1026,6 +1026,29 @@ class EvaluateTests(TestCase):
         self.assertGreater(result["history_mae"], 3.5)
         self.assertLess(result["history_mae"], 12.5)
 
+    def test_the_official_eta_is_scored_as_riders_see_it(self):
+        # A revision that separates the two official scores (#116): the bus
+        # is promised 25 minutes out at 11:55, but by 12:00 the feed says 15,
+        # and the bus does come at 12:15. A rider asking at 12:02 sees the
+        # fresher countdown (13 minutes, spot on) — the aged scoring kept
+        # quoting the stale promise from 11:55 (18 minutes, 5 off).
+        day = next(
+            day
+            for day in (dt.date(2026, 11, 9), dt.date(2026, 11, 10), dt.date(2026, 11, 11))
+            if day.toordinal() % 3 == 0  # what evaluate() will hold out
+        )
+        for hour, minute, eta in [(11, 55, 25), (12, 0, 15), (12, 10, 5)]:
+            add_eta_poll(eastern(day, hour, minute), bus_id=9, eta_minutes=eta)
+        result = predictions.evaluate(stride=2, now=eastern(day, 23))
+
+        self.assertEqual(result["queries"], 1)  # the 12:17 ask had no next bus
+        self.assertEqual(result["official_mae"], 0.0)
+        self.assertEqual(result["official_aged_mae"], 5.0)
+        # Ours read the revision too (the live layer takes the soonest
+        # implied arrival), and history had no train day to learn from.
+        self.assertEqual(result["ours_mae"], 0.0)
+        self.assertIsNone(result["history_mae"])
+
     def test_an_empty_history_has_nothing_to_score(self):
         result = predictions.evaluate()
         self.assertEqual(result["queries"], 0)

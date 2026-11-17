@@ -227,6 +227,22 @@ def _live_minutes_from(times, arrivals, now):
     return round(max(minutes, 0.0), 1)
 
 
+def _shown_countdown(times, values, now):
+    """The countdown a rider is shown at `now` (#116): the freshest poll's
+    soonest eta, aged by how long ago that poll landed and floored at 0 —
+    what the official app displays between its refreshes. None when no poll
+    precedes `now`. The arrays are the per-pair shown_times/shown_values the
+    evaluation loops build, one entry per poll where the pair appeared; the
+    eta may be negative when the feed lists the bus as already at the stop,
+    and the floor is what turns that into "boarding now".
+    """
+    index = bisect_right(times, now) - 1
+    if index < 0:
+        return None
+    lag = (now - times[index]).total_seconds() / 60
+    return max(values[index] - lag, 0.0)
+
+
 def evaluate(holdout_modulus=3, stride=2, days=HISTORY_DAYS, now=None):
     """Score what riders would be told against the official ETA on held-out
     days.
@@ -236,14 +252,22 @@ def evaluate(holdout_modulus=3, stride=2, days=HISTORY_DAYS, now=None):
     sampled poll stands for a rider opening the app QUERY_OFFSET minutes
     later — an arbitrary minute, not the instant a poll landed. Our answer
     there is exactly what predict_minutes would give: the live layer over
-    that day's own polls, the history profile beneath it. The official ETA
-    is scored the way its own display would use it, as its implied arrival
-    aged from the poll to the query. Both are measured against the minutes
-    until the next recorded arrival. A query with no measurable next
-    arrival, or no prediction of ours, is skipped and counted instead. The
-    history layer is scored on its own too (history_mae): it is what runs
-    whenever no poll is fresh enough, so its error is the floor beneath the
-    live layer's.
+    that day's own polls, the history profile beneath it. Both are measured
+    against the minutes until the next recorded arrival. A query with no
+    measurable next arrival, or no prediction of ours, is skipped and
+    counted instead. The history layer is scored on its own too
+    (history_mae): it is what runs whenever no poll is fresh enough, so its
+    error is the floor beneath the live layer's.
+
+    The official ETA is scored twice, and the two numbers are not the same
+    (see #116). official_mae is what a rider with the official app open
+    would act on: the freshest poll's countdown at the query instant, aged
+    by that poll's own lag and floored at 0 — the app recomputes from its
+    newest data, whatever the evaluation's sampling did. official_aged_mae
+    is the older scoring, which aged the sampled poll's implied arrival by
+    the whole QUERY_OFFSET; it overstated the official's error by minutes
+    (17.3 vs 13.5 on the recorded history), and it is kept only so numbers
+    quoted before #116 stay reproducible.
     """
     now = now or timezone.now()
     since = now - dt.timedelta(days=days)
@@ -260,8 +284,8 @@ def evaluate(holdout_modulus=3, stride=2, days=HISTORY_DAYS, now=None):
     }
 
     queries = no_prediction = not_served = 0
-    history_queries = 0
-    ours_error = official_error = history_error = 0.0
+    history_queries = official_answered = 0
+    ours_error = official_error = official_aged_error = history_error = 0.0
     for day in sorted(test_days):
         day_start = dt.datetime.combine(day, dt.time(0), tzinfo=ET)
         # Just the held-out day's polls: an arrival after midnight is found
@@ -278,14 +302,20 @@ def evaluate(holdout_modulus=3, stride=2, days=HISTORY_DAYS, now=None):
 
         # What each poll promised: implied absolute arrivals, per pair, in
         # poll order — the same object the live layer reads from the
-        # database in production.
+        # database in production. Beside it, what the pair was being shown:
+        # each poll's soonest countdown, the number the official app
+        # displays until the next poll replaces it.
         implied_times = defaultdict(list)
         implied_arrivals = defaultdict(list)
+        shown_times = defaultdict(list)
+        shown_values = defaultdict(list)
         for polled_at in poll_times:
             for pair, etas in by_poll[polled_at].items():
                 for eta in etas:
                     implied_times[pair].append(polled_at)
                     implied_arrivals[pair].append(polled_at + dt.timedelta(minutes=eta))
+                shown_times[pair].append(polled_at)
+                shown_values[pair].append(min(etas))
 
         for polled_at in poll_times[::stride]:
             query_at = polled_at + QUERY_OFFSET
@@ -318,9 +348,18 @@ def evaluate(holdout_modulus=3, stride=2, days=HISTORY_DAYS, now=None):
                 if history is not None:
                     history_queries += 1
                     history_error += abs(history - actual)
+                # The official's two scores. App-like: the freshest poll's
+                # countdown at the query instant (#116). Aged: the sampled
+                # poll's implied arrival, grown stale by the whole offset.
+                official = _shown_countdown(
+                    shown_times.get(pair, []), shown_values.get(pair, []), query_at
+                )
+                if official is not None:
+                    official_answered += 1
+                    official_error += abs(official - actual)
                 official_implied = polled_at + dt.timedelta(minutes=min(etas))
-                official = max((official_implied - query_at).total_seconds() / 60, 0.0)
-                official_error += abs(official - actual)
+                official_aged = max((official_implied - query_at).total_seconds() / 60, 0.0)
+                official_aged_error += abs(official_aged - actual)
 
     return {
         "test_days": sorted(test_days),
@@ -332,7 +371,10 @@ def evaluate(holdout_modulus=3, stride=2, days=HISTORY_DAYS, now=None):
         "history_mae": (
             round(history_error / history_queries, 2) if history_queries else None
         ),
-        "official_mae": round(official_error / queries, 2) if queries else None,
+        "official_mae": (
+            round(official_error / official_answered, 2) if official_answered else None
+        ),
+        "official_aged_mae": round(official_aged_error / queries, 2) if queries else None,
     }
 
 

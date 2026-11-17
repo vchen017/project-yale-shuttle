@@ -82,4 +82,12 @@ class Command(BaseCommand):
                 f"  history only:    average error {result['history_mae']} min "
                 f"(what runs when no poll is fresh)"
             )
-        self.stdout.write(f"  official ETA:    average error {result['official_mae']} min")
+        self.stdout.write(
+            f"  official ETA:    average error {result['official_mae']} min "
+            f"(as riders see it: the freshest countdown, #116)"
+        )
+        if result["official_aged_mae"] is not None:
+            self.stdout.write(
+                f"  official, aged:  average error {result['official_aged_mae']} min "
+                f"(the pre-#116 scoring, kept for older numbers' sake)"
+            )

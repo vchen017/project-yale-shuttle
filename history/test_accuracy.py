@@ -67,6 +67,26 @@ def seed_history():
         add_approach(day, 200, 8, "Phelps Gate")
 
 
+def add_countdown(day, hour, minute, eta, stop_id=100, bus_id=9):
+    """One bus's countdown at one poll, like the feed serves it."""
+    moment = eastern(day, hour, minute)
+    poll, _ = Poll.objects.get_or_create(
+        polled_at=moment, defaults={"status": Poll.Status.RECORDED}
+    )
+    Eta.objects.create(
+        poll=poll,
+        polled_at=moment,
+        stop_id=stop_id,
+        stop_name="Science Park",
+        route_id=1,
+        route_name="Test route",
+        bus_id=bus_id,
+        bus_name=f"#{bus_id}",
+        eta_minutes=eta,
+        calculation_time=moment,
+    )
+
+
 def add_report(route_id, stop_id, when, user, is_sample=False):
     return RiderReport.objects.create(
         user=user,
@@ -242,3 +262,39 @@ class DashboardPageTests(TestCase):
         self.assertContains(self.client.get("/"), 'href="/reliability/dashboard/"')
         self.client.force_login(self.rider)
         self.assertNotContains(self.client.get("/"), "reliability/dashboard/")
+
+
+class FreshOfficialTests(TestCase):
+    """The dashboard's official column is what riders see (#116): the
+    freshest poll's countdown at the query instant, aged by its own lag —
+    not the sampled poll grown stale by the whole offset. A bus revised
+    closer between those two polls tells the two scorings apart: the rider
+    and the official app both read 13 minutes at 12:02 (spot on), while the
+    old scoring kept quoting the 11:55 promise (18 minutes, 5 off)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.rider = User.objects.create_user("rider@example.com", password="a-rider-password-1")
+        cls.day = next(
+            day
+            for day in (dt.date(2026, 11, 9), dt.date(2026, 11, 10), dt.date(2026, 11, 11))
+            if day.toordinal() % 3 == 0  # the holdout discipline's pick
+        )
+        for hour, minute, eta in [(11, 55, 25), (12, 0, 15), (12, 10, 5)]:
+            add_countdown(cls.day, hour, minute, eta)
+        cls.result = accuracy.accuracy(
+            eastern(cls.day), eastern(cls.day + dt.timedelta(days=1))
+        )
+
+    def test_the_official_column_is_the_countdown_a_rider_acts_on(self):
+        overall = self.result["overall"]
+        self.assertEqual(overall["queries"], 1)  # the 12:17 ask had no next bus
+        self.assertEqual(round(overall["official"]["mean"], 1), 0.0)
+        self.assertEqual(round(overall["official"]["mae"], 1), 0.0)
+        self.assertEqual(overall["official"]["answered"], 1)
+        # Ours read the revision too (the live layer takes the soonest
+        # implied arrival); the history layer had no train day to learn from.
+        self.assertEqual(overall["ours"]["answered"], 1)
+        self.assertIsNone(overall["history"])
+        self.assertEqual(self.result["no_prediction"], 0)

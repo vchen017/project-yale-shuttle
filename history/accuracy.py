@@ -8,8 +8,11 @@ QUERY_OFFSET minutes later, the actual next arrival comes from the recorded
 countdowns, and the held-out discipline stays the same (every third day is
 scored, the rest train on) so a dashboard run and an evaluate() run agree.
 Error is predicted minus actual: positive means we said the bus was farther
-than it turned out to be. The history layer is reported on its own — it can
-beat the live-inclusive number on held-out days (see #23).
+than it turned out to be. The official ETA is scored the way riders see it
+(#116): the freshest poll's countdown at the query instant, aged by that
+poll's own lag — not the sampled poll grown stale by the whole offset,
+which overstated the official's error. The history layer is reported on its
+own — it can beat the live-inclusive number on held-out days (see #23).
 
 Riders' reports (#6) are counted next to the errors, in the same groups.
 """
@@ -28,6 +31,7 @@ from .predictions import (
     _learn,
     _live_minutes_from,
     _predict_history,
+    _shown_countdown,
     _stop_is_served,
     held_out_days,
 )
@@ -83,14 +87,19 @@ def accuracy(since, until):
         poll_times = sorted(by_poll)
 
         # What each poll promised: implied absolute arrivals, per pair, in
-        # poll order — as in evaluate().
+        # poll order — as in evaluate(). Beside it, the countdown the pair
+        # was being shown at each poll, the official app's own display (#116).
         implied_times = defaultdict(list)
         implied_arrivals = defaultdict(list)
+        shown_times = defaultdict(list)
+        shown_values = defaultdict(list)
         for polled_at in poll_times:
             for pair, etas in by_poll[polled_at].items():
                 for eta in etas:
                     implied_times[pair].append(polled_at)
                     implied_arrivals[pair].append(polled_at + dt.timedelta(minutes=eta))
+                shown_times[pair].append(polled_at)
+                shown_values[pair].append(min(etas))
 
         for polled_at in poll_times[::STRIDE]:
             query_at = polled_at + QUERY_OFFSET
@@ -121,8 +130,9 @@ def accuracy(since, until):
                     if profile is not None
                     else None
                 )
-                official_implied = polled_at + dt.timedelta(minutes=min(etas))
-                official = max((official_implied - query_at).total_seconds() / 60, 0.0)
+                official = _shown_countdown(
+                    shown_times.get(pair, []), shown_values.get(pair, []), query_at
+                )
                 for kind, key in (
                     ("route", pair[0]),
                     ("stop", pair),
