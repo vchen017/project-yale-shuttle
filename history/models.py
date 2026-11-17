@@ -291,3 +291,28 @@ class RiderReport(models.Model):
 
     def __str__(self):
         return f"{self.route_name} at {self.stop_name}: {self.get_kind_display()} ({self.created_at:%Y-%m-%d %H:%M} UTC)"
+
+
+class Calibration(models.Model):
+    """A learned countdown correction (#117): the median minutes the
+    recorded history says a countdown of a given size was off by, for one
+    route (or every route, where route_id is None). `bucket` slices the
+    countdown by size, per predictions.COUNTDOWN_BUCKETS, with bucket -1
+    (predictions.OVERALL_BUCKET) holding the fit's overall median as the
+    last fallback. The nightly fit_calibration job rewrites the whole
+    table; while it is empty or thin, predictions add nothing and the raw
+    countdown answers, so a fresh deploy degrades safely.
+    """
+
+    route_id = models.IntegerField(null=True, blank=True)
+    bucket = models.SmallIntegerField()
+    delta_minutes = models.FloatField()
+    samples = models.IntegerField(help_text="How many residuals the median was taken over.")
+    fitted_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["route_id", "bucket"]
+
+    def __str__(self):
+        route = f"route {self.route_id}" if self.route_id is not None else "all routes"
+        return f"{route} bucket {self.bucket}: {self.delta_minutes:+g} min over {self.samples}"

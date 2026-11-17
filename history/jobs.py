@@ -24,6 +24,17 @@ def import_history():
     return output.getvalue().strip()
 
 
+@job(schedule="29 10 * * *", timeout=dt.timedelta(minutes=45))
+def fit_calibration():
+    """Refit the countdown corrections (#117): daily, 10:29 UTC (5:29 AM
+    Eastern), after the import has brought in the day's history and before
+    the accuracy scoring. predict_minutes adds these medians to every
+    countdown above RAW_MAX; until this runs, predictions answer raw."""
+    output = StringIO()
+    call_command("fit_calibration", stdout=output)
+    return output.getvalue().strip()
+
+
 @job(schedule="53 10 * * *", timeout=dt.timedelta(minutes=45))
 def score_accuracy():
     """Save the dashboard's accuracy scores (#17): daily, 10:53 UTC (5:53 AM

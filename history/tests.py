@@ -8,6 +8,7 @@ import json
 from io import StringIO
 from unittest import mock
 
+from django.core.cache import cache
 from django.core.management import CommandError, call_command
 from django.test import TestCase
 from django.utils import timezone
@@ -16,6 +17,7 @@ from history import importer, predictions, sources
 from history.models import (
     Announcement,
     BusPosition,
+    Calibration,
     Eta,
     Poll,
     RouteStatus,
@@ -771,13 +773,16 @@ class LiveLayerTests(TestCase):
         ours = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 12, 2))
         self.assertEqual(ours, 2.0)
 
-    def test_a_new_poll_can_only_bring_the_bus_sooner(self):
-        # The feed recomputed 12 minutes out (implied 12:12); the next poll
-        # says 5 (implied 12:10). The estimate follows the new evidence down.
-        add_eta_poll(eastern(dt.date(2026, 11, 5), 12), bus_id=9, eta_minutes=12)
-        add_eta_poll(eastern(dt.date(2026, 11, 5), 12, 5), bus_id=9, eta_minutes=5)
+    def test_a_new_poll_can_raise_the_countdown(self):
+        # The feed revises buses farther out too — 16% of poll pairs in the
+        # Nov 17 audit — so the answer follows the freshest countdown in
+        # either direction. Holding the earliest promise instead (the old
+        # never-rise rule) told riders a bus was coming that then ran late
+        # 56% of the time (#117), so it is gone.
+        add_eta_poll(eastern(dt.date(2026, 11, 5), 12), bus_id=9, eta_minutes=5)
+        add_eta_poll(eastern(dt.date(2026, 11, 5), 12, 5), bus_id=9, eta_minutes=12)
         ours = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 12, 6))
-        self.assertEqual(ours, 4.0)
+        self.assertEqual(ours, 11.0)  # 12:17 promised, asked at 12:06
 
     def test_an_arrival_that_comes_due_reads_zero_then_defers_to_history(self):
         add_eta_poll(eastern(dt.date(2026, 11, 5), 12), bus_id=9, eta_minutes=3)
@@ -844,6 +849,116 @@ class FeedLiveLayerTests(TestCase):
             ours = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 12))
         etas.assert_not_called()
         self.assertIsNone(ours)  # no recorded polls either: nothing to say
+
+
+class CalibrationTests(TestCase):
+    """The countdown corrections (#117): how the fit builds its ladder, what
+    the stored rows make predict_minutes answer, and the nightly command
+    that writes them. With nothing stored — a fresh database, or the job
+    yet to run — the raw countdown answers uncorrected."""
+
+    def setUp(self):
+        cache.clear()
+
+    def tearDown(self):
+        cache.clear()  # the stored fit must never leak into other tests
+
+    def test_countdown_buckets_slice_by_size(self):
+        self.assertEqual(predictions.countdown_bucket(0), 0)
+        self.assertEqual(predictions.countdown_bucket(4.9), 0)
+        self.assertEqual(predictions.countdown_bucket(5), 1)
+        self.assertEqual(predictions.countdown_bucket(19.5), 3)
+        self.assertEqual(predictions.countdown_bucket(20), 4)
+        self.assertEqual(predictions.countdown_bucket(45), 5)
+
+    def test_the_fit_defers_thin_routes_to_the_bucket_median(self):
+        # Route 1's bucket earned MIN_CALIBRATION_SAMPLES residuals, route
+        # 7's did not: the route row keeps the taught median, while route 7's
+        # residuals pool into the all-routes row for the bucket and drag it.
+        residuals = {
+            (1, 1): [2.0] * 10 + [3.0] * 10,
+            (7, 1): [-1.0] * 19,  # thin: under MIN_CALIBRATION_SAMPLES
+        }
+        fit = predictions._fit_corrections(residuals)
+        self.assertEqual(fit.by_route, {(1, 1): 2.5})
+        self.assertEqual(fit.by_bucket, {1: 2.0})
+        self.assertEqual(fit.overall, 2.0)
+        # An empty fit — no residuals at all — corrects nothing.
+        empty = predictions._fit_corrections({})
+        self.assertEqual(empty.by_route, {})
+        self.assertEqual(empty.by_bucket, {})
+        self.assertEqual(empty.overall, 0.0)
+
+    def test_stored_rows_build_the_ladder_and_an_empty_table_answers_raw(self):
+        Calibration.objects.create(route_id=1, bucket=1, delta_minutes=2.0, samples=30)
+        Calibration.objects.create(route_id=None, bucket=2, delta_minutes=1.5, samples=40)
+        Calibration.objects.create(
+            route_id=None, bucket=predictions.OVERALL_BUCKET, delta_minutes=0.5, samples=70
+        )
+        fit = predictions.stored_corrections()
+        self.assertEqual(fit.by_route, {(1, 1): 2.0})
+        self.assertEqual(fit.by_bucket, {2: 1.5})
+        self.assertEqual(fit.overall, 0.5)
+        Calibration.objects.all().delete()
+        cache.clear()  # the cached fit would otherwise outlive its table
+        empty = predictions.stored_corrections()
+        self.assertEqual(empty.by_route, {})
+        self.assertEqual(empty.by_bucket, {})
+        self.assertEqual(empty.overall, 0.0)
+
+    def test_a_small_countdown_answers_raw_even_where_the_fit_speaks(self):
+        # The audit measured the imminent regime as near-perfect raw and a
+        # learned correction there as pure damage (#117), so RAW_MAX
+        # overrules every rung of the ladder.
+        corrections = predictions.Corrections(by_route={(1, 0): -3.0}, by_bucket={0: -3.0}, overall=-3.0)
+        self.assertEqual(predictions._fused_countdown(1, 4.0, corrections), 4.0)
+
+    def test_a_larger_countdown_gets_its_correction_and_never_lands_below_zero(self):
+        corrections = predictions.Corrections(by_route={(1, 1): 3.0}, by_bucket={1: 1.0}, overall=0.5)
+        self.assertEqual(predictions._fused_countdown(1, 8.0, corrections), 11.0)  # the route row
+        self.assertEqual(predictions._fused_countdown(7, 8.0, corrections), 9.0)  # the bucket row
+        self.assertEqual(predictions._fused_countdown(7, 12.0, corrections), 12.5)  # the overall
+        # A correction that would promise a negative wait reads "boarding now".
+        spent = predictions.Corrections(by_route={}, by_bucket={1: -10.0}, overall=0.0)
+        self.assertEqual(predictions._fused_countdown(1, 8.0, spent), 0.0)
+        self.assertIsNone(predictions._fused_countdown(1, None, corrections))
+
+    def test_the_stored_fit_corrects_predict_minutes_until_nothing_is_stored(self):
+        add_eta_poll(eastern(DAY, 12), bus_id=9, eta_minutes=8)
+        Calibration.objects.create(route_id=None, bucket=1, delta_minutes=3.0, samples=25)
+        self.assertEqual(predictions.predict_minutes(1, 100, now=eastern(DAY, 12, 2)), 9.0)
+        Calibration.objects.all().delete()
+        cache.clear()
+        # Nothing stored: the raw countdown answers, so a fresh deploy
+        # degrades safely while the nightly job has yet to run.
+        self.assertEqual(predictions.predict_minutes(1, 100, now=eastern(DAY, 12, 2)), 6.0)
+
+    def test_the_fit_command_stores_the_ladder_and_is_safe_to_run_twice(self):
+        for day in (dt.date(2026, 11, 2), dt.date(2026, 11, 3), dt.date(2026, 11, 4)):
+            for hour in (8, 9, 10, 11, 12, 13, 14):  # seven approaches a day
+                add_eta_poll(eastern(day, hour), bus_id=9, eta_minutes=12)
+                add_eta_poll(eastern(day, hour, 9), bus_id=9, eta_minutes=4)  # arrives :13
+        stdout = StringIO()
+        call_command("fit_calibration", stdout=stdout)
+        rows = {(row.route_id, row.bucket): row.delta_minutes for row in Calibration.objects.all()}
+        self.assertEqual(
+            rows,
+            {
+                (1, 2): 1.0,  # 21 taught residuals, all +1: the countdown ran long
+                (1, 0): 0.0,  # the arrival-eta countdowns were spot on
+                (None, 2): 1.0,
+                (None, 0): 0.0,
+                (None, predictions.OVERALL_BUCKET): 0.5,  # the mixed overall median
+            },
+        )
+        self.assertIn("42 residuals", stdout.getvalue())
+        call_command("fit_calibration", stdout=StringIO())
+        self.assertEqual(Calibration.objects.count(), 5)  # a rerun replaces, never duplicates
+
+    def test_the_fit_command_on_an_empty_history_stores_nothing(self):
+        stdout = StringIO()
+        call_command("fit_calibration", stdout=stdout)
+        self.assertEqual(Calibration.objects.count(), 0)
 
 
 class ConditionedHistoryTests(TestCase):
@@ -1044,10 +1159,43 @@ class EvaluateTests(TestCase):
         self.assertEqual(result["queries"], 1)  # the 12:17 ask had no next bus
         self.assertEqual(result["official_mae"], 0.0)
         self.assertEqual(result["official_aged_mae"], 5.0)
-        # Ours read the revision too (the live layer takes the soonest
-        # implied arrival), and history had no train day to learn from.
+        # Ours read the revision too (the freshest poll's countdown aged to
+        # the ask), and history had no train day to learn from.
         self.assertEqual(result["ours_mae"], 0.0)
         self.assertIsNone(result["history_mae"])
+
+    def test_ours_is_the_countdown_the_fit_corrects(self):
+        # The training days teach one correction: a countdown of 8-12 (any
+        # poll at :00 says 8-12; the bus reliably comes 13 past) ran one
+        # minute long, so bucket 10-15 earns +1.0. The held-out day's query
+        # reads a countdown of 13 — the fit, and only the fit, adds that
+        # minute to ours; the official shows its raw countdown.
+        held_out = next(
+            day
+            for day in (dt.date(2026, 11, 9), dt.date(2026, 11, 10), dt.date(2026, 11, 11))
+            if day.toordinal() % 3 == 0  # what evaluate() will hold out
+        )
+        train_days = [
+            day
+            for day in (dt.date(2026, 11, 2), dt.date(2026, 11, 3), dt.date(2026, 11, 4), dt.date(2026, 11, 5))
+            if day.toordinal() % 3 != 0  # the training side of the split
+        ]
+        # Nov 3 shares the held-out day's residue, so three days survive —
+        # 15 taught residuals, under the 20 a route row needs, which is what
+        # sends the fit down to the all-routes bucket median.
+        self.assertEqual(len(train_days), 3)
+        for day in train_days:
+            for hour in (8, 9, 10, 11, 13):  # five taught approaches a day
+                add_eta_poll(eastern(day, hour), bus_id=9, eta_minutes=12)
+                add_eta_poll(eastern(day, hour, 9), bus_id=9, eta_minutes=4)  # arrives :13
+        for hour, minute, eta in [(11, 55, 25), (12, 0, 15), (12, 10, 5)]:
+            add_eta_poll(eastern(held_out, hour, minute), bus_id=9, eta_minutes=eta)
+        result = predictions.evaluate(stride=2, now=eastern(held_out, 23))
+
+        self.assertEqual(result["queries"], 1)  # the 12:17 ask had no next bus
+        self.assertEqual(result["ours_mae"], 1.0)  # 13 read, 14 answered, 13 true
+        self.assertEqual(result["official_mae"], 0.0)  # the raw countdown was right
+        self.assertEqual(result["official_aged_mae"], 5.0)
 
     def test_an_empty_history_has_nothing_to_score(self):
         result = predictions.evaluate()

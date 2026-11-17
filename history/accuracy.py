@@ -27,11 +27,14 @@ from .predictions import (
     HORIZON,
     QUERY_OFFSET,
     _arrivals_by_pair,
+    _fit_corrections,
+    _fused_countdown,
     _last_arrival_before,
     _learn,
-    _live_minutes_from,
     _predict_history,
     _shown_countdown,
+    _shown_fresh,
+    _shown_residuals,
     _stop_is_served,
     held_out_days,
 )
@@ -63,6 +66,7 @@ def accuracy(since, until):
     profiles = {
         pair: _learn(moments, exclude_dates=test_days) for pair, moments in arrivals_by_pair.items()
     }
+    corrections = _fit_corrections(_shown_residuals(since, until, exclude_dates=test_days))
 
     names = {}  # (kind, key) -> the name the recorded polls served
     signed = defaultdict(float)  # (side, kind, key) -> sum of (predicted - actual)
@@ -86,18 +90,13 @@ def accuracy(since, until):
             by_poll[polled_at][(route_id, stop_id)].append(eta_minutes)
         poll_times = sorted(by_poll)
 
-        # What each poll promised: implied absolute arrivals, per pair, in
-        # poll order — as in evaluate(). Beside it, the countdown the pair
-        # was being shown at each poll, the official app's own display (#116).
-        implied_times = defaultdict(list)
-        implied_arrivals = defaultdict(list)
+        # What the pair was being shown at each poll: the countdown the
+        # official app displays (#116), and the guarded copy ours answers
+        # from (#117) — as in evaluate().
         shown_times = defaultdict(list)
         shown_values = defaultdict(list)
         for polled_at in poll_times:
             for pair, etas in by_poll[polled_at].items():
-                for eta in etas:
-                    implied_times[pair].append(polled_at)
-                    implied_arrivals[pair].append(polled_at + dt.timedelta(minutes=eta))
                 shown_times[pair].append(polled_at)
                 shown_values[pair].append(min(etas))
 
@@ -115,8 +114,10 @@ def accuracy(since, until):
                     continue  # no measurable arrival: neither side gets scored
                 actual = (next_arrival - query_at).total_seconds() / 60
                 profile = profiles.get(pair)
-                ours = _live_minutes_from(
-                    implied_times.get(pair, []), implied_arrivals.get(pair, []), query_at
+                ours = _fused_countdown(
+                    pair[0],
+                    _shown_fresh(shown_times.get(pair, []), shown_values.get(pair, []), query_at),
+                    corrections,
                 )
                 if ours is None and profile is not None:
                     ours = _predict_history(
