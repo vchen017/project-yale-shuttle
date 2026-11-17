@@ -47,8 +47,13 @@ to leave.
   accuracy dashboard scored nightly
   ([#103](https://github.com/vchen017/project-yale-shuttle/pull/103)), saved places
   with Home first ([#104](https://github.com/vchen017/project-yale-shuttle/pull/104)),
+  crowd-report moderation, limits and blocking
+  ([#112](https://github.com/vchen017/project-yale-shuttle/pull/112), [#114](https://github.com/vchen017/project-yale-shuttle/pull/114)),
+  crowding by route and hour for admins ([#113](https://github.com/vchen017/project-yale-shuttle/pull/113)),
+  how old a bus's location is ([#108](https://github.com/vchen017/project-yale-shuttle/pull/108)), the
+  trip-notification agent's tools ([#115](https://github.com/vchen017/project-yale-shuttle/pull/115)),
   and a cleaner nav and home page
-  ([#107](https://github.com/vchen017/project-yale-shuttle/pull/107)).
+  ([#107](https://github.com/vchen017/project-yale-shuttle/pull/107), [#111](https://github.com/vchen017/project-yale-shuttle/pull/111)).
 
 ## What works on staging and production
 
@@ -78,11 +83,12 @@ Kyle's three items are done. Our data added the real stop locations
 ([#54](https://github.com/vchen017/project-yale-shuttle/issues/54)), detours
 ([#55](https://github.com/vchen017/project-yale-shuttle/issues/55)) and old bus
 positions ([#58](https://github.com/vchen017/project-yale-shuttle/issues/58)).
-Three later stories are done early
-([#6](https://github.com/vchen017/project-yale-shuttle/issues/6),
-[#7](https://github.com/vchen017/project-yale-shuttle/issues/7),
-[#17](https://github.com/vchen017/project-yale-shuttle/issues/17)).
-Sprint 3 commits to our MVP: the AI notification flow
-([#11](https://github.com/vchen017/project-yale-shuttle/issues/11)), calendar
-trip plans ([#8](https://github.com/vchen017/project-yale-shuttle/issues/8)) and
-#58, with our technical-challenge items in `docs/mgt656/technical.md`.
+Eight later items are done early
+([#6](https://github.com/vchen017/project-yale-shuttle/issues/6), [#7](https://github.com/vchen017/project-yale-shuttle/issues/7), [#16](https://github.com/vchen017/project-yale-shuttle/issues/16), [#17](https://github.com/vchen017/project-yale-shuttle/issues/17),
+[#18](https://github.com/vchen017/project-yale-shuttle/issues/18), [#19](https://github.com/vchen017/project-yale-shuttle/issues/19), [#28](https://github.com/vchen017/project-yale-shuttle/issues/28), [#58](https://github.com/vchen017/project-yale-shuttle/issues/58)),
+and an audit of how we score the official times added
+[#116](https://github.com/vchen017/project-yale-shuttle/issues/116) to [#118](https://github.com/vchen017/project-yale-shuttle/issues/118).
+Sprint 3 commits to our MVP: the rest of the AI notification flow
+([#11](https://github.com/vchen017/project-yale-shuttle/issues/11)) and calendar
+trip plans ([#8](https://github.com/vchen017/project-yale-shuttle/issues/8)), with our
+technical-challenge items in `docs/mgt656/technical.md`.
