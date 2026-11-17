@@ -32,34 +32,41 @@
       <a class="navbar-brand d-flex align-items-center gap-2" href="{% url 'home' %}">
         <img src="{% static 'core/favicon.svg' %}" alt="" width="28" height="28">Yale Shuttle
       </a>
-      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#nav"
-              aria-controls="nav" aria-expanded="false" aria-label="Menu">
+      <button class="navbar-toggler" type="button" data-bs-toggle="offcanvas" data-bs-target="#nav"
+              aria-controls="nav" aria-label="Menu">
         <span class="navbar-toggler-icon"></span>
       </button>
-      <div class="collapse navbar-collapse" id="nav">
-        <ul class="navbar-nav ms-auto align-items-xl-center">
-          <li class="nav-item"><a class="nav-link" href="{% url 'stops' %}">Next buses</a></li>
-          <li class="nav-item"><a class="nav-link" href="{% url 'crowding' %}">Crowding</a></li>
-          <li class="nav-item"><a class="nav-link" href="{% url 'reliability' %}">Missed bus</a></li>
-          {% if user.is_authenticated %}
-            {% if user.is_staff %}
-              <li class="nav-item"><a class="nav-link" href="{% url 'admin:index' %}">Admin</a></li>
-              <li class="nav-item"><a class="nav-link" href="{% url 'accuracy-dashboard' %}">Accuracy</a></li>
+      {# Below 1200 px the links open in a box under the menu button, over the page (app.css) #}
+      <div class="offcanvas offcanvas-end" tabindex="-1" id="nav" aria-labelledby="nav-title">
+        <div class="offcanvas-header">
+          <span class="offcanvas-title h5 mb-0" id="nav-title">Menu</span>
+          <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+        </div>
+        <div class="offcanvas-body">
+          <ul class="navbar-nav ms-auto align-items-xl-center">
+            <li class="nav-item"><a class="nav-link" href="{% url 'stops' %}">Next buses</a></li>
+            <li class="nav-item"><a class="nav-link" href="{% url 'crowding' %}">Crowding</a></li>
+            <li class="nav-item"><a class="nav-link" href="{% url 'reliability' %}">Missed bus</a></li>
+            {% if user.is_authenticated %}
+              {% if user.is_staff %}
+                <li class="nav-item"><a class="nav-link" href="{% url 'admin:index' %}">Admin</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'accuracy-dashboard' %}">Accuracy</a></li>
+              {% endif %}
+              <li class="nav-item"><a class="nav-link" href="{% url 'my-places' %}">My places</a></li>
+              <li class="nav-item"><a class="nav-link" href="{% url 'notifications' %}">Notifications</a></li>
+              <li class="nav-item"><span class="navbar-text me-xl-2">{{ user.username }}</span></li>
+              <li class="nav-item">
+                <form method="post" action="{% url 'logout' %}">
+                  {% csrf_token %}
+                  <button class="btn btn-link nav-link" type="submit">Log out</button>
+                </form>
+              </li>
+            {% else %}
+              <li class="nav-item"><a class="nav-link" href="{% url 'login' %}">Log in</a></li>
+              <li class="nav-item"><a class="nav-link" href="{% url 'signup' %}">Sign up</a></li>
             {% endif %}
-            <li class="nav-item"><a class="nav-link" href="{% url 'my-places' %}">My places</a></li>
-            <li class="nav-item"><a class="nav-link" href="{% url 'notifications' %}">Notifications</a></li>
-            <li class="nav-item"><span class="navbar-text me-xl-2">{{ user.username }}</span></li>
-            <li class="nav-item">
-              <form method="post" action="{% url 'logout' %}">
-                {% csrf_token %}
-                <button class="btn btn-link nav-link" type="submit">Log out</button>
-              </form>
-            </li>
-          {% else %}
-            <li class="nav-item"><a class="nav-link" href="{% url 'login' %}">Log in</a></li>
-            <li class="nav-item"><a class="nav-link" href="{% url 'signup' %}">Sign up</a></li>
-          {% endif %}
-        </ul>
+          </ul>
+        </div>
       </div>
     </div>
   </nav>
