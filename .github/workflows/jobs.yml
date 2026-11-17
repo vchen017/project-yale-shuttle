@@ -45,8 +45,8 @@ jobs:
       # The jobs run main's code. If main has a migration the database doesn't
       # yet (production before its next promotion), run_job refuses to start,
       # so new code never runs against an old schema.
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version-file: .python-version
           cache: pip
