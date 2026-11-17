@@ -36,7 +36,7 @@ from pathlib import Path
 
 DATA = Path(__file__).parent / "data" / "buildings.json"
 SHORTEST_QUERY = 2  # characters, as for stops
-MOST_BUILDINGS = 4
+MOST_BUILDINGS = 6  # enough for every "sterling" building; a longer list is hard to scroll on a phone
 LONGEST_INITIALS = 4  # words
 FILLER = {"hall", "building", "bldg", "the", "of", "at", "and", "for"}
 

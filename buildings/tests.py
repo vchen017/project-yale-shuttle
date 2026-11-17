@@ -78,8 +78,19 @@ class FindingABuildingTests(SimpleTestCase):
         self.assertEqual(names("university theater"), ["University Theatre"])
         self.assertEqual(names("hopper"), ["Grace Hopper College"])
 
-    def test_at_most_a_few_come_back(self):
-        self.assertLessEqual(len(names("sterling")), search.MOST_BUILDINGS)
+    def test_every_sterling_building_is_listed_with_the_library_first(self):
+        found = names("sterling")
+        self.assertEqual(found[0], "Sterling Memorial Library")
+        self.assertEqual(
+            set(found),
+            {
+                "Sterling Memorial Library", "Sterling Hall of Medicine", "Sterling Law Building",
+                "Sheffield-Sterling-Strathcona Hall", "Sterling Chemistry Laboratory", "Sterling Divinity Quadrangle",
+            },
+        )
+
+    def test_a_broad_word_is_capped_so_the_list_stays_short(self):
+        self.assertEqual(len(names("college")), search.MOST_BUILDINGS)  # 14 match
 
     def test_a_result_is_a_place_like_a_stop_or_a_photon_result(self):
         [place] = search.search("esh")
