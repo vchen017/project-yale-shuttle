@@ -27,7 +27,7 @@
   {% block extra_head %}{% endblock %}
 </head>
 <body class="d-flex flex-column min-vh-100">
-  <nav class="navbar navbar-expand-lg bg-primary" data-bs-theme="dark">
+  <nav class="navbar navbar-expand-xl bg-primary" data-bs-theme="dark">
     <div class="container">
       <a class="navbar-brand d-flex align-items-center gap-2" href="{% url 'home' %}">
         <img src="{% static 'core/favicon.svg' %}" alt="" width="28" height="28">Yale Shuttle
@@ -37,7 +37,7 @@
         <span class="navbar-toggler-icon"></span>
       </button>
       <div class="collapse navbar-collapse" id="nav">
-        <ul class="navbar-nav ms-auto align-items-lg-center">
+        <ul class="navbar-nav ms-auto align-items-xl-center">
           <li class="nav-item"><a class="nav-link" href="{% url 'stops' %}">Next buses</a></li>
           <li class="nav-item"><a class="nav-link" href="{% url 'crowding' %}">Crowding</a></li>
           <li class="nav-item"><a class="nav-link" href="{% url 'reliability' %}">Missed bus</a></li>
@@ -48,7 +48,7 @@
             {% endif %}
             <li class="nav-item"><a class="nav-link" href="{% url 'my-places' %}">My places</a></li>
             <li class="nav-item"><a class="nav-link" href="{% url 'notifications' %}">Notifications</a></li>
-            <li class="nav-item"><span class="navbar-text me-lg-2">{{ user.username }}</span></li>
+            <li class="nav-item"><span class="navbar-text me-xl-2">{{ user.username }}</span></li>
             <li class="nav-item">
               <form method="post" action="{% url 'logout' %}">
                 {% csrf_token %}
