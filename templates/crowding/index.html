@@ -4,7 +4,8 @@
 <h1 class="h3 mb-1">How busy are the buses?</h1>
 <p class="text-body-secondary {% if user.is_staff %}mb-2{% else %}mb-4{% endif %}">Riders report how busy their bus is. You see each route's crowding now, from the last 30 minutes, and what it's usually like at each time of day.</p>
 {% if user.is_staff %}
-  <p class="mb-4"><a href="{% url 'admin:crowding_crowdreport_changelist' %}"><i class="bi bi-shield-check me-1" aria-hidden="true"></i>Moderate crowd reports</a></p>
+  <p class="mb-4"><a href="{% url 'admin:crowding_crowdreport_changelist' %}"><i class="bi bi-shield-check me-1" aria-hidden="true"></i>Moderate crowd reports</a>
+    <a class="ms-3" href="{% url 'crowding-summary' %}"><i class="bi bi-table me-1" aria-hidden="true"></i>Crowding by route and time</a></p>
 {% endif %}
 
 {% for message in messages %}
