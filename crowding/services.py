@@ -83,7 +83,7 @@ def crowding(routes, now=None):
     """
     now = now or timezone.now()
     ids = [route["id"] for route in routes]
-    rows = CrowdReport.objects.filter(
+    rows = CrowdReport.objects.counted().filter(
         route_id__in=ids, created_at__gt=now - TYPICAL_WINDOW, created_at__lte=now
     ).values_list("route_id", "level", "created_at", "is_sample")
 
@@ -141,3 +141,77 @@ def report(user, route_id, route_name, level, now=None):
         return CrowdReport.objects.create(
             user=user, route_id=route_id, route_name=route_name, level=level, created_at=now
         )
+
+
+MAX_SUMMARY_DAYS = 92  # the longest date range the admin summary (#18) covers
+
+
+@dataclass
+class SummaryCell:
+    hour: int  # 0-23, Eastern
+    average: float  # mean level, 0 (empty) to 3 (full)
+    count: int
+    full_count: int  # reports of "Full"
+
+    @property
+    def level(self):
+        """The nearest level, to colour the cell the way the crowding page does."""
+        return average_level([self.average])
+
+    @property
+    def label(self):
+        return Level(self.level).label
+
+
+@dataclass
+class SummaryRow:
+    route_id: int
+    name: str
+    cells: dict  # hour -> SummaryCell, for the hours with reports
+    count: int = 0
+    full_count: int = 0
+
+
+def crowding_summary(start, end):
+    """Average reported crowding per route and hour of day, for the Eastern
+    dates `start` to `end` inclusive (#18).
+
+    Returns (rows, hours): one SummaryRow per route with reports, sorted by
+    name, and the hours (Eastern, ascending) that any route has reports for.
+    Reports an admin removed (#16) don't count. Sample (demo) reports do, as
+    on the crowding page, and `includes_samples` says so. Routes are
+    identified by id, named by their latest report.
+    """
+    tz = timezone.get_current_timezone()
+    first = dt.datetime.combine(start, dt.time.min, tzinfo=tz)
+    after = dt.datetime.combine(end + dt.timedelta(days=1), dt.time.min, tzinfo=tz)
+    reports = (
+        CrowdReport.objects.counted()
+        .filter(created_at__gte=first, created_at__lt=after)
+        .order_by("created_at")
+        .values_list("route_id", "route_name", "level", "created_at", "is_sample")
+    )
+    levels = defaultdict(lambda: defaultdict(list))  # route id -> hour -> [level]
+    names = {}
+    includes_samples = False
+    for route_id, route_name, level, created_at, is_sample in reports:
+        names[route_id] = route_name  # oldest first, so the latest name wins
+        levels[route_id][timezone.localtime(created_at).hour].append(level)
+        includes_samples = includes_samples or is_sample
+
+    rows = []
+    for route_id, by_hour in levels.items():
+        cells = {
+            hour: SummaryCell(hour, sum(found) / len(found), len(found), found.count(Level.FULL))
+            for hour, found in sorted(by_hour.items())
+        }
+        rows.append(
+            SummaryRow(
+                route_id, names[route_id], cells,
+                count=sum(c.count for c in cells.values()),
+                full_count=sum(c.full_count for c in cells.values()),
+            )
+        )
+    rows.sort(key=lambda row: (row.name.casefold(), row.route_id))
+    hours = sorted({hour for row in rows for hour in row.cells})
+    return rows, hours, includes_samples
