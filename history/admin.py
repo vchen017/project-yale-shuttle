@@ -1,5 +1,4 @@
 from django.contrib import admin
-from django.utils import timezone
 
 from .models import (
     AccuracySnapshot,
@@ -60,9 +59,15 @@ class AnnouncementAdmin(admin.ModelAdmin):
     search_fields = ("title", "message")
 
 
+@admin.display(description="commit")
+def short_sha(obj):
+    """The recorder commit a route-stop row came from, shortened like git's."""
+    return obj.commit_sha[:7]
+
+
 @admin.register(RouteStopList)
 class RouteStopListAdmin(admin.ModelAdmin):
-    list_display = ("route_id", "route_name", "first_seen", "stop_count", "short_sha")
+    list_display = ("route_id", "route_name", "first_seen", "stop_count", short_sha)
     list_filter = ("route_id",)
     ordering = ("route_id", "-first_seen")
 
@@ -70,20 +75,12 @@ class RouteStopListAdmin(admin.ModelAdmin):
     def stop_count(self, obj):
         return len(obj.stop_ids)
 
-    @admin.display(description="commit")
-    def short_sha(self, obj):
-        return obj.commit_sha[:7]
-
 
 @admin.register(RouteStopChange)
 class RouteStopChangeAdmin(admin.ModelAdmin):
-    list_display = ("changed_at", "route_id", "added_stop_ids", "removed_stop_ids", "short_sha")
+    list_display = ("changed_at", "route_id", "added_stop_ids", "removed_stop_ids", short_sha)
     list_filter = ("route_id",)
     ordering = ("-changed_at",)
-
-    @admin.display(description="commit")
-    def short_sha(self, obj):
-        return obj.commit_sha[:7]
 
 
 @admin.register(AccuracySnapshot)
@@ -95,7 +92,7 @@ class AccuracySnapshotAdmin(admin.ModelAdmin):
 
     @admin.display(description="computed (Eastern)")
     def computed_eastern(self, obj):
-        return timezone.localtime(obj.computed_at)
+        return obj.computed_eastern
 
 
 @admin.register(RiderReport)

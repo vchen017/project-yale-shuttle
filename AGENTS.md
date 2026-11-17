@@ -60,10 +60,11 @@ or create clashing migrations:
 | App | Owner | What goes in it |
 |---|---|---|
 | `transit` | Vivian, then Ishita | The live Downtowner feed (#36) and the next-buses page (#24) |
-| `history` | Ayush | The imported shuttle history (#22) and our predictions (#23) |
+| `history` | Ayush | The imported shuttle history (#22), our predictions (#23), riders' missed-bus reports (#6) and the accuracy dashboard (#17) |
 | `alerts` | Ishita | Service alerts (#13, #20) |
 | `crowding` | Ishita | Riders' crowding reports, and crowding now and by time of day (#12) |
 | `places` | Ishita | Riders' saved places: Home and favourites (#7) |
+| `buildings` | Austin | Yale buildings by the names riders use, for the trip search (#98) |
 | `notifications` | Vivian | Browser push: riders' devices and sending to them (#27), and the trip-notification job (#29) |
 | `assistant` | Austin | The AI feature (#37, #28) |
 | `jobs` | Vivian | The scheduled-job runner and its run log (#40). Each app's own jobs go in its `jobs.py` |
@@ -179,11 +180,12 @@ working with the AI: its first tests called the real feed, so i had it mock the 
   [downtowner-recorder](https://github.com/vchen017/downtowner-recorder), under
   `data/<UTC date>/`. Its README describes each CSV's columns, and
   `data/gaps.csv` lists the polls that are missing.
-- **Buildings and addresses** for the trip search come from
-  [Photon](https://photon.komoot.io), a free search over OpenStreetMap data.
-  Riders' browsers ask it directly (`core/static/core/place-search.js`),
-  because it refuses requests from our Render servers. `transit/places.py`
-  matches our stops.
+- **Yale buildings** for the trip search come from our own list,
+  `buildings/data/buildings.json`, matched by the names riders use (#98).
+  **Other addresses** come from [Photon](https://photon.komoot.io), a free
+  search over OpenStreetMap data. Riders' browsers ask it directly
+  (`core/static/core/place-search.js`), because it refuses requests from our
+  Render servers. `transit/places.py` matches our stops.
 - **Feed quirks we've found** in the recorded data:
   - Route short names aren't unique: "BW" is both Blue – Weekend Daytime
     (route 4) and Blue West (route 16). Always identify routes by their
