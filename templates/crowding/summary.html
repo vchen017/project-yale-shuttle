@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Crowding by route and time · Yale Shuttle{% endblock %}
+{% block content %}
+<h1 class="h3 mb-1">Crowding by route and time</h1>
+<p class="text-body-secondary mb-4">
+  The average of riders' reports for each route and hour of the day (Eastern), to see which runs need more capacity.
+  Reports an admin removed don't count.
+</p>
+
+<div class="card mb-4"><div class="card-body">
+  <form class="row g-2 align-items-end" method="get">
+    <div class="col-6 col-sm-3">
+      <label class="form-label fw-medium mb-1" for="from">From</label>
+      <input class="form-control" type="date" id="from" name="from" value="{{ start|date:'Y-m-d' }}">
+    </div>
+    <div class="col-6 col-sm-3">
+      <label class="form-label fw-medium mb-1" for="to">To</label>
+      <input class="form-control" type="date" id="to" name="to" value="{{ end|date:'Y-m-d' }}">
+    </div>
+    <div class="col-12 col-sm-auto">
+      <button class="btn btn-primary w-100" type="submit"><i class="bi bi-search me-1" aria-hidden="true"></i>Show this range</button>
+    </div>
+  </form>
+  {% if error %}<div class="alert alert-warning py-2 mt-3 mb-0" role="alert">{{ error }} Showing the default range.</div>{% endif %}
+</div></div>
+
+{% if not rows %}
+  <p class="text-body-secondary">No reports from {{ start|date:"M j" }} to {{ end|date:"M j, Y" }}.</p>
+{% else %}
+  <p class="small text-body-secondary">
+    Each cell is the average level, from 0 (empty) to 3 (full), and how many reports it's from.
+    <span class="crowd-full-key"><i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i> Highlighted</span>
+    means at least one rider reported the bus full.
+  </p>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle crowd-summary mb-2">
+      <caption class="visually-hidden">Average reported crowding per route and hour, {{ start|date:"M j" }} to {{ end|date:"M j, Y" }}</caption>
+      <thead>
+        <tr>
+          <th scope="col">Route</th>
+          {% for hour in hours %}<th scope="col" class="text-center">{{ hour|time:"g A" }}</th>{% endfor %}
+          <th scope="col" class="text-end">Reports</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          <tr data-route="{{ row.route_id }}">
+            <th scope="row" class="text-nowrap fw-semibold">{{ row.name }}</th>
+            {% for hour in hours %}
+              {% for h, cell in row.cells.items %}{% if h == hour.hour %}
+                <td class="text-center crowd-{{ cell.level }}{% if cell.full_count %} crowd-full-cell{% endif %}"
+                    title="{{ cell.count }} report{{ cell.count|pluralize }}, {{ cell.full_count }} full">
+                  <span class="fw-bold">{{ cell.average|floatformat:1 }}</span>
+                  <span class="small text-body-secondary">({{ cell.count }})</span>
+                  {% if cell.full_count %}<i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i><span class="visually-hidden">{{ cell.full_count }} reported full</span>{% endif %}
+                </td>
+              {% endif %}{% endfor %}
+              {% if hour.hour not in row.cells %}<td class="text-center text-body-secondary">–</td>{% endif %}
+            {% endfor %}
+            <td class="text-end text-nowrap">{{ row.count }}{% if row.full_count %} <span class="small text-danger">({{ row.full_count }} full)</span>{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if includes_samples %}
+    <p class="small text-body-secondary"><i class="bi bi-info-circle me-1" aria-hidden="true"></i>Includes sample reports from our demo data.</p>
+  {% endif %}
+{% endif %}
+<p><a href="{% url 'crowding' %}"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Back to crowding</a></p>
+{% endblock %}
