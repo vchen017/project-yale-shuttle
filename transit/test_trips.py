@@ -57,6 +57,9 @@ def photon(answer=PHOTON):
     return mock.Mock(return_value=response)
 
 
+# These test how Photon's answers are handled, so our own buildings (#98, see
+# buildings/tests.py) are switched off here.
+@mock.patch("transit.places.find_buildings", new=lambda query: [])
 @mock.patch("transit.places.urlopen", new_callable=photon)
 class PlaceSearchTests(SimpleTestCase):
     def setUp(self):
