@@ -118,15 +118,16 @@ def trip(request):
 def places_json(request):
     """The places matching what the rider types, ?q=, for the trip search's
     suggestions (story #5): with ?mine=1, a logged-in rider's saved places
-    first (#7), all of them when nothing is typed, then our stops. The browser
-    adds buildings and addresses from Photon itself (see transit/places.py)."""
+    first (#7), all of them when nothing is typed, then our stops and Yale
+    buildings (issue #98). The browser adds other buildings and addresses from
+    Photon itself (see transit/places.py)."""
     query = request.GET.get("q", "")
     mine = saved_places.matching(request.user, query) if request.GET.get("mine") else []
     try:
         choices = served_stops()
     except FeedUnavailable:
-        choices = []  # saved places, and the browser's buildings and addresses, still work
-    response = JsonResponse({"places": mine + places.stops_named(query, choices)})
+        choices = []  # saved places, our buildings, and the browser's addresses still work
+    response = JsonResponse({"places": mine + places.our_places(query, choices)})
     # Saved places are the rider's own: never kept where someone else could get them.
     response["Cache-Control"] = "private, no-cache" if request.GET.get("mine") else "max-age=300"
     return response

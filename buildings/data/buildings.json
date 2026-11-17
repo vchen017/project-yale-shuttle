@@ -1,0 +1,791 @@
+{
+ "about": "Yale buildings for the trip search (issue #98). Official names and abbreviations come from the two sources below, retrieved 2026-11-16; coordinates and street addresses come from OpenStreetMap. To add a building, add an entry with its abbreviation, official name, street, lat and lon. Optional: also_known_as lists other names for it (OpenStreetMap's name when it differs from the official one), and short_names lists a bare word riders type for it when several buildings share that word. A building with short_names comes first for exactly that word, ahead of abbreviations: 'sterling' is Sterling Memorial Library and 'bass' is Bass Library, added after the review of PR #101 so that Find my bus plans a trip to the building most people mean.",
+ "sources": {
+  "college": {
+   "title": "Yale College Programs of Study 2026-2027, Building Abbreviations",
+   "url": "https://catalog.yale.edu/ycps/building-abbreviations/",
+   "used_for": "all 95 entries except the 15 address-style ones such as '35 Broadway', which Photon already finds"
+  },
+  "medicine": {
+   "title": "Yale School of Medicine, A to Z index: Abbreviations",
+   "url": "https://medicine.yale.edu/about/a-to-z-index/abbreviations/",
+   "used_for": "entries whose name ends in Hall, Building, Pavilion, Library, Laboratory or Hospital and that the Yale College list doesn't have"
+  },
+  "coordinates": {
+   "title": "OpenStreetMap contributors (ODbL), read through the Overpass API on 2026-11-16",
+   "url": "https://www.openstreetmap.org/copyright",
+   "used_for": "lat, lon and street. A building is included only if an OpenStreetMap object within 2 km of campus has a name that fits its official name; also_known_as is OpenStreetMap's name when it differs from the official one"
+  }
+ },
+ "left_out": {
+  "no safe coordinates": [
+   "Durfee Hall (D)",
+   "Farnam Memorial Building (FMB)",
+   "Fitkin Memorial Pavilion (FMP)",
+   "Jane Ellen Hope Building (JEH)",
+   "Tompkins Memorial Pavilion (TMP)"
+  ],
+  "source typo not corrected": "The Yale College list has the abbreviation GEOR350 for '250 George Street (Child Study Center)'. It's address-style, so it's left out anyway."
+ },
+ "buildings": [
+  {
+   "abbr": "AKW",
+   "name": "Arthur K. Watson Hall",
+   "street": "51 Prospect Street",
+   "lat": 41.31311,
+   "lon": -72.92485,
+   "source": "college"
+  },
+  {
+   "abbr": "BASS",
+   "name": "Bass Center for Molecular and Structural Biology",
+   "street": "266 Whitney Avenue",
+   "lat": 41.31809,
+   "lon": -72.92189,
+   "source": "college",
+   "also_known_as": [
+    "Bass Center"
+   ]
+  },
+  {
+   "abbr": "BASSLB",
+   "name": "Bass Library",
+   "street": "",
+   "lat": 41.31062,
+   "lon": -72.92756,
+   "source": "college",
+   "short_names": [
+    "Bass"
+   ]
+  },
+  {
+   "abbr": "BATTELL",
+   "name": "Battell Chapel",
+   "street": "400 College",
+   "lat": 41.30942,
+   "lon": -72.92757,
+   "source": "college"
+  },
+  {
+   "abbr": "BCMM",
+   "name": "Boyer Center for Molecular Medicine",
+   "street": "295 Congress Avenue",
+   "lat": 41.3025,
+   "lon": -72.93279,
+   "source": "college",
+   "also_known_as": [
+    "Boyer Center"
+   ]
+  },
+  {
+   "abbr": "BCT",
+   "name": "Becton Engineering and Applied Science Center",
+   "street": "15 Prospect Street",
+   "lat": 41.31262,
+   "lon": -72.92514,
+   "source": "college",
+   "also_known_as": [
+    "Becton Center"
+   ]
+  },
+  {
+   "abbr": "BF",
+   "name": "Benjamin Franklin College",
+   "street": "90 Prospect Street",
+   "lat": 41.31473,
+   "lon": -72.92552,
+   "source": "college"
+  },
+  {
+   "abbr": "BK",
+   "name": "Berkeley College",
+   "street": "205 Elm Street",
+   "lat": 41.31065,
+   "lon": -72.92788,
+   "source": "college"
+  },
+  {
+   "abbr": "BM",
+   "name": "Charles W. Bingham Hall",
+   "street": "300 College Street",
+   "lat": 41.30771,
+   "lon": -72.92878,
+   "source": "college",
+   "also_known_as": [
+    "Bingham Hall"
+   ]
+  },
+  {
+   "abbr": "BML",
+   "name": "Brady Memorial Laboratory",
+   "street": "310 Cedar Street",
+   "lat": 41.30232,
+   "lon": -72.93406,
+   "source": "college"
+  },
+  {
+   "abbr": "BR",
+   "name": "Branford College",
+   "street": "",
+   "lat": 41.30967,
+   "lon": -72.92992,
+   "source": "college"
+  },
+  {
+   "abbr": "BRBL",
+   "name": "Beinecke Rare Book and Manuscript Library",
+   "street": "121 Wall Street",
+   "lat": 41.3116,
+   "lon": -72.92732,
+   "source": "college"
+  },
+  {
+   "abbr": "C",
+   "name": "Connecticut Hall",
+   "street": "1017 Chapel Street",
+   "lat": 41.30818,
+   "lon": -72.92885,
+   "source": "college"
+  },
+  {
+   "abbr": "CCAM",
+   "name": "Center for Collaborative Arts and Media",
+   "street": "1120 Chapel Street",
+   "lat": 41.30764,
+   "lon": -72.93194,
+   "source": "college"
+  },
+  {
+   "abbr": "CRB",
+   "name": "Class of 1954 Chemistry Research Building",
+   "street": "275 Prospect Street",
+   "lat": 41.31928,
+   "lon": -72.92261,
+   "source": "college"
+  },
+  {
+   "abbr": "DAVIES",
+   "name": "Davies Auditorium, Becton Center",
+   "street": "15 Prospect Street",
+   "lat": 41.31262,
+   "lon": -72.92514,
+   "source": "college",
+   "also_known_as": [
+    "Becton Center"
+   ]
+  },
+  {
+   "abbr": "DC",
+   "name": "Davenport College",
+   "street": "248 York Street",
+   "lat": 41.31049,
+   "lon": -72.93132,
+   "source": "college"
+  },
+  {
+   "abbr": "DL",
+   "name": "Dunham Laboratory",
+   "street": "10 Hillhouse Avenue",
+   "lat": 41.31233,
+   "lon": -72.92452,
+   "source": "college"
+  },
+  {
+   "abbr": "DOW",
+   "name": "Dow Hall",
+   "street": "370 Temple Street",
+   "lat": 41.31135,
+   "lon": -72.92387,
+   "source": "college"
+  },
+  {
+   "abbr": "EM",
+   "name": "Edwin McClellan Hall",
+   "street": "1037 Chapel Street",
+   "lat": 41.30836,
+   "lon": -72.9293,
+   "source": "college",
+   "also_known_as": [
+    "McClellan Hall"
+   ]
+  },
+  {
+   "abbr": "ES",
+   "name": "Ezra Stiles College",
+   "street": "302 York Street",
+   "lat": 41.31257,
+   "lon": -72.93114,
+   "source": "college"
+  },
+  {
+   "abbr": "ESC",
+   "name": "Class of 1954 Environmental Science Center",
+   "street": "21 Sachem Street",
+   "lat": 41.31613,
+   "lon": -72.9218,
+   "source": "college"
+  },
+  {
+   "abbr": "EVANS",
+   "name": "Edward P. Evans Hall",
+   "street": "165 Whitney Avenue",
+   "lat": 41.31516,
+   "lon": -72.92016,
+   "source": "college"
+  },
+  {
+   "abbr": "F",
+   "name": "Farnam Hall",
+   "street": "380 College Street",
+   "lat": 41.30908,
+   "lon": -72.92767,
+   "source": "college"
+  },
+  {
+   "abbr": "GH",
+   "name": "Grace Hopper College",
+   "street": "",
+   "lat": 41.30998,
+   "lon": -72.92724,
+   "source": "college",
+   "also_known_as": [
+    "Hopper College"
+   ]
+  },
+  {
+   "abbr": "GML",
+   "name": "Greeley Memorial Laboratory",
+   "street": "370 Prospect Street",
+   "lat": 41.32195,
+   "lon": -72.92452,
+   "source": "college"
+  },
+  {
+   "abbr": "GRN",
+   "name": "Holcombe T. Green, Jr., Hall",
+   "street": "1156 Chapel Street",
+   "lat": 41.30832,
+   "lon": -72.93299,
+   "source": "college",
+   "also_known_as": [
+    "Green Hall"
+   ]
+  },
+  {
+   "abbr": "HENDRIE",
+   "name": "Hendrie Hall",
+   "street": "165 Elm Street",
+   "lat": 41.30953,
+   "lon": -72.92608,
+   "source": "college"
+  },
+  {
+   "abbr": "HQ",
+   "name": "Humanities Quadrangle",
+   "street": "320 York Street",
+   "lat": 41.31231,
+   "lon": -72.92936,
+   "source": "college"
+  },
+  {
+   "abbr": "JE",
+   "name": "Jonathan Edwards College",
+   "street": "68 High Street",
+   "lat": 41.30904,
+   "lon": -72.93046,
+   "source": "college"
+  },
+  {
+   "abbr": "K",
+   "name": "Kirtland Hall",
+   "street": "2 Hillhouse Avenue",
+   "lat": 41.31189,
+   "lon": -72.92463,
+   "source": "college"
+  },
+  {
+   "abbr": "KGL",
+   "name": "Kline Geology Laboratory",
+   "street": "210 Whitney Avenue",
+   "lat": 41.31658,
+   "lon": -72.9211,
+   "source": "college"
+  },
+  {
+   "abbr": "KRN",
+   "name": "Kroon Hall",
+   "street": "195 Prospect Street",
+   "lat": 41.31679,
+   "lon": -72.92335,
+   "source": "college"
+  },
+  {
+   "abbr": "KT",
+   "name": "Kline Tower",
+   "street": "219 Prospect Street",
+   "lat": 41.31728,
+   "lon": -72.92253,
+   "source": "college"
+  },
+  {
+   "abbr": "L",
+   "name": "Lawrance Hall",
+   "street": "358 College Street",
+   "lat": 41.3087,
+   "lon": -72.92795,
+   "source": "college",
+   "also_known_as": [
+    "Lawrence Hall"
+   ]
+  },
+  {
+   "abbr": "LC",
+   "name": "Linsly-Chittenden Hall",
+   "street": "63 High Street",
+   "lat": 41.3086,
+   "lon": -72.9295,
+   "source": "college"
+  },
+  {
+   "abbr": "LEPH",
+   "name": "Laboratory of Epidemiology and Public Health",
+   "street": "60 College Street",
+   "lat": 41.30374,
+   "lon": -72.93216,
+   "source": "college"
+  },
+  {
+   "abbr": "LFOP",
+   "name": "Leitner Family Observatory and Planetarium",
+   "street": "355 Prospect Street",
+   "lat": 41.32113,
+   "lon": -72.92195,
+   "source": "college"
+  },
+  {
+   "abbr": "LGH",
+   "name": "Abby and Mitch Leigh Hall",
+   "street": "435 College Street",
+   "lat": 41.30986,
+   "lon": -72.92636,
+   "source": "college",
+   "also_known_as": [
+    "Leigh Hall"
+   ]
+  },
+  {
+   "abbr": "LOM",
+   "name": "Leet Oliver Memorial Hall",
+   "street": "12 Hillhouse Avenue",
+   "lat": 41.31275,
+   "lon": -72.92432,
+   "source": "college"
+  },
+  {
+   "abbr": "LORIA",
+   "name": "Jeffrey H. Loria Center",
+   "street": "190 York Street",
+   "lat": 41.30902,
+   "lon": -72.93174,
+   "source": "college",
+   "also_known_as": [
+    "Loria Center"
+   ]
+  },
+  {
+   "abbr": "LUCE",
+   "name": "Henry R. Luce Hall",
+   "street": "34 Hillhouse Avenue",
+   "lat": 41.31442,
+   "lon": -72.92433,
+   "source": "college",
+   "also_known_as": [
+    "Luce Hall"
+   ]
+  },
+  {
+   "abbr": "LWR",
+   "name": "Lanman-Wright Memorial Hall",
+   "street": "206 Elm Street",
+   "lat": 41.30979,
+   "lon": -72.92868,
+   "source": "college",
+   "also_known_as": [
+    "Lanman-Wright Hall"
+   ]
+  },
+  {
+   "abbr": "MC",
+   "name": "Morse College",
+   "street": "304 York Street",
+   "lat": 41.31273,
+   "lon": -72.93005,
+   "source": "college"
+  },
+  {
+   "abbr": "MEC",
+   "name": "Malone Engineering Center",
+   "street": "55 Prospect Street",
+   "lat": 41.31339,
+   "lon": -72.92473,
+   "source": "college",
+   "also_known_as": [
+    "Malone Center"
+   ]
+  },
+  {
+   "abbr": "ML",
+   "name": "Mason Laboratory",
+   "street": "9 Hillhouse Avenue",
+   "lat": 41.31213,
+   "lon": -72.9236,
+   "source": "college"
+  },
+  {
+   "abbr": "MY",
+   "name": "Pauli Murray College",
+   "street": "130 Prospect Street",
+   "lat": 41.31572,
+   "lon": -72.92569,
+   "source": "college"
+  },
+  {
+   "abbr": "OML",
+   "name": "Osborn Memorial Laboratories",
+   "street": "165 Prospect Street",
+   "lat": 41.31642,
+   "lon": -72.92361,
+   "source": "college"
+  },
+  {
+   "abbr": "PC",
+   "name": "Pierson College",
+   "street": "261 Park Street",
+   "lat": 41.31002,
+   "lon": -72.93212,
+   "source": "college"
+  },
+  {
+   "abbr": "PH",
+   "name": "Phelps Hall",
+   "street": "344 College Street",
+   "lat": 41.30844,
+   "lon": -72.92815,
+   "source": "college"
+  },
+  {
+   "abbr": "PWG",
+   "name": "Payne Whitney Gymnasium",
+   "street": "70 Tower Parkway",
+   "lat": 41.31372,
+   "lon": -72.93102,
+   "source": "college"
+  },
+  {
+   "abbr": "RDH",
+   "name": "Rudolph Hall",
+   "street": "180 York Street",
+   "lat": 41.30877,
+   "lon": -72.93185,
+   "source": "college"
+  },
+  {
+   "abbr": "RKZ",
+   "name": "Rosenkranz Hall",
+   "street": "115 Prospect Street",
+   "lat": 41.31469,
+   "lon": -72.92436,
+   "source": "college"
+  },
+  {
+   "abbr": "RSN",
+   "name": "Rosenfeld Hall",
+   "street": "109 Grove Street",
+   "lat": 41.3111,
+   "lon": -72.92331,
+   "source": "college"
+  },
+  {
+   "abbr": "S",
+   "name": "Sage Hall",
+   "street": "205 Prospect Street",
+   "lat": 41.31714,
+   "lon": -72.92367,
+   "source": "college"
+  },
+  {
+   "abbr": "SCL",
+   "name": "Sterling Chemistry Laboratory",
+   "street": "225 Prospect Street",
+   "lat": 41.31824,
+   "lon": -72.92292,
+   "source": "college"
+  },
+  {
+   "abbr": "SDQ",
+   "name": "Sterling Divinity Quadrangle",
+   "street": "",
+   "lat": 41.32348,
+   "lon": -72.92237,
+   "source": "college",
+   "also_known_as": [
+    "Divinity Quadrangle"
+   ]
+  },
+  {
+   "abbr": "SHM",
+   "name": "Sterling Hall of Medicine",
+   "street": "111 Cedar Street",
+   "lat": 41.30319,
+   "lon": -72.93352,
+   "source": "college"
+  },
+  {
+   "abbr": "SLB",
+   "name": "Sterling Law Building",
+   "street": "127 Wall Street",
+   "lat": 41.31204,
+   "lon": -72.92814,
+   "source": "college"
+  },
+  {
+   "abbr": "SM",
+   "name": "Silliman College",
+   "street": "",
+   "lat": 41.31088,
+   "lon": -72.92488,
+   "source": "college"
+  },
+  {
+   "abbr": "SMH",
+   "name": "Sprague Memorial Hall",
+   "street": "470 College Street",
+   "lat": 41.31074,
+   "lon": -72.9266,
+   "source": "college"
+  },
+  {
+   "abbr": "SML",
+   "name": "Sterling Memorial Library",
+   "street": "",
+   "lat": 41.31123,
+   "lon": -72.92875,
+   "source": "college",
+   "also_known_as": [
+    "Sterling Library"
+   ],
+   "short_names": [
+    "Sterling"
+   ]
+  },
+  {
+   "abbr": "SPL",
+   "name": "Sloane Physics Laboratory",
+   "street": "217 Prospect Street",
+   "lat": 41.3173,
+   "lon": -72.92317,
+   "source": "college"
+  },
+  {
+   "abbr": "SSS",
+   "name": "Sheffield-Sterling-Strathcona Hall",
+   "street": "1 Prospect Street",
+   "lat": 41.31192,
+   "lon": -72.9251,
+   "source": "college"
+  },
+  {
+   "abbr": "STOECK",
+   "name": "Stoeckel Hall",
+   "street": "469 College Street",
+   "lat": 41.31049,
+   "lon": -72.92595,
+   "source": "college"
+  },
+  {
+   "abbr": "SY",
+   "name": "Saybrook College",
+   "street": "242 Elm Street",
+   "lat": 41.31015,
+   "lon": -72.92958,
+   "source": "college"
+  },
+  {
+   "abbr": "TAC",
+   "name": "The Anlyan Center",
+   "street": "300 Cedar Street",
+   "lat": 41.30118,
+   "lon": -72.93418,
+   "source": "college"
+  },
+  {
+   "abbr": "TC",
+   "name": "Trumbull College",
+   "street": "",
+   "lat": 41.3107,
+   "lon": -72.92919,
+   "source": "college"
+  },
+  {
+   "abbr": "TD",
+   "name": "Timothy Dwight College",
+   "street": "345 Temple Street",
+   "lat": 41.31033,
+   "lon": -72.92371,
+   "source": "college"
+  },
+  {
+   "abbr": "UT",
+   "name": "University Theatre",
+   "street": "",
+   "lat": 41.30973,
+   "lon": -72.93118,
+   "source": "college",
+   "also_known_as": [
+    "University Theater"
+   ]
+  },
+  {
+   "abbr": "V",
+   "name": "Vanderbilt Hall",
+   "street": "1035 Chapel Street",
+   "lat": 41.30792,
+   "lon": -72.92934,
+   "source": "college"
+  },
+  {
+   "abbr": "W",
+   "name": "Welch Hall",
+   "street": "",
+   "lat": 41.30817,
+   "lon": -72.92833,
+   "source": "college"
+  },
+  {
+   "abbr": "WGS",
+   "name": "Whitney Grove Square",
+   "street": "2 Whitney Avenue",
+   "lat": 41.31086,
+   "lon": -72.92289,
+   "source": "college"
+  },
+  {
+   "abbr": "WL",
+   "name": "Wright Laboratory",
+   "street": "272 Whitney Avenue",
+   "lat": 41.319,
+   "lon": -72.92072,
+   "source": "college"
+  },
+  {
+   "abbr": "WLH",
+   "name": "William L. Harkness Hall",
+   "street": "",
+   "lat": 41.31068,
+   "lon": -72.9268,
+   "source": "college"
+  },
+  {
+   "abbr": "WTS",
+   "name": "Watson Center",
+   "street": "60 Sachem Street",
+   "lat": 41.31563,
+   "lon": -72.92371,
+   "source": "college"
+  },
+  {
+   "abbr": "YCBA",
+   "name": "Yale Center for British Art",
+   "street": "1080 Chapel Street",
+   "lat": 41.3079,
+   "lon": -72.93086,
+   "source": "college"
+  },
+  {
+   "abbr": "YSB",
+   "name": "Yale Science Building",
+   "street": "260 Whitney Avenue",
+   "lat": 41.31739,
+   "lon": -72.92161,
+   "source": "college"
+  },
+  {
+   "abbr": "YUAG",
+   "name": "Yale University Art Gallery",
+   "street": "1111 Chapel Street",
+   "lat": 41.30843,
+   "lon": -72.93067,
+   "source": "college"
+  },
+  {
+   "abbr": "CWML",
+   "name": "Cushing Whitney Memorial Library",
+   "street": "333 Cedar Street",
+   "lat": 41.303,
+   "lon": -72.93324,
+   "source": "medicine",
+   "also_known_as": [
+    "Harvey Cushing/John Hay Whitney Medical Library"
+   ]
+  },
+  {
+   "abbr": "ESH",
+   "name": "Edward S. Harkness Memorial Hall",
+   "street": "367 Cedar Street",
+   "lat": 41.30439,
+   "lon": -72.93409,
+   "source": "medicine",
+   "also_known_as": [
+    "Harkness Memorial Hall"
+   ]
+  },
+  {
+   "abbr": "LH",
+   "name": "Lauder Hall",
+   "street": "310 Cedar Street",
+   "lat": 41.30192,
+   "lon": -72.93419,
+   "source": "medicine"
+  },
+  {
+   "abbr": "WWW",
+   "name": "William Wirt Winchester Building",
+   "street": "25 York Street",
+   "lat": 41.30335,
+   "lon": -72.93462,
+   "source": "medicine"
+  },
+  {
+   "abbr": "YNHCH",
+   "name": "Yale New Haven Children's Hospital",
+   "street": "1 Park Street",
+   "lat": 41.30424,
+   "lon": -72.93633,
+   "source": "medicine"
+  },
+  {
+   "abbr": "YNHH",
+   "name": "Yale New Haven Hospital",
+   "street": "20 York Street",
+   "lat": 41.30442,
+   "lon": -72.9356,
+   "source": "medicine"
+  },
+  {
+   "abbr": "YNHPH",
+   "name": "Yale New Haven Psychiatric Hospital",
+   "street": "184 Liberty Street",
+   "lat": 41.30159,
+   "lon": -72.93285,
+   "source": "medicine"
+  },
+  {
+   "abbr": "YPB",
+   "name": "Yale Physicians Building",
+   "street": "800 Howard Avenue",
+   "lat": 41.30257,
+   "lon": -72.93624,
+   "source": "medicine"
+  }
+ ]
+}

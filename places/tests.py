@@ -67,6 +67,8 @@ class AddingTests(PlacesTestCase):
         self.assertEqual(saved.address, "Science Hill (shuttle stop)")
         self.assertEqual((saved.lat, saved.lon), (41.316, -72.922))
 
+    # Photon's part of the lookup, so our own Yale buildings (#98) are switched off.
+    @mock.patch("transit.places.find_buildings", new=lambda query: [])
     def test_a_typed_address_is_looked_up_with_photon(self):
         self.add("Library", location="sterling library", location_at="")
         saved = self.rider.places.get()
@@ -316,7 +318,8 @@ class TripSearchTests(PlacesTestCase):
 
     def test_a_place_matches_on_its_address_too(self):
         place(self.rider, "Gym", address="Payne Whitney Gym")
-        self.assertEqual([p["name"] for p in self.suggest("whitney", mine=1).json()["places"]], ["Gym", "Payne Whitney"])
+        names = [p["name"] for p in self.suggest("whitney", mine=1).json()["places"]]
+        self.assertEqual(names[:2], ["Gym", "Payne Whitney"])  # then our Yale buildings (#98)
 
     def test_saved_places_need_asking_for(self):
         place(self.rider, "Union office")

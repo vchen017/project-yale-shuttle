@@ -5,8 +5,9 @@
 //   placeSearch.item(place, id) -> an <li> for a list of suggestions
 //
 // The places are ours first, from /places.json (the rider's saved places when
-// placesUrl asks for them with mine=1, then our stops), then buildings and
-// addresses from Photon. Photon (https://photon.komoot.io), a free search over
+// placesUrl asks for them with mine=1, then our stops and Yale buildings),
+// then buildings and addresses from Photon, without the ones we already
+// named. Photon (https://photon.komoot.io), a free search over
 // OpenStreetMap data, refuses requests from our Render servers, so the browser
 // asks it directly, the way the map loads its tiles. Its results are kept to
 // New Haven and its neighbours, nearer campus first, as in transit/places.py.
@@ -15,13 +16,15 @@ window.placeSearch = (() => {
   const PHOTON_AREA = { lat: "41.3111", lon: "-72.9267", zoom: "14", bbox: "-73.05,41.24,-72.83,41.40" };
   const MOST_PLACES = 5;
 
-  // Ours, then Photon's. Either can fail without taking the other with it.
+  // Ours, then Photon's without the ones we already named (#98). Either can
+  // fail without taking the other with it.
   async function find(query, { placesUrl, signal } = {}) {
     const [ours, addresses] = await Promise.all([
       orNothing(fromUs(placesUrl, query, signal)),
       orNothing(photon(query, signal)),
     ]);
-    return [...ours, ...addresses];
+    const named = new Set(ours.map((place) => place.name.toLowerCase()));
+    return [...ours, ...addresses.filter((place) => !named.has(place.name.toLowerCase()))];
   }
 
   async function orNothing(promise) {

@@ -1,7 +1,8 @@
 // The trip search (story #5): two boxes, where the rider is starting and where
 // they're going. They type an address, a building or a stop, and pick from the
 // places suggested as they type (place-search.js): a logged-in rider's saved
-// places (#7), our stops, then buildings and addresses from Photon. A
+// places (#7), our stops and Yale buildings (#98), then buildings and
+// addresses from Photon. A
 // logged-in rider sees their saved places as soon as they tap an empty box.
 // Picking fills in the place's coordinates; once both boxes have a place, the
 // search runs. A place typed but not picked gets its top suggestion when the
