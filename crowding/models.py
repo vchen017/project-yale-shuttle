@@ -57,3 +57,33 @@ class CrowdReport(models.Model):
 
     def __str__(self):
         return f"{self.route_name}: {self.get_level_display()} at {self.created_at:%Y-%m-%d %H:%M} UTC"
+
+
+class ReportBlock(models.Model):
+    """An admin's block on a rider's crowd reports (#19), with the reason.
+
+    A rider is blocked while a row for them has no `unblocked_at`. Unblocking
+    keeps the row, so the history of who was blocked and why stays.
+    """
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="report_blocks")
+    reason = models.TextField(help_text="Why, for other admins. Riders aren't shown it.")
+    blocked_at = models.DateTimeField(default=timezone.now)
+    blocked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    unblocked_at = models.DateTimeField(null=True, blank=True)
+    unblocked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+
+    class Meta:
+        ordering = ["-blocked_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user"], condition=models.Q(unblocked_at__isnull=True), name="one_active_report_block"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.user} ({'blocked' if self.unblocked_at is None else 'unblocked'})"

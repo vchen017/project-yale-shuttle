@@ -14,11 +14,15 @@ from transit.network import DEFAULT_COLOR, network
 from .forms import ReportForm
 from .models import CrowdReport
 from .services import (
+    HOURLY_LIMIT,
     MAX_SUMMARY_DAYS,
     TYPICAL_WINDOW,
+    Blocked,
+    TooMany,
     TooSoon,
     crowding,
     crowding_summary,
+    is_blocked,
     report,
 )
 
@@ -82,11 +86,21 @@ def _date(value):
 def report_crowding(request):
     """Save a logged-in rider's report, one per route every 10 minutes."""
     routes, running, feed_ok = _routes()
+    if is_blocked(request.user):
+        return _render(request, routes, running, feed_ok, status=403)
     form = ReportForm(request.POST, routes=routes if running else [])
     if form.is_valid():
         route = form.routes[form.cleaned_data["route"]]
         try:
             report(request.user, route["id"], route["name"], form.cleaned_data["level"])
+        except Blocked:  # blocked since the check above
+            return _render(request, routes, running, feed_ok, status=403)
+        except TooMany as error:
+            form.add_error(
+                None,
+                f"You can send at most {HOURLY_LIMIT} reports an hour. "
+                f"You can report again at {time_format(timezone.localtime(error.args[0]), 'g:i A')}.",
+            )
         except TooSoon as error:
             form.add_error(
                 "route",
@@ -131,18 +145,22 @@ def _routes():
     return sorted(routes.values(), key=lambda route: route["name"]), False, feed_ok
 
 
-def _render(request, routes, running, feed_ok, form=None):
-    if form is None and running:
+def _render(request, routes, running, feed_ok, form=None, status=200):
+    blocked = request.user.is_authenticated and is_blocked(request.user)
+    if form is None and running and not blocked:
         form = ReportForm(routes=routes)
     return render(
         request,
         "crowding/index.html",
         {
-            "form": form if running else None,
+            "form": form if running and not blocked else None,
+            "blocked": blocked,
+            "hourly_limit": HOURLY_LIMIT,
             "routes": crowding(routes),
             "running": running,
             "feed_ok": feed_ok,
             "levels": CrowdReport.Level,
             "now": timezone.now(),
         },
+        status=status,
     )
