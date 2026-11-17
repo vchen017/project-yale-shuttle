@@ -77,6 +77,8 @@ class PlaceForm(BootstrapFormMixin, forms.ModelForm):
         if not typed:
             return cleaned
         at = search.point(cleaned.get("location_at") or "")
+        if at and self._stale_pin(typed, at):
+            at = None  # look up what was typed instead
         if at:
             self.instance.address, (self.instance.lat, self.instance.lon) = typed, at
             return cleaned
@@ -94,3 +96,15 @@ class PlaceForm(BootstrapFormMixin, forms.ModelForm):
         self.instance.address = label(top)
         self.instance.lat, self.instance.lon = top["lat"], top["lon"]
         return cleaned
+
+    def _stale_pin(self, typed, at):
+        """Whether location_at is the saved place's own pin, sent back with a
+        new address typed over the old one. The edit form starts out with the
+        saved pin, and without JavaScript nothing clears it when the rider
+        types, so the new text would get the old pin. A new pick from the
+        suggestions (place-picker.js) sends a new pin, which we keep."""
+        if not self.instance.pk:
+            return False
+        saved_text = " ".join((self.instance.address or self.instance.name).split())
+        saved_at = (round(self.instance.lat, 6), round(self.instance.lon, 6))
+        return typed != saved_text and (round(at[0], 6), round(at[1], 6)) == saved_at

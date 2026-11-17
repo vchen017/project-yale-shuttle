@@ -159,6 +159,24 @@ class RenamingAndDeletingTests(PlacesTestCase):
         gym.refresh_from_db()
         self.assertEqual((gym.address, gym.lat), ("Science Hill (shuttle stop)", 41.316))
 
+    def test_a_new_address_typed_without_javascript_doesnt_keep_the_old_pin(self):
+        # The edit form starts with the saved pin in location_at, and without
+        # the script nothing clears it when the rider types a new address.
+        gym = place(self.rider, "Gym", lat=41.3, lon=-72.9, address="Payne Whitney Gym")
+        self.client.post(
+            reverse("place-edit", args=[gym.pk]),
+            {"name": "Gym", "location": "science hill", "location_at": "41.300000,-72.900000"},
+        )
+        gym.refresh_from_db()
+        self.assertEqual((gym.address, gym.lat, gym.lon), ("Science Hill (shuttle stop)", 41.316, -72.922))
+
+    def test_a_new_pick_keeps_its_own_pin(self):
+        gym = place(self.rider, "Gym", lat=41.3, lon=-72.9, address="Payne Whitney Gym")
+        self.client.post(reverse("place-edit", args=[gym.pk]), {"name": "Gym", **PICKED})
+        gym.refresh_from_db()
+        self.assertEqual((gym.address, gym.lat, gym.lon), ("Sterling Library, York Street, New Haven", 41.3112, -72.929))
+        self.photon_urlopen.assert_not_called()  # the pick needed no lookup
+
     def test_renaming_to_another_places_name_is_refused(self):
         place(self.rider, "Work")
         gym = place(self.rider, "Gym")
