@@ -40,4 +40,4 @@ class HeroTests(TestCase):
         self.client.force_login(get_user_model().objects.create_user("rider@example.com"))
         response = self.client.get(reverse("my-places"))
         self.assertContains(response, "Welcome back, <strong>rider@example.com</strong>")
-        self.assertContains(response, '<li class="nav-item navbar-section d-xl-none">Account</li>', html=True)
+        self.assertContains(response, '<li class="nav-item navbar-section">Account</li>', html=True)
