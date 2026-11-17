@@ -29,8 +29,9 @@ from http.client import HTTPException
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from buildings.search import search as find_buildings
 from django.core.cache import cache
+
+from buildings.search import search as find_buildings
 
 PHOTON_URL = "https://photon.komoot.io/api/"
 CAMPUS = (41.3111, -72.9267)  # latitude, longitude: nearer places come first

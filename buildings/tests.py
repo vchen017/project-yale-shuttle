@@ -1,7 +1,6 @@
 """Finding a Yale building by its everyday name (issue #98). Photon and the
 shuttle feed are mocked, so no test reaches the network."""
 
-import io
 import json
 from unittest import mock
 from urllib.error import URLError
@@ -61,6 +60,24 @@ class FindingABuildingTests(SimpleTestCase):
     def test_a_building_we_dont_have_finds_nothing(self):
         self.assertEqual(names("Woolsey"), [])
 
+    def test_the_name_most_people_mean_comes_first(self):
+        """Find my bus plans to the top suggestion, so "sterling" must not mean the medical school (review of #98)."""
+        self.assertEqual(names("sterling")[0], "Sterling Memorial Library")
+        self.assertEqual(names("bass"), ["Bass Library", "Bass Center for Molecular and Structural Biology"])
+        self.assertEqual(names("bass center"), ["Bass Center for Molecular and Structural Biology"])
+        self.assertEqual(names("sterling library"), ["Sterling Memorial Library"])
+
+    def test_a_short_name_beats_an_abbreviation_which_beats_a_partial_match(self):
+        # "bass": Bass Library's short name, then Bass Center's abbreviation (BASS).
+        self.assertEqual(names("BASS"), ["Bass Library", "Bass Center for Molecular and Structural Biology"])
+        # "ES": Ezra Stiles's abbreviation, then buildings whose name only starts that way.
+        self.assertEqual(names("es")[0], "Ezra Stiles College")
+
+    def test_also_known_as_names_find_the_building_under_its_official_name(self):
+        self.assertEqual(names("lawrence hall"), ["Lawrance Hall"])  # OpenStreetMap's spelling
+        self.assertEqual(names("university theater"), ["University Theatre"])
+        self.assertEqual(names("hopper"), ["Grace Hopper College"])
+
     def test_at_most_a_few_come_back(self):
         self.assertLessEqual(len(names("sterling")), search.MOST_BUILDINGS)
 
@@ -72,6 +89,12 @@ class FindingABuildingTests(SimpleTestCase):
         [place] = search.search("connecticut hall")
         self.assertEqual(place["name"], "Connecticut Hall")
         self.assertNotIn("C ·", place["detail"])
+
+    def test_a_building_with_no_street_still_says_where_it_is(self):
+        [place] = search.search("sml")
+        self.assertEqual(place["detail"], "SML · Yale University")
+        [place] = search.search("welch")
+        self.assertEqual(place["detail"], "Yale University")  # a one-letter abbreviation isn't shown
 
 
 class TheDataTests(SimpleTestCase):
@@ -97,6 +120,17 @@ class TheDataTests(SimpleTestCase):
         for building in self.buildings:
             with self.subTest(building["name"]):
                 self.assertTrue(41.29 <= building["lat"] <= 41.33 and -72.945 <= building["lon"] <= -72.91)
+
+    def test_every_also_known_as_name_is_a_different_name(self):
+        for building in self.buildings:
+            for other in building.get("also_known_as", []) + building.get("short_names", []):
+                with self.subTest(building["name"], other=other):
+                    self.assertNotEqual(search.normalize(other), search.normalize(building["name"]))
+
+    def test_a_short_name_belongs_to_only_one_building(self):
+        short = [normalize for b in self.buildings for normalize in (search.normalize(n) for n in b.get("short_names", []))]
+        self.assertEqual(len(short), len(set(short)))
+        self.assertEqual(set(short), {"sterling", "bass"})  # a team decision (review of #98): don't add more without asking
 
     def test_the_sources_are_cited(self):
         for key in ("college", "medicine", "coordinates"):
@@ -142,7 +176,7 @@ class InTheTripSearchTests(SimpleTestCase):
     @mock.patch("transit.places.urlopen", new_callable=lambda: photon_answering(PHOTON_STERLING))
     def test_a_typed_name_without_javascript_finds_our_building_before_photons(self, urlopen):
         found = places.search("sterling", [GROVE])
-        self.assertEqual([place["name"] for place in found][:2], ["Sterling Hall of Medicine", "Sterling Law Building"])
+        self.assertEqual(found[0]["name"], "Sterling Memorial Library")  # Find my bus takes the top one
         self.assertEqual(found[-1]["name"], "Sterling Library")  # Photon's results come last
 
     @mock.patch("transit.places.urlopen", side_effect=URLError("down"))

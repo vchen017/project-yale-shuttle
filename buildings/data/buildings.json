@@ -1,5 +1,5 @@
 {
- "about": "Yale buildings for the trip search (issue #98). Official names and abbreviations come from the two sources below, retrieved 2026-11-16; coordinates and street addresses come from OpenStreetMap. To add a building, add an entry with its abbreviation, official name, street, lat and lon.",
+ "about": "Yale buildings for the trip search (issue #98). Official names and abbreviations come from the two sources below, retrieved 2026-11-16; coordinates and street addresses come from OpenStreetMap. To add a building, add an entry with its abbreviation, official name, street, lat and lon. Optional: also_known_as lists other names for it (OpenStreetMap's name when it differs from the official one), and short_names lists a bare word riders type for it when several buildings share that word. A building with short_names comes first for exactly that word, ahead of abbreviations: 'sterling' is Sterling Memorial Library and 'bass' is Bass Library, added after the review of PR #101 so that Find my bus plans a trip to the building most people mean.",
  "sources": {
   "college": {
    "title": "Yale College Programs of Study 2026-2027, Building Abbreviations",
@@ -14,7 +14,7 @@
   "coordinates": {
    "title": "OpenStreetMap contributors (ODbL), read through the Overpass API on 2026-11-16",
    "url": "https://www.openstreetmap.org/copyright",
-   "used_for": "lat, lon and street. A building is included only if an OpenStreetMap object within 2 km of campus has a name that fits its official name"
+   "used_for": "lat, lon and street. A building is included only if an OpenStreetMap object within 2 km of campus has a name that fits its official name; also_known_as is OpenStreetMap's name when it differs from the official one"
   }
  },
  "left_out": {
@@ -42,7 +42,10 @@
    "street": "266 Whitney Avenue",
    "lat": 41.31809,
    "lon": -72.92189,
-   "source": "college"
+   "source": "college",
+   "also_known_as": [
+    "Bass Center"
+   ]
   },
   {
    "abbr": "BASSLB",
@@ -50,7 +53,10 @@
    "street": "",
    "lat": 41.31062,
    "lon": -72.92756,
-   "source": "college"
+   "source": "college",
+   "short_names": [
+    "Bass"
+   ]
   },
   {
    "abbr": "BATTELL",
@@ -66,7 +72,10 @@
    "street": "295 Congress Avenue",
    "lat": 41.3025,
    "lon": -72.93279,
-   "source": "college"
+   "source": "college",
+   "also_known_as": [
+    "Boyer Center"
+   ]
   },
   {
    "abbr": "BCT",
@@ -74,7 +83,10 @@
    "street": "15 Prospect Street",
    "lat": 41.31262,
    "lon": -72.92514,
-   "source": "college"
+   "source": "college",
+   "also_known_as": [
+    "Becton Center"
+   ]
   },
   {
    "abbr": "BF",
@@ -98,7 +110,10 @@
    "street": "300 College Street",
    "lat": 41.30771,
    "lon": -72.92878,
-   "source": "college"
+   "source": "college",
+   "also_known_as": [
+    "Bingham Hall"
+   ]
   },
   {
    "abbr": "BML",
@@ -154,7 +169,10 @@
    "street": "15 Prospect Street",
    "lat": 41.31262,
    "lon": -72.92514,
-   "source": "college"
+   "source": "college",
+   "also_known_as": [
+    "Becton Center"
+   ]
   },
   {
    "abbr": "DC",
@@ -186,7 +204,10 @@
    "street": "1037 Chapel Street",
    "lat": 41.30836,
    "lon": -72.9293,
-   "source": "college"
+   "source": "college",
+   "also_known_as": [
+    "McClellan Hall"
+   ]
   },
   {
    "abbr": "ES",
@@ -226,7 +247,10 @@
    "street": "",
    "lat": 41.30998,
    "lon": -72.92724,
-   "source": "college"
+   "source": "college",
+   "also_known_as": [
+    "Hopper College"
+   ]
   },
   {
    "abbr": "GML",
@@ -242,7 +266,10 @@
    "street": "1156 Chapel Street",
    "lat": 41.30832,
    "lon": -72.93299,
-   "source": "college"
+   "source": "college",
+   "also_known_as": [
+    "Green Hall"
+   ]
   },
   {
    "abbr": "HENDRIE",
@@ -306,7 +333,10 @@
    "street": "358 College Street",
    "lat": 41.3087,
    "lon": -72.92795,
-   "source": "college"
+   "source": "college",
+   "also_known_as": [
+    "Lawrence Hall"
+   ]
   },
   {
    "abbr": "LC",
@@ -338,7 +368,10 @@
    "street": "435 College Street",
    "lat": 41.30986,
    "lon": -72.92636,
-   "source": "college"
+   "source": "college",
+   "also_known_as": [
+    "Leigh Hall"
+   ]
   },
   {
    "abbr": "LOM",
@@ -354,7 +387,10 @@
    "street": "190 York Street",
    "lat": 41.30902,
    "lon": -72.93174,
-   "source": "college"
+   "source": "college",
+   "also_known_as": [
+    "Loria Center"
+   ]
   },
   {
    "abbr": "LUCE",
@@ -362,7 +398,10 @@
    "street": "34 Hillhouse Avenue",
    "lat": 41.31442,
    "lon": -72.92433,
-   "source": "college"
+   "source": "college",
+   "also_known_as": [
+    "Luce Hall"
+   ]
   },
   {
    "abbr": "LWR",
@@ -370,7 +409,10 @@
    "street": "206 Elm Street",
    "lat": 41.30979,
    "lon": -72.92868,
-   "source": "college"
+   "source": "college",
+   "also_known_as": [
+    "Lanman-Wright Hall"
+   ]
   },
   {
    "abbr": "MC",
@@ -386,7 +428,10 @@
    "street": "55 Prospect Street",
    "lat": 41.31339,
    "lon": -72.92473,
-   "source": "college"
+   "source": "college",
+   "also_known_as": [
+    "Malone Center"
+   ]
   },
   {
    "abbr": "ML",
@@ -482,7 +527,10 @@
    "street": "",
    "lat": 41.32348,
    "lon": -72.92237,
-   "source": "college"
+   "source": "college",
+   "also_known_as": [
+    "Divinity Quadrangle"
+   ]
   },
   {
    "abbr": "SHM",
@@ -522,7 +570,13 @@
    "street": "",
    "lat": 41.31123,
    "lon": -72.92875,
-   "source": "college"
+   "source": "college",
+   "also_known_as": [
+    "Sterling Library"
+   ],
+   "short_names": [
+    "Sterling"
+   ]
   },
   {
    "abbr": "SPL",
@@ -586,7 +640,10 @@
    "street": "",
    "lat": 41.30973,
    "lon": -72.93118,
-   "source": "college"
+   "source": "college",
+   "also_known_as": [
+    "University Theater"
+   ]
   },
   {
    "abbr": "V",
@@ -666,7 +723,10 @@
    "street": "333 Cedar Street",
    "lat": 41.303,
    "lon": -72.93324,
-   "source": "medicine"
+   "source": "medicine",
+   "also_known_as": [
+    "Harvey Cushing/John Hay Whitney Medical Library"
+   ]
   },
   {
    "abbr": "ESH",
@@ -674,7 +734,10 @@
    "street": "367 Cedar Street",
    "lat": 41.30439,
    "lon": -72.93409,
-   "source": "medicine"
+   "source": "medicine",
+   "also_known_as": [
+    "Harkness Memorial Hall"
+   ]
   },
   {
    "abbr": "LH",
