@@ -42,7 +42,7 @@ to leave.
   feature's first piece with an evaluation set in CI
   ([#66](https://github.com/vchen017/project-yale-shuttle/pull/66)), and demo
   data for graders ([#89](https://github.com/vchen017/project-yale-shuttle/pull/89)).
-- **Ahead of plan,** on staging until the next promotion: missed-bus reports
+- **Ahead of plan:** missed-bus reports
   ([#102](https://github.com/vchen017/project-yale-shuttle/pull/102)), an admin
   accuracy dashboard scored nightly
   ([#103](https://github.com/vchen017/project-yale-shuttle/pull/103)), saved places
@@ -55,11 +55,12 @@ to leave.
 On [staging](https://yale-shuttle-staging.onrender.com) and
 [production](https://yale-shuttle.onrender.com): signing up and logging in,
 both grader accounts, the home page's alerts, trip search and map, the next
-buses, crowding, push notifications, `/admin/`, and `/ecc1032` with its stats.
+buses, crowding, missed-bus reports, saved places, push notifications,
+`/admin/` with the accuracy dashboard, and `/ecc1032` with its stats.
 CI checks every pull request
 ([#77's run](https://github.com/vchen017/project-yale-shuttle/actions/runs/43921210586)),
 and production changes only through the promote workflow
-([a run on Nov 16](https://github.com/vchen017/project-yale-shuttle/actions/runs/43965423619)).
+([a run on Nov 17](https://github.com/vchen017/project-yale-shuttle/actions/runs/44136048801)).
 
 ## Working with our agents
 
