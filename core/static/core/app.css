@@ -97,19 +97,13 @@
 .hero h1 { color: var(--ys-blue); }
 .hero .lead { max-width: 40rem; color: var(--bs-secondary-color); }
 .hero h1, .hero .lead { text-wrap: balance; }
-.feature { border: 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 16px rgba(0, 53, 107, 0.06); }
-.feature-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 3rem;
-  height: 3rem;
-  margin-bottom: 1rem;
-  border-radius: 0.75rem;
-  background: rgba(0, 53, 107, 0.08);
-  color: var(--ys-blue);
-  font-size: 1.5rem;
-}
+/* The home page's "What you can do": plain columns, each under a blue rule */
+.features > div { padding-top: 0.75rem; border-top: 2px solid var(--ys-blue); }
+.features h3 a { color: var(--ys-blue); text-decoration: none; }
+.features h3 a:hover { text-decoration: underline; }
+
+/* The nav's link to the page you're on */
+.navbar .nav-link.active { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 0.45em; }
 
 /* Log in, sign up and the A/B page: one card in the middle of the page */
 .auth-card, .team-card { border: 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 53, 107, 0.08); }

@@ -16,6 +16,13 @@ class HeroTests(TestCase):
         self.assertContains(response, '<a class="nav-link" href="/login/">Log in</a>', html=True)
         self.assertContains(response, '<a class="nav-link" href="/signup/">Sign up</a>', html=True)
 
+    def test_the_navbar_marks_the_page_youre_on(self):
+        response = self.client.get(reverse("login"))
+        self.assertContains(
+            response, '<a class="nav-link active" aria-current="page" href="/login/">Log in</a>', html=True
+        )
+        self.assertContains(response, '<a class="nav-link" href="/signup/">Sign up</a>', html=True)
+
     def test_a_rider_is_welcomed_without_the_admin_links(self):
         self.client.force_login(get_user_model().objects.create_user("rider@example.com"))
         response = self.client.get("/")

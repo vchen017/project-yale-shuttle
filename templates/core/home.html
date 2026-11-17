@@ -51,40 +51,24 @@
 </section>
 
 
-<h2 class="h4 mb-3">What we're building</h2>
-<div class="row g-3 mb-4">
-  <div class="col-md-4">
-    <div class="card feature h-100">
-      <div class="card-body">
-        <div class="feature-icon" aria-hidden="true"><i class="bi bi-clock-history"></i></div>
-        <h3 class="h5 card-title">Arrival times you can trust</h3>
-        <p class="card-text">Our prediction next to the official one, so you can see when the bus will really reach your stop.</p>
-      </div>
+<section class="mb-4" aria-labelledby="features-title">
+  <h2 class="h4 mb-3" id="features-title">What you can do</h2>
+  <div class="row g-4 features">
+    <div class="col-md-4">
+      <h3 class="h6 mb-1"><a href="{% url 'stops' %}">Next buses</a></h3>
+      <p class="mb-0 text-body-secondary">Our predicted arrival next to the official one, at every stop.</p>
+    </div>
+    <div class="col-md-4">
+      <h3 class="h6 mb-1"><a href="{% url 'crowding' %}">Crowding</a></h3>
+      <p class="mb-0 text-body-secondary">How busy each route is right now, from riders' reports, so you know whether you'll get a seat.</p>
+    </div>
+    <div class="col-md-4">
+      <h3 class="h6 mb-1"><a href="{% url 'reliability' %}">Missed bus</a></h3>
+      <p class="mb-0 text-body-secondary">Tell us when a bus never came or skipped your stop. It shows where the official times fall short.</p>
     </div>
   </div>
-  <div class="col-md-4">
-    <div class="card feature h-100">
-      <div class="card-body">
-        <div class="feature-icon" aria-hidden="true"><i class="bi bi-people-fill"></i></div>
-        <h3 class="h5 card-title">How busy is the bus?</h3>
-        <p class="card-text">Riders report crowding, so you know whether you'll get a seat, or get on at all.</p>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-4">
-    <div class="card feature h-100">
-      <div class="card-body">
-        <div class="feature-icon" aria-hidden="true"><i class="bi bi-bell-fill"></i></div>
-        <h3 class="h5 card-title">Leave on time</h3>
-        <p class="card-text">Connect your class schedule and get a nudge when it's time to walk to your stop.</p>
-      </div>
-    </div>
-  </div>
-</div>
-
-<p class="text-body-secondary small mb-0">
-  Yale Shuttle is in development, and these features arrive over the coming sprints. You can already create an account and log in.
-</p>
+  <p class="small text-body-secondary mt-3 mb-0">Coming next: connect your class schedule and get a nudge when it's time to walk to your stop.</p>
+</section>
 <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.1/dist/maplibre-gl.js"
         integrity="sha384-nXMl9YiLoSG5KBPTFgvxVuIqQQcqIvo0bFrvoEaGJC6r7IibIzF1S36Zbf/sKBtL" crossorigin="anonymous" defer></script>
 <script src="{% static 'core/map.js' %}" defer></script>

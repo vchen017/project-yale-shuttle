@@ -98,7 +98,7 @@ class PageTests(TestCase):
         response = self.client.get("/")
         self.assertContains(response, '<meta property="og:title" content="Yale Shuttle: never miss the Yale shuttle again">')
         self.assertContains(response, '<meta property="og:image" content="http://testserver/static/core/og-image.png">')
-        self.assertContains(response, '<i class="bi bi-clock-history"></i>')
+        self.assertContains(response, '<i class="bi bi-search me-1" aria-hidden="true"></i>')  # Bootstrap Icons
 
     def test_favicon_ico_points_to_our_icon(self):
         response = self.client.get("/favicon.ico")
