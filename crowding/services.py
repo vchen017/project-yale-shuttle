@@ -19,11 +19,13 @@ from django.utils.formats import time_format
 
 from transit.network import text_color
 
-from .models import CrowdReport
+from .models import CrowdReport, ReportBlock
 
 CURRENT_WINDOW = dt.timedelta(minutes=30)  # "current" means reported this recently
 REPORT_INTERVAL = dt.timedelta(minutes=10)  # one report per rider per route this often
+HOURLY_INTERVAL = dt.timedelta(hours=1)
 TYPICAL_WINDOW = dt.timedelta(days=28)  # typical crowding learns from this far back
+HOURLY_LIMIT = 6  # reports per rider per hour, across all routes (#19)
 MIN_TYPICAL_REPORTS = 3  # fewer than this in an hour isn't a pattern
 
 Level = CrowdReport.Level
@@ -31,6 +33,18 @@ Level = CrowdReport.Level
 
 class TooSoon(Exception):
     """The rider already reported this route within REPORT_INTERVAL."""
+
+
+class TooMany(Exception):
+    """The rider already made HOURLY_LIMIT reports in the last hour (#19)."""
+
+
+class Blocked(Exception):
+    """An admin blocked this rider from reporting (#19)."""
+
+
+def is_blocked(user):
+    return ReportBlock.objects.filter(user=user, unblocked_at__isnull=True).exists()
 
 
 @dataclass
@@ -120,7 +134,9 @@ def crowding(routes, now=None):
 
 
 def report(user, route_id, route_name, level, now=None):
-    """Save a rider's report, unless they reported this route in the last 10 minutes.
+    """Save a rider's report, unless they're blocked (Blocked), already made
+    HOURLY_LIMIT reports in the last hour (TooMany, with the time they can
+    report again), or reported this route in the last 10 minutes.
 
     Raises TooSoon with the time they can report again. The rider's row is
     locked while checking, so two quick taps can't both get through
@@ -129,6 +145,16 @@ def report(user, route_id, route_name, level, now=None):
     now = now or timezone.now()
     with transaction.atomic():
         get_user_model().objects.select_for_update().filter(pk=user.pk).first()
+        if is_blocked(user):
+            raise Blocked
+        # Counts reports an admin removed too, or removing one would let the rider post another.
+        recent = list(
+            CrowdReport.objects.filter(user=user, created_at__gt=now - HOURLY_INTERVAL, is_sample=False)
+            .order_by("-created_at")
+            .values_list("created_at", flat=True)[:HOURLY_LIMIT]
+        )
+        if len(recent) >= HOURLY_LIMIT:
+            raise TooMany(recent[-1] + HOURLY_INTERVAL)
         last = (
             CrowdReport.objects.filter(
                 user=user, route_id=route_id, created_at__gt=now - REPORT_INTERVAL, is_sample=False

@@ -1,8 +1,9 @@
+from django import forms
 from django.contrib import admin, messages
 from django.utils import timezone
 from django.utils.formats import date_format
 
-from .models import CrowdReport
+from .models import CrowdReport, ReportBlock
 
 
 class RouteFilter(admin.SimpleListFilter):
@@ -116,3 +117,70 @@ class CrowdReportAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False
+
+
+class ReportBlockForm(forms.ModelForm):
+    class Meta:
+        model = ReportBlock
+        fields = ["user", "reason"]
+
+    def clean_user(self):
+        user = self.cleaned_data["user"]
+        if ReportBlock.objects.filter(user=user, unblocked_at__isnull=True).exists():
+            raise forms.ValidationError("This rider is already blocked.")
+        return user
+
+
+@admin.register(ReportBlock)
+class ReportBlockAdmin(admin.ModelAdmin):
+    """Block a rider from sending crowd reports, with a reason, and unblock
+    them again (#19). Add a block, then pick it and "Unblock". Blocks can't be
+    edited, and there's no bulk delete, so the history of who was blocked and
+    why stays. (Deleting a rider's account still deletes their blocks.)"""
+
+    form = ReportBlockForm
+    list_display = ("user", "reason", "blocked_at", "blocked_by", "status")
+    list_filter = ("unblocked_at",)
+    list_select_related = ("user", "blocked_by", "unblocked_by")
+    search_fields = ("user__username", "user__email", "reason")
+    autocomplete_fields = ("user",)
+    ordering = ("-blocked_at",)
+    actions = ["unblock"]
+
+    @admin.display(description="Status", ordering="unblocked_at")
+    def status(self, block):
+        if block.unblocked_at:
+            return f"Unblocked {date_format(timezone.localtime(block.unblocked_at), 'M j, g:i A')}"
+        return "Blocked"
+
+    def get_readonly_fields(self, request, obj=None):
+        return ("user", "reason", "blocked_at", "blocked_by", "unblocked_at", "unblocked_by") if obj else ()
+
+    def get_fields(self, request, obj=None):
+        if obj:
+            return ("user", "reason", "blocked_at", "blocked_by", "unblocked_at", "unblocked_by")
+        return ("user", "reason")
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.blocked_by = request.user
+            obj.blocked_at = timezone.now()
+        super().save_model(request, obj, form, change)
+
+    @admin.action(description="Unblock the selected riders (they can report again)")
+    def unblock(self, request, queryset):
+        count = queryset.filter(unblocked_at__isnull=True).update(
+            unblocked_at=timezone.now(), unblocked_by=request.user
+        )
+        if count:
+            self.message_user(request, f"Unblocked {count} rider{'s' if count != 1 else ''}.")
+        else:
+            self.message_user(request, "Those riders weren't blocked.", messages.WARNING)
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        actions.pop("delete_selected", None)
+        return actions
+
+    def has_change_permission(self, request, obj=None):
+        return obj is None and super().has_change_permission(request, obj)

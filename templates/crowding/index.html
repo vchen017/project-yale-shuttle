@@ -25,6 +25,10 @@
           <i class="bi bi-wifi-off me-1" aria-hidden="true"></i>We can't load the routes running now, so reporting is paused. Try again in a minute.
         {% endif %}
       </div></div>
+    {% elif blocked %}
+      <div class="card"><div class="card-body" role="status">
+        <i class="bi bi-slash-circle me-1" aria-hidden="true"></i>You can't send crowding reports right now. An admin turned reporting off for your account. If you think that's a mistake, ask a team admin.
+      </div></div>
     {% elif not user.is_authenticated %}
       <div class="card"><div class="card-body">
         <p class="mb-3">Log in to tell other riders how busy your bus is.</p>
@@ -58,7 +62,7 @@
           <button class="btn btn-primary w-100" type="submit">
             <i class="bi bi-send me-1" aria-hidden="true"></i>Send report
           </button>
-          <p class="form-text mb-0 mt-2">One report per route every 10 minutes.</p>
+          <p class="form-text mb-0 mt-2">One report per route every 10 minutes, and at most {{ hourly_limit }} an hour.</p>
         </div>
       </form>
     {% endif %}
