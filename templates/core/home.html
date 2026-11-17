@@ -5,17 +5,17 @@
         integrity="sha384-uTttxo/aOKbdE5RlD/SPzSDoDmNvGlUYPjONi2MN/b7c9HPSvW07OIuyP7uL6jxK" crossorigin="anonymous">
 {% endblock %}
 {% block content %}
-<section class="hero hero-compact rounded-4 px-4 py-4 mb-4">
-  <div class="d-md-flex align-items-center justify-content-between gap-4">
+<section class="hero mb-4">
+  <div class="d-md-flex align-items-end justify-content-between gap-4">
     <div>
-      <h1 class="h2 fw-bold mb-2">Never miss the Yale shuttle again.</h1>
-      <p class="{% if user.is_staff %}mb-3 mb-md-0{% else %}mb-0{% endif %}">See when your bus will actually arrive, so you can leave at just the right time.</p>
+      <h1 class="display-6 fw-bold mb-2">Never miss the Yale shuttle again.</h1>
+      <p class="lead {% if user.is_staff %}mb-3 mb-md-0{% else %}mb-0{% endif %}">See when your bus will actually arrive, so you can leave at just the right time.</p>
     </div>
     {# Logging in, signing up and the "Welcome back" greeting live in the navbar, on every page (#86). #}
     {% if user.is_staff %}
       <p class="mb-0 flex-shrink-0">
-        <a class="link-light" href="{% url 'admin:index' %}">Open the admin</a>
-        · <a class="link-light" href="{% url 'admin:alerts_alert_add' %}">Post an alert</a>
+        <a href="{% url 'admin:index' %}">Open the admin</a>
+        · <a href="{% url 'admin:alerts_alert_add' %}">Post an alert</a>
       </p>
     {% endif %}
   </div>
