@@ -10,7 +10,9 @@ Routes are identified everywhere by their numeric id, never their short name:
 short names aren't unique ("BW" is route 4 and route 16).
 """
 
+from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 
 class Poll(models.Model):
@@ -212,3 +214,80 @@ class Announcement(models.Model):
 
     def __str__(self):
         return f"Announcement {self.announcement_id} at {self.polled_at:%H:%M}"
+
+
+class AccuracySnapshot(models.Model):
+    """One saved score of one date range, written by the score_accuracy job (#17).
+
+    The dashboard reads these instead of scoring in the request: scoring a
+    week of real history takes minutes, far past the server's request time
+    limit, so no page may compute one. `payload` is `accuracy.to_storage()`'s
+    JSON-safe form of the result; the dashboard turns it back with
+    `accuracy.from_storage()`.
+    """
+
+    range_start = models.DateField()
+    range_end = models.DateField()
+    computed_at = models.DateTimeField(default=timezone.now)
+    duration_seconds = models.FloatField()
+    payload = models.JSONField()
+
+    class Meta:
+        ordering = ["-range_end", "-computed_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["range_start", "range_end"], name="unique_range_per_snapshot"
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.range_start} to {self.range_end}, scored in {self.duration_seconds:g}s "
+            f"at {self.computed_at:%Y-%m-%d %H:%M} UTC"
+        )
+
+    @property
+    def computed_eastern(self):
+        """When the score was computed, on the Eastern clock the site shows."""
+        return timezone.localtime(self.computed_at)
+
+
+class RiderReport(models.Model):
+    """A rider's report that a bus never came or skipped their stop (#6).
+
+    The misses the accuracy dashboard (#17) counts next to the prediction
+    errors: a report is a rider telling us the official schedule failed them,
+    even when the recorded data can't show why.
+    """
+
+    class Kind(models.TextChoices):
+        NEVER_CAME = "never_came", "Never came"
+        SKIPPED = "skipped_stop", "Skipped my stop"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="rider_reports"
+    )
+    # Routes are identified by their numeric id: short names aren't unique.
+    route_id = models.PositiveIntegerField()
+    # The names when reported, for routes and stops the feed no longer lists.
+    route_name = models.CharField(max_length=200)
+    stop_id = models.PositiveIntegerField()
+    stop_name = models.CharField(max_length=100)
+    kind = models.CharField(max_length=16, choices=Kind.choices)
+    created_at = models.DateTimeField(default=timezone.now)
+    is_sample = models.BooleanField(
+        default=False,
+        help_text="Demo data from the seed command. Never blocks a real report and is counted separately on the accuracy dashboard (#17).",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            # The 15-minute rate limit: a rider's last report of a route and stop.
+            models.Index(fields=["user", "route_id", "stop_id", "created_at"]),
+            # What the dashboard (#17) counts: misses per route and stop.
+            models.Index(fields=["route_id", "stop_id", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.route_name} at {self.stop_name}: {self.get_kind_display()} ({self.created_at:%Y-%m-%d %H:%M} UTC)"
