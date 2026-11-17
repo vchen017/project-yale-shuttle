@@ -4,6 +4,7 @@ doesn't collide with other pull requests that add to core/tests.py."""
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.urls import reverse
 
 
 class HeroTests(TestCase):
@@ -27,3 +28,9 @@ class HeroTests(TestCase):
         self.assertContains(response, "Welcome back, <strong>admin@example.com</strong>")
         self.assertContains(response, "Open the admin")
         self.assertContains(response, "Post an alert")
+
+    def test_the_navbar_welcomes_a_rider_on_every_page(self):
+        self.client.force_login(get_user_model().objects.create_user("rider@example.com"))
+        response = self.client.get(reverse("my-places"))
+        self.assertContains(response, "Welcome back, <strong>rider@example.com</strong>")
+        self.assertContains(response, '<li class="nav-item navbar-section d-xl-none">Account</li>', html=True)

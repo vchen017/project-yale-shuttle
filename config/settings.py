@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     "alerts",
     "crowding",
     "buildings",
+    "places",
 ]
 
 MIDDLEWARE = [

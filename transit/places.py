@@ -7,7 +7,7 @@ browser gets from Photon, a free search over OpenStreetMap data
 (https://photon.komoot.io). Our buildings (issue #98, the buildings app) go
 first so "es harkness" finds Edward S. Harkness Memorial Hall, which Photon
 doesn't.
-Photon refuses requests from our Render servers, so trip-search.js asks it
+Photon refuses requests from our Render servers, so place-search.js asks it
 directly, the way the map loads its tiles.
 
 search() is for a trip that arrives with a typed name and no coordinates,
@@ -61,6 +61,16 @@ def our_places(query, stops):
     """Our stops, then the Yale buildings matching what the rider typed (issue #98).
     Nothing here reaches the network, so it works when Photon is down."""
     return stops_named(query, stops) + find_buildings(query)
+
+
+def point(value):
+    """"41.3112,-72.9290", as the trip search and saved places (#7) send a
+    picked place, as (41.3112, -72.929), or None if it isn't a point on Earth."""
+    try:
+        lat, lon = (float(part) for part in value.split(","))
+    except ValueError:
+        return None
+    return (lat, lon) if -90 <= lat <= 90 and -180 <= lon <= 180 else None
 
 
 def stops_named(query, stops):

@@ -1,0 +1,47 @@
+{% load static %}
+{% comment %}
+A saved place's form (#7): its name, where it is, and Home. The location box
+suggests places as the rider types, like the trip search (place-picker.js);
+without the script, the server looks up what was typed.
+Context: form, action, button.
+{% endcomment %}
+<form method="post" action="{{ action }}" class="card" autocomplete="off" novalidate
+      data-place-picker data-places-url="{% url 'places' %}">
+  <div class="card-body">
+    {% csrf_token %}
+    {% for error in form.non_field_errors %}
+      <div class="alert alert-danger py-2" role="alert">{{ error }}</div>
+    {% endfor %}
+    <div class="mb-3">
+      <label class="form-label fw-medium" for="{{ form.name.id_for_label }}">{{ form.name.label }}</label>
+      {{ form.name }}
+      {% for error in form.name.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+    </div>
+    <div class="mb-3">
+      <label class="form-label fw-medium" for="{{ form.location.id_for_label }}">{{ form.location.label }}</label>
+      <div class="trip-search-field">
+        <i class="bi bi-geo-alt-fill trip-search-icon" aria-hidden="true"></i>
+        {{ form.location }}
+        {{ form.location_at }}
+        <button class="trip-search-locate" type="button" data-use-my-location title="Use my location" hidden>
+          <i class="bi bi-crosshair" aria-hidden="true"></i><span class="visually-hidden">Use my location</span>
+        </button>
+        <ul class="trip-search-places list-group" id="place-location-places" role="listbox" aria-label="Places" hidden></ul>
+      </div>
+      {% for error in form.location.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+      <div class="form-text">Type it and pick from the suggestions, or use where you are now.</div>
+    </div>
+    <div class="form-check mb-3">
+      {{ form.is_home }}
+      <label class="form-check-label" for="{{ form.is_home.id_for_label }}">
+        <i class="bi bi-house-door-fill text-primary me-1" aria-hidden="true"></i>{{ form.is_home.label }}
+      </label>
+      <div class="form-text mt-0">You have one Home. Marking this one moves it here.</div>
+    </div>
+    <button class="btn btn-primary w-100" type="submit">
+      <i class="bi bi-bookmark-plus me-1" aria-hidden="true"></i>{{ button }}
+    </button>
+  </div>
+</form>
+<script src="{% static 'core/place-search.js' %}" defer></script>
+<script src="{% static 'places/place-picker.js' %}" defer></script>

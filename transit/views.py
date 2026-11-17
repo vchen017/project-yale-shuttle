@@ -6,6 +6,8 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_safe
 
+from places import services as saved_places
+
 from . import downtowner, places, trips
 from .downtowner import FeedUnavailable
 from .forms import TripForm
@@ -114,15 +116,20 @@ def trip(request):
 
 @require_safe
 def places_json(request):
-    """Our stops and Yale buildings whose names match what the rider types, ?q=,
-    for the trip search's suggestions (story #5, issue #98). The browser adds
-    other buildings and addresses from Photon itself (see transit/places.py)."""
+    """The places matching what the rider types, ?q=, for the trip search's
+    suggestions (story #5): with ?mine=1, a logged-in rider's saved places
+    first (#7), all of them when nothing is typed, then our stops and Yale
+    buildings (issue #98). The browser adds other buildings and addresses from
+    Photon itself (see transit/places.py)."""
+    query = request.GET.get("q", "")
+    mine = saved_places.matching(request.user, query) if request.GET.get("mine") else []
     try:
         choices = served_stops()
     except FeedUnavailable:
-        choices = []  # the browser's buildings and addresses still work
-    response = JsonResponse({"places": places.our_places(request.GET.get("q", ""), choices)})
-    response["Cache-Control"] = "max-age=300"
+        choices = []  # saved places, our buildings, and the browser's addresses still work
+    response = JsonResponse({"places": mine + places.our_places(query, choices)})
+    # Saved places are the rider's own: never kept where someone else could get them.
+    response["Cache-Control"] = "private, no-cache" if request.GET.get("mine") else "max-age=300"
     return response
 
 
@@ -130,24 +137,18 @@ def _place(request, end, choices):
     """One end of the trip, "from" or "to": the place ({"name", "lat", "lon"}),
     or what was typed when we can't find it, and an error to show, if any."""
     typed = " ".join(request.GET.get(end, "").split())
-    at = _coordinates(request.GET.get(f"{end}_at", ""))
+    at = places.point(request.GET.get(f"{end}_at", ""))
     if at:
         return {"name": typed or "The place you picked", "lat": at[0], "lon": at[1]}, None
     if not typed:
         return None, "Type where you're starting." if end == "from" else "Type where you're going."
+    saved = saved_places.named(request.user, typed)  # "Home", typed without JavaScript (#7)
+    if saved:
+        return {"name": saved.name, "lat": saved.lat, "lon": saved.lon}, None
     found = places.search(typed, choices)
     if not found:
         return {"name": typed}, f"We couldn't find “{typed}” near New Haven. Try a building, a street address or a stop."
     return found[0], None
-
-
-def _coordinates(value):
-    """"41.3112,-72.9290" as (41.3112, -72.929), or None if it isn't a point on Earth."""
-    try:
-        lat, lon = (float(part) for part in value.split(","))
-    except ValueError:
-        return None
-    return (lat, lon) if -90 <= lat <= 90 and -180 <= lon <= 180 else None
 
 
 def _feed_down(request):
