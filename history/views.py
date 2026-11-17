@@ -6,7 +6,6 @@ import datetime as dt
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
-from django.core.cache import cache
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.utils.formats import time_format
@@ -16,11 +15,7 @@ from transit import downtowner
 
 from . import accuracy, reports
 from .forms import ReliabilityForm
-from .models import RiderReport
-from .predictions import ET
-
-ACCURACY_CACHE_SECONDS = 6 * 3600  # recorded history only moves when an import runs
-ACCURACY_MAX_RANGE_DAYS = 31  # bounds the work one dashboard load does
+from .models import AccuracySnapshot, RiderReport
 
 
 @require_safe
@@ -86,24 +81,23 @@ def _render(request, routes, running, feed_ok, form=None):
 @staff_member_required
 @require_safe
 def accuracy_dashboard(request):
-    """Per-route, per-stop and per-hour accuracy over a chosen date range (#17)."""
+    """Per-route, per-stop and per-hour accuracy over a chosen date range (#17).
+
+    Shows the score the nightly score_accuracy job saved for that range: the
+    page itself never computes, because scoring a week of history takes
+    minutes and no request may wait for that."""
     start, end, error = _range(request)
-    since = _eastern_midnight(start)
-    until = _eastern_midnight(end + dt.timedelta(days=1))
-    result = cache.get_or_set(
-        f"history-accuracy:{start}:{end}",
-        lambda: accuracy.accuracy(since, until),
-        ACCURACY_CACHE_SECONDS,
-    )
-    return render(
-        request,
-        "history/dashboard.html",
-        {"result": result, "start": start, "end": end, "error": error, "today": timezone.localdate()},
-    )
+    snapshot = AccuracySnapshot.objects.filter(range_start=start, range_end=end).first()
+    context = {"start": start, "end": end, "error": error, "today": timezone.localdate()}
+    if snapshot is None:
+        context["saved"] = AccuracySnapshot.objects.all()[:6]
+    else:
+        context.update(result=accuracy.from_storage(snapshot.payload), snapshot=snapshot)
+    return render(request, "history/dashboard.html", context)
 
 
 def _range(request):
-    """(start, end, error): the Eastern date range to score, defaulting to
+    """(start, end, error): the Eastern date range to show, defaulting to
     the last seven days. A bad or oversized range falls back to the default
     with a message."""
     today = timezone.localdate()
@@ -116,8 +110,8 @@ def _range(request):
     start, end = start or default_start, end or default_end
     if start > end:
         return default_start, default_end, "'From' is after 'To'."
-    if (end - start).days >= ACCURACY_MAX_RANGE_DAYS:
-        return default_start, default_end, f"Pick at most {ACCURACY_MAX_RANGE_DAYS} days at a time."
+    if (end - start).days >= accuracy.MAX_RANGE_DAYS:
+        return default_start, default_end, f"Pick at most {accuracy.MAX_RANGE_DAYS} days at a time."
     return start, end, None
 
 
@@ -126,7 +120,3 @@ def _date(value):
         return dt.date.fromisoformat(value) if value else None
     except ValueError:
         return None
-
-
-def _eastern_midnight(day):
-    return dt.datetime.combine(day, dt.time(0), tzinfo=ET).astimezone(dt.timezone.utc)

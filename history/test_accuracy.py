@@ -4,14 +4,14 @@ scored query has an error computable by hand; nothing here reaches the
 network, and the dashboard's date range is passed explicitly."""
 
 import datetime as dt
+from unittest import mock
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth import get_user_model
-from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
-from history import accuracy, predictions
+from history import accuracy, predictions, snapshots
 from history.models import Eta, Poll, RiderReport
 
 ET = ZoneInfo("America/New_York")
@@ -83,7 +83,6 @@ def add_report(route_id, stop_id, when, user, is_sample=False):
 class AccuracyTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cache.clear()
         User = get_user_model()
         cls.rider = User.objects.create_user("rider@example.com", password="a-rider-password-1")
         seed_history()
@@ -172,14 +171,16 @@ class AccuracyTests(TestCase):
 class DashboardPageTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cache.clear()
         User = get_user_model()
         cls.staff = User.objects.create_user("admin@example.com", password="an-admin-password-1", is_staff=True)
         cls.rider = User.objects.create_user("rider@example.com", password="a-rider-password-1")
         seed_history()
         add_report(1, 100, eastern(DAYS[0], 10, 20), cls.rider)
+        # The nightly job's saved score for the fixture's range; the page only
+        # ever reads saved scores (snapshots.py), it never computes one.
+        snapshots.score(START, END)
 
-    def test_staff_sees_the_numbers_for_the_range_they_pick(self):
+    def test_staff_sees_the_saved_numbers_for_the_range_they_pick(self):
         self.client.force_login(self.staff)
 
         response = self.client.get(reverse("accuracy-dashboard"), {"from": "2026-11-02", "to": "2026-11-07"})
@@ -190,11 +191,26 @@ class DashboardPageTests(TestCase):
         self.assertContains(response, "-4.0 / 7.2")
         self.assertContains(response, "10 AM")
         self.assertContains(response, "Science Park")
+        self.assertContains(response, "scoring took")
 
-    def test_results_are_cached_for_the_range(self):
+    def test_the_page_only_reads_the_saved_score_it_never_computes(self):
+        with mock.patch.object(
+            accuracy, "accuracy", side_effect=AssertionError("the dashboard computed a score")
+        ):
+            self.client.force_login(self.staff)
+            response = self.client.get(reverse("accuracy-dashboard"), {"from": "2026-11-02", "to": "2026-11-07"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Test route")
+
+    def test_an_unscored_range_says_so_and_links_the_saved_ones(self):
         self.client.force_login(self.staff)
-        self.client.get(reverse("accuracy-dashboard"), {"from": "2026-11-02", "to": "2026-11-07"})
-        self.assertIsNotNone(cache.get("history-accuracy:2026-11-02:2026-11-07"))
+        response = self.client.get(reverse("accuracy-dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "No saved score for this range")
+        self.assertContains(response, "from=2026-11-02")
+        self.assertContains(response, "to=2026-11-07")
 
     def test_riders_and_anonymous_visitors_are_sent_away(self):
         self.client.force_login(self.rider)

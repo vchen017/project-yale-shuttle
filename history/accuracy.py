@@ -35,6 +35,12 @@ from .predictions import (
 HOLDOUT_MODULUS = 3  # every third day is scored, the rest train on — as in evaluate()
 STRIDE = 2  # every second poll stands for a rider asking
 SIDES = ("ours", "official", "history")
+MAX_RANGE_DAYS = 31  # the longest range a dashboard load or a scoring run covers
+
+
+def eastern_midnight(day):
+    """A date's midnight on the Eastern clock, as datetimes are stored: UTC."""
+    return dt.datetime.combine(day, dt.time(0), tzinfo=ET).astimezone(dt.timezone.utc)
 
 
 def accuracy(since, until):
@@ -220,6 +226,34 @@ def accuracy(since, until):
         "by_stop": by_stop,
         "by_hour": by_hour,
     }
+
+
+def to_storage(result):
+    """The result as JSON-safe data, for an AccuracySnapshot's payload (#17).
+
+    Dates become ISO strings and tuples become lists; from_storage() undoes
+    both, so what the dashboard reads back behaves like a fresh accuracy()
+    result."""
+    data = dict(result)
+    data["since"] = result["since"].isoformat()
+    data["until"] = result["until"].isoformat()
+    data["scored_days"] = [day.isoformat() for day in result["scored_days"]]
+    return data
+
+
+def from_storage(data):
+    """A snapshot's payload, as accuracy() would have returned it."""
+    result = dict(data)
+    # since and until were the UTC datetimes accuracy() was given; the scored
+    # days are Eastern dates.
+    result["since"] = dt.datetime.fromisoformat(result["since"])
+    result["until"] = dt.datetime.fromisoformat(result["until"])
+    result["scored_days"] = [dt.date.fromisoformat(day) for day in result["scored_days"]]
+    # JSON turned the stop pairs into lists; the template indexes key.1 either
+    # way, but keep what accuracy() produced so a saved and a fresh result
+    # compare equal.
+    result["by_stop"] = [dict(row, key=tuple(row["key"])) for row in result["by_stop"]]
+    return result
 
 
 def _signed(value):

@@ -24,11 +24,17 @@
       <input class="form-control" type="date" id="to" name="to" value="{{ end|date:'Y-m-d' }}">
     </div>
     <div class="col-12 col-sm-auto">
-      <button class="btn btn-primary w-100" type="submit"><i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>Score this range</button>
+      <button class="btn btn-primary w-100" type="submit"><i class="bi bi-search me-1" aria-hidden="true"></i>Show this range</button>
     </div>
   </form>
   {% if error %}<div class="alert alert-warning py-2 mt-3 mb-0" role="alert">{{ error }} Showing the default range.</div>{% endif %}
 </div></div>
+
+{% if result %}
+<p class="small text-body-secondary">
+  <i class="bi bi-clock-history me-1" aria-hidden="true"></i>
+  Saved {{ snapshot.computed_eastern|date:'M j, g:i A' }} ET — scoring took {{ snapshot.duration_seconds|floatformat:0 }}s.
+</p>
 
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-3"><div class="card h-100"><div class="card-body">
@@ -71,7 +77,35 @@
 <p class="small text-body-secondary mt-4 mb-0">
   <i class="bi bi-info-circle me-1" aria-hidden="true"></i>
   Each cell reads <em>mean error / MAE (queries scored)</em>. "History" is our history layer
-  alone — it can beat the live-inclusive number on held-out days. Cached for six hours;
-  reports are the riders' own (#6), demo ones counted apart.
+  alone — it can beat the live-inclusive number on held-out days. The nightly
+  <code>score_accuracy</code> job saves each range's score after the history import; this page
+  only reads what it saved. Reports are the riders' own (#6), demo ones counted apart.
 </p>
+{% else %}
+<div class="card"><div class="card-body">
+  <h2 class="h5 mb-2"><i class="bi bi-hourglass-split me-1" aria-hidden="true"></i>No saved score for this range</h2>
+  <p class="text-body-secondary mb-3">
+    This page shows the score the nightly job saved — it never computes while you wait, because
+    scoring a week of history takes minutes. The job scores the last 7 days every morning after
+    the history import, and the longest range (31 days) on Mondays.
+  </p>
+  {% if saved %}
+    <h3 class="h6 text-body-secondary text-uppercase mb-2">Saved scores</h3>
+    <ul class="list-unstyled mb-0">
+      {% for snap in saved %}
+      <li class="mb-1">
+        <a href="?from={{ snap.range_start|date:'Y-m-d' }}&amp;to={{ snap.range_end|date:'Y-m-d' }}">
+          {{ snap.range_start|date:'M j' }} – {{ snap.range_end|date:'M j' }}</a>
+        <span class="text-body-secondary">scored {{ snap.computed_eastern|date:'M j, g:i A' }} ET</span>
+      </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="text-body-secondary mb-0">
+      Nothing saved yet. Run <code>score_accuracy</code> by hand — Actions → scheduled jobs →
+      Run workflow — to save one.
+    </p>
+  {% endif %}
+</div></div>
+{% endif %}
 {% endblock %}

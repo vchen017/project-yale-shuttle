@@ -216,6 +216,42 @@ class Announcement(models.Model):
         return f"Announcement {self.announcement_id} at {self.polled_at:%H:%M}"
 
 
+class AccuracySnapshot(models.Model):
+    """One saved score of one date range, written by the score_accuracy job (#17).
+
+    The dashboard reads these instead of scoring in the request: scoring a
+    week of real history takes minutes, far past the server's request time
+    limit, so no page may compute one. `payload` is `accuracy.to_storage()`'s
+    JSON-safe form of the result; the dashboard turns it back with
+    `accuracy.from_storage()`.
+    """
+
+    range_start = models.DateField()
+    range_end = models.DateField()
+    computed_at = models.DateTimeField(default=timezone.now)
+    duration_seconds = models.FloatField()
+    payload = models.JSONField()
+
+    class Meta:
+        ordering = ["-range_end", "-computed_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["range_start", "range_end"], name="unique_range_per_snapshot"
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.range_start} to {self.range_end}, scored in {self.duration_seconds:g}s "
+            f"at {self.computed_at:%Y-%m-%d %H:%M} UTC"
+        )
+
+    @property
+    def computed_eastern(self):
+        """When the score was computed, on the Eastern clock the site shows."""
+        return timezone.localtime(self.computed_at)
+
+
 class RiderReport(models.Model):
     """A rider's report that a bus never came or skipped their stop (#6).
 
