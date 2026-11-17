@@ -124,36 +124,53 @@
 
 .site-footer { border-top: 1px solid var(--bs-border-color); }
 
-/* Below 1200 px the nav's links open in a box under the menu button, over the
-   page: only as tall as its links, a little see-through, and the page behind it
-   isn't dimmed. It's Bootstrap's offcanvas, restyled from a full-height column. */
+/* Below 1200 px the nav's links drop down from the menu button, over the page:
+   from the bar's bottom edge, flush with the screen's right edge, only as tall
+   as its links, a little see-through, white text, and the page behind isn't
+   greyed. It's Bootstrap's offcanvas (for Esc, clicking outside and focus),
+   restyled from a full-height side panel. */
 @media (max-width: 1199.98px) {
-  .navbar > .container { position: relative; }
   .navbar .offcanvas.offcanvas-end {
-    position: absolute;
-    top: calc(100% + 0.75rem);
-    right: 0.75rem;
+    --bs-navbar-color: #fff;
+    --bs-navbar-hover-color: rgba(255, 255, 255, 0.75);
+    position: absolute;  /* inside .navbar, which Bootstrap positions */
+    top: 100%;
+    right: 0;
     bottom: auto;
-    width: 15.5rem;
+    width: 18.5rem;  /* "Welcome back, admin@example.com" fits on one line */
     height: auto;
-    max-height: calc(100vh - 5rem);
+    max-height: calc(100vh - 4rem);
     border: 0;
-    border-radius: 0.75rem;
-    background-color: rgba(0, 53, 107, 0.85);
+    border-radius: 1rem;
+    background-color: rgba(0, 53, 107, 0.92);
     -webkit-backdrop-filter: blur(8px);
     backdrop-filter: blur(8px);
-    box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.2);
-    opacity: 0;
-    transform: translateY(-0.5rem);
-    transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.2);
+    transform: none;
+    clip-path: inset(0 -1.5rem 100% -1.5rem);  /* closed: nothing shows below the bar */
+    transition: clip-path 0.2s ease-out;
   }
   .navbar .offcanvas.showing,
-  .navbar .offcanvas.show:not(.hiding) { opacity: 1; transform: none; }
-  .navbar .offcanvas .offcanvas-header { padding: 0.75rem 1rem 0.25rem; }
-  .navbar .offcanvas .offcanvas-body { padding: 0.25rem 1rem 0.75rem; }
+  .navbar .offcanvas.show:not(.hiding) { clip-path: inset(0 -1.5rem -1.5rem -1.5rem); }
+  .navbar .offcanvas .offcanvas-body { padding: 0.5rem 1.25rem 0.75rem; }
 }
 @media (max-width: 1199.98px) and (prefers-reduced-motion: reduce) {
   .navbar .offcanvas.offcanvas-end { transition: none; }
+}
+/* "Welcome back, ..." in the top bar; on phones the name goes under it, in smaller text */
+.navbar-greeting { color: #fff; }
+.navbar-greeting strong { overflow-wrap: anywhere; }
+@media (max-width: 575.98px) { .navbar-greeting { font-size: 0.875rem; line-height: 1.25; } }
+/* The drop-down's "Account" label over the rider's own pages */
+.navbar .navbar-section {
+  margin-top: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
+  color: #fff;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 /* The nav's menu is the site's only offcanvas: clicking outside it still closes it, but nothing is greyed */
 .offcanvas-backdrop.show { opacity: 0; }

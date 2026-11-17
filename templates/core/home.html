@@ -9,16 +9,13 @@
   <div class="d-md-flex align-items-center justify-content-between gap-4">
     <div>
       <h1 class="h2 fw-bold mb-2">Never miss the Yale shuttle again.</h1>
-      <p class="{% if user.is_authenticated %}mb-3 mb-md-0{% else %}mb-0{% endif %}">See when your bus will actually arrive, so you can leave at just the right time.</p>
+      <p class="{% if user.is_staff %}mb-3 mb-md-0{% else %}mb-0{% endif %}">See when your bus will actually arrive, so you can leave at just the right time.</p>
     </div>
-    {# Logging in and signing up live in the navbar, on every page (#86). #}
-    {% if user.is_authenticated %}
+    {# Logging in, signing up and the "Welcome back" greeting live in the navbar, on every page (#86). #}
+    {% if user.is_staff %}
       <p class="mb-0 flex-shrink-0">
-        Welcome back, <strong>{{ user.username }}</strong>.
-        {% if user.is_staff %}
-          <a class="link-light" href="{% url 'admin:index' %}">Open the admin</a>
-          · <a class="link-light" href="{% url 'admin:alerts_alert_add' %}">Post an alert</a>
-        {% endif %}
+        <a class="link-light" href="{% url 'admin:index' %}">Open the admin</a>
+        · <a class="link-light" href="{% url 'admin:alerts_alert_add' %}">Post an alert</a>
       </p>
     {% endif %}
   </div>
