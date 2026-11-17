@@ -59,7 +59,7 @@ def _routes():
 
     known = {route["id"]: route for route in net["routes"]} if net else {}
     reported = (
-        CrowdReport.objects.filter(created_at__gt=timezone.now() - TYPICAL_WINDOW)
+        CrowdReport.objects.counted().filter(created_at__gt=timezone.now() - TYPICAL_WINDOW)
         .order_by("route_id", "-created_at")
         .values_list("route_id", "route_name")
     )

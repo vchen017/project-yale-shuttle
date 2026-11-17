@@ -5,8 +5,19 @@ from django.db import models
 from django.utils import timezone
 
 
+class CrowdReportQuerySet(models.QuerySet):
+    def counted(self):
+        """Reports that count toward crowding: not removed by an admin (#16)."""
+        return self.filter(removed_at__isnull=True)
+
+
 class CrowdReport(models.Model):
-    """One rider's report of how busy a route's bus is, at one moment."""
+    """One rider's report of how busy a route's bus is, at one moment.
+
+    An admin can remove a bad one (#16). It stays in the database, marked
+    with when and by whom, so it can be restored and #19 can see who keeps
+    posting bad reports, but it no longer counts toward crowding.
+    """
 
     class Level(models.IntegerChoices):
         # Numbers, so reports can be averaged: higher is busier.
@@ -28,6 +39,14 @@ class CrowdReport(models.Model):
         default=False,
         help_text="Demo data from the seed command (#46). Never counted as current crowding.",
     )
+    removed_at = models.DateTimeField(
+        null=True, blank=True, help_text="When an admin removed it. Removed reports don't count toward crowding."
+    )
+    removed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+
+    objects = CrowdReportQuerySet.as_manager()
 
     class Meta:
         ordering = ["-created_at"]

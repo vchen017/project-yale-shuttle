@@ -83,7 +83,7 @@ def crowding(routes, now=None):
     """
     now = now or timezone.now()
     ids = [route["id"] for route in routes]
-    rows = CrowdReport.objects.filter(
+    rows = CrowdReport.objects.counted().filter(
         route_id__in=ids, created_at__gt=now - TYPICAL_WINDOW, created_at__lte=now
     ).values_list("route_id", "level", "created_at", "is_sample")
 
