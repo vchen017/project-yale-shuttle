@@ -162,10 +162,34 @@ def current_stops(route_id):
     return set(row.stop_ids) if row else None
 
 
-def _stop_is_served(route_id, stop_id):
+def current_stops_by_route():
+    """What current_stops() answers for every walked route, in one query.
+
+    For a caller that asks about thousands of (route, stop) pairs: the
+    accuracy scoring (#17) asks once per scored query, and against the
+    production database each ask was a network round trip. A route the
+    walk never recorded is left out, so its stops all count as served.
+    """
+    current = {}
+    rows = RouteStopList.objects.order_by("route_id", "-first_seen", "-id").values_list(
+        "route_id", "stop_ids"
+    )
+    for route_id, stop_ids in rows:
+        if route_id not in current:  # the newest version, as current_stops() picks it
+            current[route_id] = set(stop_ids)
+    return current
+
+
+def _stop_is_served(route_id, stop_id, current_by_route=None):
     """False only once the walk has run and shows the route no longer
-    serves the stop; before any walk, everything counts as served."""
-    current = current_stops(route_id)
+    serves the stop; before any walk, everything counts as served.
+
+    `current_by_route`, from current_stops_by_route(), answers without a
+    query of its own."""
+    if current_by_route is None:
+        current = current_stops(route_id)
+    else:
+        current = current_by_route.get(route_id)
     return current is None or stop_id in current
 
 
@@ -270,7 +294,7 @@ def _fit_corrections(residuals):
     return Corrections(by_route=by_route, by_bucket=by_bucket, overall=overall)
 
 
-def _shown_residuals(since, until=None, exclude_dates=frozenset()):
+def _shown_residuals(since, until=None, exclude_dates=frozenset(), arrivals_by_pair=None):
     """What the countdowns got wrong, for the correction fit (#117): over
     the window's polls, each poll's soonest countdown against the next
     recorded arrival — the residual (arrival - poll) - countdown, in
@@ -280,8 +304,12 @@ def _shown_residuals(since, until=None, exclude_dates=frozenset()):
     too, because production defers to history there and it has nothing to
     teach the countdown fit. Every poll teaches, not the evaluation's
     strided sample: the fit wants all the evidence it can get.
+
+    A caller that already holds _arrivals_by_pair(since, until) passes it
+    as `arrivals_by_pair`, so the window's arrivals are read only once.
     """
-    arrivals_by_pair = _arrivals_by_pair(since, until)
+    if arrivals_by_pair is None:
+        arrivals_by_pair = _arrivals_by_pair(since, until)
     rows = (
         Eta.objects.filter(polled_at__gte=since)
         .filter(polled_at__lte=until)

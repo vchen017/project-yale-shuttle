@@ -8,11 +8,13 @@ from unittest import mock
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from history import accuracy, predictions, snapshots
-from history.models import Eta, Poll, RiderReport
+from history.models import Eta, Poll, RiderReport, RouteStopList
 
 ET = ZoneInfo("America/New_York")
 UTC = dt.UTC
@@ -307,3 +309,65 @@ class FreshOfficialTests(TestCase):
         self.assertEqual(overall["ours"]["answered"], 1)
         self.assertIsNone(overall["history"])
         self.assertEqual(self.result["no_prediction"], 0)
+
+
+class StopListTests(TestCase):
+    """Queries at a stop the route no longer serves are counted, not scored
+    (#57), going by the route's newest stop list, as predictions do."""
+
+    @classmethod
+    def setUpTestData(cls):
+        seed_history()
+        # Phelps Gate (200) was on the route, then dropped from it.
+        for days_before, sha, stop_ids in ((30, "a" * 40, [100, 200]), (1, "b" * 40, [100])):
+            RouteStopList.objects.create(
+                route_id=1,
+                route_name="Test route",
+                stop_ids=stop_ids,
+                first_seen=eastern(START) - dt.timedelta(days=days_before),
+                commit_sha=sha,
+            )
+        cls.scored = sorted(predictions.held_out_days(set(DAYS), accuracy.HOLDOUT_MODULUS))
+        cls.result = accuracy.accuracy(eastern(START), eastern(END + dt.timedelta(days=1)))
+
+    def test_a_stop_the_route_no_longer_serves_is_not_scored(self):
+        # Each scored day samples six polls at Phelps Gate, all not served;
+        # Science Park still scores its five queries a day.
+        self.assertTrue(self.scored)
+        self.assertEqual(self.result["not_served"], 6 * len(self.scored))
+        self.assertEqual(self.result["overall"]["queries"], 5 * len(self.scored))
+        self.assertEqual([data["key"] for data in self.result["by_stop"]], [(1, 100)])
+
+
+class DatabaseReadsTests(TestCase):
+    """The nightly job scores against the production database, where every
+    query is a network round trip (#17). Asking once per scored query
+    whether the route still serves the stop cost a week's scoring most of
+    its ten minutes, so accuracy() reads in bulk: its reads don't grow with
+    the queries it scores."""
+
+    @classmethod
+    def setUpTestData(cls):
+        seed_history()
+        RouteStopList.objects.create(
+            route_id=1,
+            route_name="Test route",
+            stop_ids=[100, 200, 300],
+            first_seen=eastern(START),
+            commit_sha="a" * 40,
+        )
+
+    def score(self):
+        with CaptureQueriesContext(connection) as context:
+            result = accuracy.accuracy(eastern(START), eastern(END + dt.timedelta(days=1)))
+        return result["overall"]["queries"], len(context.captured_queries)
+
+    def test_reads_do_not_grow_with_the_queries_scored(self):
+        scored, reads = self.score()
+        for day in DAYS:
+            add_approach(day, 300, 9, "Yale Station")  # a third stop to score
+        more_scored, more_reads = self.score()
+
+        self.assertGreater(scored, 0)
+        self.assertEqual(more_scored, scored * 3 // 2)
+        self.assertEqual(more_reads, reads)
