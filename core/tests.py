@@ -42,7 +42,11 @@ class SeedTests(TestCase):
 
         self.assertEqual(
             sorted(Alert.objects.values_list("title", flat=True)),
-            ["Sample: Chapel Street closed for a past event", "Welcome to Yale Shuttle"],
+            [
+                "Sample: Chapel Street closed for a past event",
+                "Sample: a route is detoured",
+                "Welcome to Yale Shuttle",
+            ],
         )
         self.assertEqual(Visit.objects.count(), 0)
 

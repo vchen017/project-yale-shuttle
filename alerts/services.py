@@ -1,9 +1,11 @@
 """The service alerts riders see on the home page (#13).
 
-Two sources, merged newest first:
+Three sources, merged newest first:
 
 - the alerts our admins post in /admin/ (Alert), shown from their start until
   their end;
+- a "possible detour" notice for each route the bus positions suggest is off
+  its official path right now (detours.detect, #55);
 - the Downtowner's announcements, from transit.downtowner.announcements()
   (#36). The feed lists only the ones in effect, so an ended announcement
   disappears on its own. If the feed is down, the admin alerts still show.
@@ -15,25 +17,34 @@ from datetime import datetime
 from django.db.models import Min
 from django.utils import timezone
 
+from detours.detect import cached_detoured_routes, detoured_routes
 from history.models import Announcement as RecordedAnnouncement
 from transit import downtowner
 
 from .models import Alert, FeedAnnouncement
 
 ADMIN = "admin"
+DETOUR = "detour"
 DOWNTOWNER = "downtowner"
+
+DETOUR_MESSAGE = (
+    "Recent bus positions suggest this route has left its usual path for the "
+    "last three recorded polls, about 15 minutes. Some stops may be skipped — "
+    "ask the driver where to get off."
+)
 
 
 @dataclass(frozen=True)
 class ShownAlert:
     """One alert as a rider sees it, from either source."""
 
-    source: str  # ADMIN or DOWNTOWNER
+    source: str  # ADMIN, DETOUR or DOWNTOWNER
     title: str
     message: str
     posted_at: datetime
     link_text: str = ""
     link_url: str = ""
+    skipped_stops: str = ""  # detour alerts: the stops the detour skips (#55)
     # Breaks ties between alerts posted at the same moment: higher is newer.
     order: int = 0
 
@@ -41,7 +52,14 @@ class ShownAlert:
 def admin_alerts(now=None):
     """The admins' alerts in effect now, newest first. Reads only the database."""
     return [
-        ShownAlert(ADMIN, alert.title, alert.message, alert.starts_at, order=alert.pk)
+        ShownAlert(
+            ADMIN,
+            alert.title,
+            alert.message,
+            alert.starts_at,
+            skipped_stops=alert.skipped_stops,
+            order=alert.pk,
+        )
         for alert in Alert.objects.current(now).order_by("-starts_at", "-pk")
     ]
 
@@ -55,6 +73,10 @@ def current_alerts():
     now = timezone.now()
     alerts = admin_alerts(now)
     try:
+        alerts += detour_alerts(now)
+    except downtowner.FeedUnavailable:
+        pass  # no paths to measure against; the other alerts still show
+    try:
         announcements = downtowner.announcements()
     except downtowner.FeedUnavailable:
         feed_ok = False
@@ -63,6 +85,42 @@ def current_alerts():
         alerts += feed_alerts(announcements, now)
     alerts.sort(key=lambda alert: (alert.posted_at, alert.order), reverse=True)
     return alerts, feed_ok
+
+
+def home_page_alerts(now=None):
+    """What the home page's first paint shows (#13, #55): the admins' alerts,
+    plus any detour noticed in the last minute, newest first. It reads only
+    the database and the detection cache, never the network, so the page
+    answers at once and still works when the feed is down; the page then
+    swaps in current_alerts, which adds the feed's announcements and any
+    freshly detected detour."""
+    alerts = admin_alerts(now) + _detour_alerts(cached_detoured_routes())
+    alerts.sort(key=lambda alert: (alert.posted_at, alert.order), reverse=True)
+    return alerts
+
+
+def detour_alerts(now=None):
+    """A "possible detour" notice per route that looks detoured now (#55).
+
+    Raises downtowner.FeedUnavailable when the feed is down.
+    """
+    return _detour_alerts(detoured_routes(now))
+
+
+def _detour_alerts(flags):
+    """The detected routes as ShownAlerts, worded as a heads-up, never a
+    verdict (#55): the feed's paths can be stale, so riders are told to ask
+    the driver rather than told the route is detoured."""
+    return [
+        ShownAlert(
+            DETOUR,
+            f"{flag['route_name']}: possible detour",
+            DETOUR_MESSAGE,
+            flag["since"],
+            order=flag["route_id"],
+        )
+        for flag in flags
+    ]
 
 
 def feed_alerts(announcements, now):

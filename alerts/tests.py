@@ -5,6 +5,7 @@ import datetime as dt
 import json
 from unittest import mock
 from urllib.error import URLError
+from urllib.parse import urlsplit
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -14,7 +15,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from history.models import Announcement as RecordedAnnouncement
-from history.models import Poll
+from history.models import BusPosition, Poll
 
 from .models import Alert, FeedAnnouncement
 
@@ -335,3 +336,128 @@ class CustomAlertTests(TestCase):
         self.rider.force_login(get_user_model().objects.create_user("rider@example.com"))
         response = self.rider.get(reverse("admin:alerts_alert_add"))
         self.assertRedirects(response, f"/admin/login/?next={reverse('admin:alerts_alert_add')}")
+
+
+# A route with an official path, as the feed's routes answer carries it (#55):
+# a flat [lat, lon, lat, lon, ...] list.
+ROUTES_WITH_PATH = [
+    {
+        "id": 1,
+        "name": "Blue - Weekday Daytime",
+        "short_name": "BD",
+        "color": "4472C4",
+        "active": True,
+        "stops": [10],
+        "path": [41.305, -72.94, 41.315, -72.94],
+    },
+]
+
+FEED_PATHS = {
+    "/routes_routes.php": ROUTES_WITH_PATH,
+    "/routes_announcements.php": [],
+}
+
+
+def feed_by_path(answers):
+    """A urlopen stand-in that answers each feed endpoint."""
+    def urlopen(request, timeout):
+        return feed_answer(answers[urlsplit(request.full_url).path])
+
+    return urlopen
+
+
+@mock.patch("django.utils.timezone.now", return_value=NOW)
+@mock.patch("transit.downtowner.urlopen")
+class DetourAlertTests(TestCase):
+    """A route the bus positions catch off its path shows "possible detour"
+    with the alerts (#55), and an admin's detour alert names the stops it
+    skips."""
+
+    def setUp(self):
+        cache.clear()  # detour detection is cached for a minute; start cold
+        self.addCleanup(cache.clear)
+        self.staff = get_user_model().objects.create_user(
+            "staff@example.com", is_staff=True, is_superuser=True
+        )
+
+    def record_an_off_path_bus(self):
+        """Three polls in a row (#22) with one bus well off route 1's path."""
+        for minutes in (10, 5, 0):
+            polled_at = NOW - dt.timedelta(minutes=minutes)
+            poll = Poll.objects.create(polled_at=polled_at)
+            BusPosition.objects.create(
+                poll=poll,
+                polled_at=polled_at,
+                bus_id=812,
+                bus_name="812",
+                route_id=1,
+                route_name="Blue - Weekday Daytime",
+                lat=41.31,
+                lon=-72.934,  # about 500 m west of the path above
+            )
+
+    def test_a_detected_detour_shows_with_the_alerts(self, urlopen, now):
+        urlopen.side_effect = feed_by_path(FEED_PATHS)
+        self.record_an_off_path_bus()
+
+        response = self.client.get(reverse("home-alerts"))
+
+        self.assertContains(response, "Blue - Weekday Daytime: possible detour")
+        self.assertContains(response, "Detected from the bus positions we record")
+
+    def test_the_notice_goes_when_the_bus_is_back_on_its_path(self, urlopen, now):
+        urlopen.side_effect = feed_by_path(FEED_PATHS)
+        self.record_an_off_path_bus()
+        self.assertContains(self.client.get(reverse("home-alerts")), "possible detour")
+
+        cache.clear()  # a few minutes later, the bus is back where it belongs
+        BusPosition.objects.update(lon=-72.94)
+
+        self.assertNotContains(self.client.get(reverse("home-alerts")), "possible detour")
+
+    def test_when_the_routes_answer_fails_the_other_alerts_still_show(self, urlopen, now):
+        post_alert("Shuttle stop moved", NOW - dt.timedelta(hours=1), NOW + dt.timedelta(days=1))
+
+        def routes_only_down(request, timeout):
+            if urlsplit(request.full_url).path == "/routes_routes.php":
+                raise URLError("routes feed down")
+            return feed_answer([])
+
+        urlopen.side_effect = routes_only_down
+
+        response = self.client.get(reverse("home-alerts"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Shuttle stop moved")
+        self.assertNotContains(response, "possible detour")
+
+    def test_an_admin_detour_alert_names_the_stops_it_skips(self, urlopen, now):
+        urlopen.side_effect = feed_by_path(
+            {"/routes_routes.php": [], "/routes_announcements.php": []}
+        )
+        Alert.objects.create(
+            title="Chapel Street closed",
+            message="The Blue Line is going around Chapel Street.",
+            skipped_stops="Chapel St at York St\nBroadway at Tower Pkwy",
+            starts_at=NOW - dt.timedelta(hours=1),
+            ends_at=NOW + dt.timedelta(days=1),
+        )
+
+        shown = self.client.get(reverse("home-alerts")).content.decode()
+        self.assertIn("Skips:", shown)
+        self.assertIn("Chapel St at York St<br>", shown)
+        self.assertIn("Broadway at Tower Pkwy", shown)
+
+        # The home page's first paint shows them too, still without the feed.
+        urlopen.reset_mock()
+        self.assertContains(self.client.get("/"), "Skips:")
+        self.assertContains(self.client.get("/"), "Chapel St at York St<br>")
+        urlopen.assert_not_called()
+
+    def test_the_admin_form_has_the_skipped_stops_field(self, urlopen, now):
+        self.client.force_login(self.staff)
+
+        response = self.client.get(reverse("admin:alerts_alert_add"))
+
+        self.assertContains(response, "Skipped stops")
+        urlopen.assert_not_called()
