@@ -16,6 +16,7 @@ on:
     - cron: "17 9 * * *"  # import_history: daily, 4:17 AM Eastern
     - cron: "29 10 * * *"  # fit_calibration: daily, 5:29 AM Eastern, after the import
     - cron: "53 10 * * *"  # score_accuracy: daily, 5:53 AM Eastern, after the import
+    - cron: "41 * * * *"  # refresh_calendars: hourly, at :41 past
   workflow_dispatch:
     inputs:
       environment:
