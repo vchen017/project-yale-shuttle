@@ -26,6 +26,19 @@ class ImportHistoryJobTests(SimpleTestCase):
         self.assertEqual(summary, "2026-11-14: 288 polls imported")
 
 
+class FitCalibrationJobTests(SimpleTestCase):
+    @mock.patch("history.jobs.call_command")
+    def test_refits_the_corrections_and_returns_the_summary(self, call_command):
+        def fake_fit(*args, stdout, **kwargs):
+            stdout.write("Fitted 12 correction rows from 5000 residuals")
+
+        call_command.side_effect = fake_fit
+        summary = jobs.fit_calibration()
+        call_command.assert_called_once()
+        self.assertEqual(call_command.call_args.args, ("fit_calibration",))
+        self.assertEqual(summary, "Fitted 12 correction rows from 5000 residuals")
+
+
 class GitHubTokenTests(SimpleTestCase):
     def headers_for(self, url):
         with mock.patch("history.sources.urlopen", return_value=io.BytesIO(b"")) as urlopen:

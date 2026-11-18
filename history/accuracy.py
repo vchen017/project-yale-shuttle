@@ -8,8 +8,11 @@ QUERY_OFFSET minutes later, the actual next arrival comes from the recorded
 countdowns, and the held-out discipline stays the same (every third day is
 scored, the rest train on) so a dashboard run and an evaluate() run agree.
 Error is predicted minus actual: positive means we said the bus was farther
-than it turned out to be. The history layer is reported on its own — it can
-beat the live-inclusive number on held-out days (see #23).
+than it turned out to be. The official ETA is scored the way riders see it
+(#116): the freshest poll's countdown at the query instant, aged by that
+poll's own lag — not the sampled poll grown stale by the whole offset,
+which overstated the official's error. The history layer is reported on its
+own — it can beat the live-inclusive number on held-out days (see #23).
 
 Riders' reports (#6) are counted next to the errors, in the same groups.
 """
@@ -24,10 +27,14 @@ from .predictions import (
     HORIZON,
     QUERY_OFFSET,
     _arrivals_by_pair,
+    _fit_corrections,
+    _fused_countdown,
     _last_arrival_before,
     _learn,
-    _live_minutes_from,
     _predict_history,
+    _shown_countdown,
+    _shown_fresh,
+    _shown_residuals,
     _stop_is_served,
     held_out_days,
 )
@@ -59,6 +66,7 @@ def accuracy(since, until):
     profiles = {
         pair: _learn(moments, exclude_dates=test_days) for pair, moments in arrivals_by_pair.items()
     }
+    corrections = _fit_corrections(_shown_residuals(since, until, exclude_dates=test_days))
 
     names = {}  # (kind, key) -> the name the recorded polls served
     signed = defaultdict(float)  # (side, kind, key) -> sum of (predicted - actual)
@@ -82,15 +90,15 @@ def accuracy(since, until):
             by_poll[polled_at][(route_id, stop_id)].append(eta_minutes)
         poll_times = sorted(by_poll)
 
-        # What each poll promised: implied absolute arrivals, per pair, in
-        # poll order — as in evaluate().
-        implied_times = defaultdict(list)
-        implied_arrivals = defaultdict(list)
+        # What the pair was being shown at each poll: the countdown the
+        # official app displays (#116), and the guarded copy ours answers
+        # from (#117) — as in evaluate().
+        shown_times = defaultdict(list)
+        shown_values = defaultdict(list)
         for polled_at in poll_times:
             for pair, etas in by_poll[polled_at].items():
-                for eta in etas:
-                    implied_times[pair].append(polled_at)
-                    implied_arrivals[pair].append(polled_at + dt.timedelta(minutes=eta))
+                shown_times[pair].append(polled_at)
+                shown_values[pair].append(min(etas))
 
         for polled_at in poll_times[::STRIDE]:
             query_at = polled_at + QUERY_OFFSET
@@ -106,8 +114,10 @@ def accuracy(since, until):
                     continue  # no measurable arrival: neither side gets scored
                 actual = (next_arrival - query_at).total_seconds() / 60
                 profile = profiles.get(pair)
-                ours = _live_minutes_from(
-                    implied_times.get(pair, []), implied_arrivals.get(pair, []), query_at
+                ours = _fused_countdown(
+                    pair[0],
+                    _shown_fresh(shown_times.get(pair, []), shown_values.get(pair, []), query_at),
+                    corrections,
                 )
                 if ours is None and profile is not None:
                     ours = _predict_history(
@@ -121,8 +131,9 @@ def accuracy(since, until):
                     if profile is not None
                     else None
                 )
-                official_implied = polled_at + dt.timedelta(minutes=min(etas))
-                official = max((official_implied - query_at).total_seconds() / 60, 0.0)
+                official = _shown_countdown(
+                    shown_times.get(pair, []), shown_values.get(pair, []), query_at
+                )
                 for kind, key in (
                     ("route", pair[0]),
                     ("stop", pair),

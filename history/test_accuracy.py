@@ -67,6 +67,26 @@ def seed_history():
         add_approach(day, 200, 8, "Phelps Gate")
 
 
+def add_countdown(day, hour, minute, eta, stop_id=100, bus_id=9):
+    """One bus's countdown at one poll, like the feed serves it."""
+    moment = eastern(day, hour, minute)
+    poll, _ = Poll.objects.get_or_create(
+        polled_at=moment, defaults={"status": Poll.Status.RECORDED}
+    )
+    Eta.objects.create(
+        poll=poll,
+        polled_at=moment,
+        stop_id=stop_id,
+        stop_name="Science Park",
+        route_id=1,
+        route_name="Test route",
+        bus_id=bus_id,
+        bus_name=f"#{bus_id}",
+        eta_minutes=eta,
+        calculation_time=moment,
+    )
+
+
 def add_report(route_id, stop_id, when, user, is_sample=False):
     return RiderReport.objects.create(
         user=user,
@@ -101,19 +121,28 @@ class AccuracyTests(TestCase):
         self.assertEqual(self.result["history_days"], len(DAYS))
 
     def test_every_side_errors_as_the_revision_implied(self):
-        """Five queries per stop per scored day: +4, +4, -28, 0, 0.
+        """Five queries per stop per scored day: ours +2, +4, -11.5, -2, 0;
+        the official +4, +4, -28, 0, 0.
 
-        The feed promises 10:30 and delivers 10:26, so both we and the
-        official ETA say the bus is 4 minutes farther than it is; when the
-        revised bus comes due, both floor at 0 while the next bus is 28
-        away."""
+        The feed promises 10:30 and delivers 10:26, so the official ETA runs
+        4 minutes ahead of the truth twice, floors at 0 while the revised bus
+        is overdue (28 minutes to the next bus) and reads the second approach
+        spot on twice. Ours answers the same countdowns corrected by the
+        history fit (#117): the two promises lose 2 minutes each to the fit,
+        the overdue countdown defers to the history layer instead of reading
+        0 (16.5 against 28), the 13-minute countdown is corrected down to 11,
+        and the 3-minute one answers raw — below five minutes the countdown
+        is already right, and correcting it only hurt (#117)."""
         overall = self.result["overall"]
         self.assertEqual(overall["queries"], 10 * len(self.scored))
-        for side in ["ours", "official"]:
-            self.assertEqual(round(overall[side]["mean"], 1), -4.0)
-            self.assertEqual(round(overall[side]["mae"], 1), 7.2)
-            self.assertEqual(overall[side]["answered"], overall["queries"])
-            self.assertEqual(overall[side]["mean_display"], "-4.0")
+        self.assertEqual(round(overall["ours"]["mean"], 1), -1.5)
+        self.assertEqual(round(overall["ours"]["mae"], 1), 3.9)
+        self.assertEqual(overall["ours"]["answered"], overall["queries"])
+        self.assertEqual(overall["ours"]["mean_display"], "-1.5")
+        self.assertEqual(round(overall["official"]["mean"], 1), -4.0)
+        self.assertEqual(round(overall["official"]["mae"], 1), 7.2)
+        self.assertEqual(overall["official"]["answered"], overall["queries"])
+        self.assertEqual(overall["official"]["mean_display"], "-4.0")
         # The history layer answered everywhere too, and it stayed sane:
         # trained on days identical to the scored ones, it can't be far off.
         self.assertEqual(overall["history"]["answered"], overall["queries"])
@@ -128,7 +157,7 @@ class AccuracyTests(TestCase):
         self.assertEqual(test_route["queries"], 10 * len(self.scored))
         self.assertEqual(test_route["reports"], 2)
         self.assertEqual(test_route["sample_reports"], 1)
-        self.assertEqual(round(test_route["ours"]["mean"], 1), -4.0)
+        self.assertEqual(round(test_route["ours"]["mean"], 1), -1.5)
         # A report-only route still shows, by name, with no errors to show.
         self.assertEqual(routes[99]["queries"], 0)
         self.assertEqual(routes[99]["reports"], 1)
@@ -242,3 +271,39 @@ class DashboardPageTests(TestCase):
         self.assertContains(self.client.get("/"), 'href="/reliability/dashboard/"')
         self.client.force_login(self.rider)
         self.assertNotContains(self.client.get("/"), "reliability/dashboard/")
+
+
+class FreshOfficialTests(TestCase):
+    """The dashboard's official column is what riders see (#116): the
+    freshest poll's countdown at the query instant, aged by its own lag —
+    not the sampled poll grown stale by the whole offset. A bus revised
+    closer between those two polls tells the two scorings apart: the rider
+    and the official app both read 13 minutes at 12:02 (spot on), while the
+    old scoring kept quoting the 11:55 promise (18 minutes, 5 off)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.rider = User.objects.create_user("rider@example.com", password="a-rider-password-1")
+        cls.day = next(
+            day
+            for day in (dt.date(2026, 11, 9), dt.date(2026, 11, 10), dt.date(2026, 11, 11))
+            if day.toordinal() % 3 == 0  # the holdout discipline's pick
+        )
+        for hour, minute, eta in [(11, 55, 25), (12, 0, 15), (12, 10, 5)]:
+            add_countdown(cls.day, hour, minute, eta)
+        cls.result = accuracy.accuracy(
+            eastern(cls.day), eastern(cls.day + dt.timedelta(days=1))
+        )
+
+    def test_the_official_column_is_the_countdown_a_rider_acts_on(self):
+        overall = self.result["overall"]
+        self.assertEqual(overall["queries"], 1)  # the 12:17 ask had no next bus
+        self.assertEqual(round(overall["official"]["mean"], 1), 0.0)
+        self.assertEqual(round(overall["official"]["mae"], 1), 0.0)
+        self.assertEqual(overall["official"]["answered"], 1)
+        # Ours read the revision too (the live layer takes the soonest
+        # implied arrival); the history layer had no train day to learn from.
+        self.assertEqual(overall["ours"]["answered"], 1)
+        self.assertIsNone(overall["history"])
+        self.assertEqual(self.result["no_prediction"], 0)

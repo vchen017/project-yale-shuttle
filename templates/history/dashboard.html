@@ -76,10 +76,12 @@
 
 <p class="small text-body-secondary mt-4 mb-0">
   <i class="bi bi-info-circle me-1" aria-hidden="true"></i>
-  Each cell reads <em>mean error / MAE (queries scored)</em>. "History" is our history layer
-  alone — it can beat the live-inclusive number on held-out days. The nightly
-  <code>score_accuracy</code> job saves each range's score after the history import; this page
-  only reads what it saved. Reports are the riders' own (#6), demo ones counted apart.
+  Each cell reads <em>mean error / MAE (queries scored)</em>. "Official ETA" is scored the way
+  riders see it (#116): the freshest countdown at the query instant, aged by its own lag.
+  "History" is our history layer alone — it can beat the live-inclusive number on held-out days.
+  The nightly <code>score_accuracy</code> job saves each range's score after the history import;
+  this page only reads what it saved, and scores saved before #116 used an older, harsher
+  official scoring. Reports are the riders' own (#6), demo ones counted apart.
 </p>
 {% else %}
 <div class="card"><div class="card-body">

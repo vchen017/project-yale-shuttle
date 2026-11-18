@@ -7,34 +7,45 @@ prediction. The next-buses page (#24), trip plans (#26) and the AI agent
 
 Two layers, live first:
 
-*Live* — two sources. The first is the feed itself, through the transit
-app's helper (`transit.downtowner.etas`, cached 30 seconds), used only when
-the caller asks about right now: its countdown is about the present, so a
-simulated `now` never reads it, and a feed outage falls through quietly to
-the next source instead of crashing the page. The second is the freshest
-recorded polls for the stop, which each imply an absolute arrival time:
-polled_at + eta_minutes, the feed's countdown frozen at one instant. The
-soonest arrival that has not yet come due is the next bus, and the answer
-is that arrival minus `now`: between polls the number ticks down a minute
-per minute instead of being recomputed from scratch on every request — the
-official app's whiplash, "20 minutes away" and 6 five minutes later. New
-polls can only lower the estimate, never raise it, and an estimate that has
-come due expires, so a listing that never arrives cannot hold the answer
-hostage.
+*Live* — a countdown, corrected. The first source is the feed itself,
+through the transit app's helper (`transit.downtowner.etas`, cached 30
+seconds), used only when the caller asks about right now: its countdown is
+about the present, so a simulated `now` never reads it, and a feed outage
+falls through quietly to the next source instead of crashing the page. The
+second is the freshest recorded poll for the stop: its soonest countdown,
+aged by the minutes since that poll landed, so the number ticks down a
+minute per minute between polls. This is the countdown the official app
+shows, and the Nov 17 audit (#117) said to answer with it rather than our
+earlier rule — which held the soonest implied arrival of the whole
+15-minute window and never let it rise, promising buses that came later
+than predicted 56% of the time. The countdown can rise again when a new
+poll revises the bus farther out: the audit measured that as the more
+honest promise (late answers 56% -> 40%), and it is what riders of the
+official app already live with.
+
+A countdown at or below RAW_MAX is answered as-is: when the feed says the
+bus is five minutes out it is five minutes out (MAE 0.08 in the audit at
+actual waits ≤3), and a learned correction there only wrecked the imminent
+answer. Above that, the correction the recorded history teaches for
+countdowns of that size (Corrections, refit nightly) is added — the
+history's median "how wrong is a countdown of this size" per route and
+size bucket. Beyond LIVE_MAX_AGE with no fresher poll, or once the
+countdown has run more than LIVE_EXPIRY past due, the countdown has
+nothing left to say.
 
 *History* is the fallback, for when nothing live is fresh enough (imports
-lag, the feed is down) or nothing is coming (service hours ended). How it
-learns: a poll with eta_minutes at or below ARRIVAL_ETA is the end of a
-bus's approach — the recorder polls every five minutes, so the poll rarely
-lands on the arrival itself, and the moment is the countdown run to zero.
-Those arrival moments fill half-hour buckets of the Eastern clock, one set
-per day type (weekday, Saturday, Sunday). Each bucket keeps the
-distribution of "minutes until the next bus, if you walk up then", sampled
-every five minutes across four weeks of history. The prediction is the
-bucket's median wait, widened to neighbouring buckets when the exact one
-has no data (late night, quiet stops). When even the neighbours are empty
-— outside service hours, mostly — there is no prediction: a route that
-isn't running has no wait to predict.
+lag, the feed is down), the bus is overdue, or nothing is coming (service
+hours ended). How it learns: a poll with eta_minutes at or below
+ARRIVAL_ETA is the end of a bus's approach — the recorder polls every five
+minutes, so the poll rarely lands on the arrival itself, and the moment is
+the countdown run to zero. Those arrival moments fill half-hour buckets of
+the Eastern clock, one set per day type (weekday, Saturday, Sunday). Each
+bucket keeps the distribution of "minutes until the next bus, if you walk
+up then", sampled every five minutes across four weeks of history. The
+prediction is the bucket's median wait, widened to neighbouring buckets
+when the exact one has no data (late night, quiet stops). When even the
+neighbours are empty — outside service hours, mostly — there is no
+prediction: a route that isn't running has no wait to predict.
 
 The history layer also conditions on what today already told us: when a
 bus reached the stop recently (from polls, so the elapsed time is
@@ -47,7 +58,9 @@ prediction.
 
 `evaluate()` scores what a rider would be told on days held out from
 training and reports our average error next to the official ETA's; the
-evaluate_predictions command prints it.
+evaluate_predictions command prints it. Its "ours" is the fused countdown
+above, fitted on the training days only, so the score is the predictor
+production actually runs.
 """
 
 import datetime as dt
@@ -57,12 +70,13 @@ from collections import defaultdict
 from dataclasses import dataclass
 from zoneinfo import ZoneInfo
 
+from django.core.cache import cache
 from django.utils import timezone
 
 from transit import downtowner
 from transit.downtowner import FeedUnavailable
 
-from .models import Eta, RouteStopList
+from .models import Calibration, Eta, RouteStopList
 
 ET = ZoneInfo("America/New_York")
 
@@ -79,6 +93,13 @@ QUERY_OFFSET = dt.timedelta(minutes=7)  # evaluate(): rider opens the app this
 MAX_CONDITIONING = dt.timedelta(minutes=45)  # condition only on arrivals this
 # recent: older than that, and unseen buses make the elapsed time a lie
 MIN_BAND_SAMPLES = 8  # a residual point sampled fewer times defers to the buckets
+RAW_MAX = 5  # countdowns this small are answered untouched (#117): the
+# audit's imminent regime is near-perfect raw, and correcting it hurt
+COUNTDOWN_BUCKETS = ((0, 5), (5, 10), (10, 15), (15, 20), (20, 30), (30, float("inf")))
+MIN_CALIBRATION_SAMPLES = 20  # a (route, bucket) with fewer residuals defers
+# to the all-routes row for its bucket
+OVERALL_BUCKET = -1  # the Corrections row that covers every countdown
+CALIBRATION_CACHE_SECONDS = 600  # the stored corrections, re-read this often
 
 
 @dataclass
@@ -89,6 +110,37 @@ class Profile:
 
     buckets: dict  # (day type, bucket) -> median walk-up wait in minutes
     residuals: dict  # (day type, elapsed minutes) -> median residual wait
+
+
+@dataclass
+class Corrections:
+    """What the recorded history says about the feed's countdowns (#117):
+    the median minutes a countdown of a given size was off by, per (route,
+    countdown bucket), with the all-routes medians beneath and the overall
+    median beneath those. `delta` walks that ladder; an empty fit — a new
+    database, no history yet — corrects nothing, so the raw countdown
+    answers and a fresh deploy degrades safely."""
+
+    by_route: dict  # (route id, bucket) -> median residual
+    by_bucket: dict  # bucket -> median residual
+    overall: float  # median residual over everything fitted
+
+    def delta(self, route_id, countdown):
+        """The minutes to add to a countdown of this size for this route."""
+        bucket = countdown_bucket(countdown)
+        if (route_id, bucket) in self.by_route:
+            return self.by_route[(route_id, bucket)]
+        if bucket in self.by_bucket:
+            return self.by_bucket[bucket]
+        return self.overall
+
+
+def countdown_bucket(countdown):
+    """Which slice of COUNTDOWN_BUCKETS a countdown falls in."""
+    for index, (lo, hi) in enumerate(COUNTDOWN_BUCKETS):
+        if lo <= countdown < hi:
+            return index
+    return len(COUNTDOWN_BUCKETS) - 1
 
 
 def _last_arrival_before(arrivals, now):
@@ -136,13 +188,14 @@ def predict_minutes(route_id, stop_id, now=None, use_live_feed=True):
         return None
     asked_about_now = now is None
     now = now or timezone.now()
+    corrections = stored_corrections()
     if asked_about_now and use_live_feed:
-        live = _live_feed_minutes(route_id, stop_id)
-        if live is not None:
-            return live
-    live = _live_minutes(route_id, stop_id, now)
-    if live is not None:
-        return live
+        fused = _fused_countdown(route_id, _live_feed_minutes(route_id, stop_id), corrections)
+        if fused is not None:
+            return fused
+    fused = _fused_countdown(route_id, _live_minutes(route_id, stop_id, now), corrections)
+    if fused is not None:
+        return fused
     rows = (
         Eta.objects.filter(
             route_id=route_id,
@@ -159,13 +212,114 @@ def predict_minutes(route_id, stop_id, now=None, use_live_feed=True):
     return _predict_history(profile, now, _last_arrival_before(arrivals, now))
 
 
+def _fused_countdown(route_id, countdown, corrections):
+    """The live answer (#117): the countdown, plus the history's correction
+    for countdowns of its size — unless it is at or below RAW_MAX, where the
+    countdown is already near-perfect and a correction only hurt. None
+    passes through, sending the caller to the history layer. A corrected
+    answer never lands below zero: a countdown of 7 taught −10 is "boarding
+    now", not a negative wait."""
+    if countdown is None:
+        return None
+    if countdown <= RAW_MAX:
+        return round(float(countdown), 1)
+    return round(max(countdown + corrections.delta(route_id, countdown), 0.0), 1)
+
+
+def stored_corrections():
+    """The fitted Corrections, from the table the nightly fit_calibration
+    job rewrites (#117), held in the cache between reads. Nothing stored —
+    a fresh database, or the job yet to run — is an empty fit: the raw
+    countdown answers uncorrected."""
+    rows = cache.get("history.calibration")
+    if rows is None:
+        rows = list(Calibration.objects.values_list("route_id", "bucket", "delta_minutes"))
+        cache.set("history.calibration", rows, CALIBRATION_CACHE_SECONDS)
+    by_route = {
+        (route_id, bucket): delta
+        for route_id, bucket, delta in rows
+        if route_id is not None and bucket != OVERALL_BUCKET
+    }
+    by_bucket = {
+        bucket: delta
+        for route_id, bucket, delta in rows
+        if route_id is None and bucket != OVERALL_BUCKET
+    }
+    overall = next(
+        (delta for route_id, bucket, delta in rows if route_id is None and bucket == OVERALL_BUCKET),
+        0.0,
+    )
+    return Corrections(by_route=by_route, by_bucket=by_bucket, overall=overall)
+
+
+def _fit_corrections(residuals):
+    """The Corrections for residuals keyed (route id, countdown bucket): the
+    median per key where at least MIN_CALIBRATION_SAMPLES taught it, the
+    all-routes median per bucket beneath, the overall median beneath that."""
+    by_route = {
+        key: statistics.median(values)
+        for key, values in residuals.items()
+        if len(values) >= MIN_CALIBRATION_SAMPLES
+    }
+    pooled = defaultdict(list)
+    for (route_id, bucket), values in residuals.items():
+        pooled[bucket].extend(values)
+    by_bucket = {bucket: statistics.median(values) for bucket, values in pooled.items()}
+    everything = [value for values in residuals.values() for value in values]
+    overall = statistics.median(everything) if everything else 0.0
+    return Corrections(by_route=by_route, by_bucket=by_bucket, overall=overall)
+
+
+def _shown_residuals(since, until=None, exclude_dates=frozenset()):
+    """What the countdowns got wrong, for the correction fit (#117): over
+    the window's polls, each poll's soonest countdown against the next
+    recorded arrival — the residual (arrival - poll) - countdown, in
+    minutes, keyed (route id, countdown bucket). Days in exclude_dates are
+    skipped, so an evaluation fits on its training days only; a poll whose
+    countdown had already run more than LIVE_EXPIRY past due is skipped
+    too, because production defers to history there and it has nothing to
+    teach the countdown fit. Every poll teaches, not the evaluation's
+    strided sample: the fit wants all the evidence it can get.
+    """
+    arrivals_by_pair = _arrivals_by_pair(since, until)
+    rows = (
+        Eta.objects.filter(polled_at__gte=since)
+        .filter(polled_at__lte=until)
+        .order_by("polled_at", "route_id", "stop_id", "bus_id")
+        .values_list("polled_at", "route_id", "stop_id", "eta_minutes")
+    )
+    by_poll = defaultdict(lambda: defaultdict(list))
+    for polled_at, route_id, stop_id, eta_minutes in rows:
+        by_poll[(route_id, stop_id)][polled_at].append(eta_minutes)
+    overdue = -LIVE_EXPIRY.total_seconds() / 60
+    residuals = defaultdict(list)
+    for pair, poll_times in by_poll.items():
+        moments = arrivals_by_pair.get(pair, ())
+        if not moments:
+            continue
+        for polled_at, etas in poll_times.items():
+            if polled_at.astimezone(ET).date() in exclude_dates:
+                continue
+            countdown = min(etas)
+            if countdown < overdue:
+                continue
+            index = bisect_left(moments, polled_at)
+            next_arrival = moments[index] if index < len(moments) else None
+            if next_arrival is None or next_arrival > polled_at + HORIZON:
+                continue  # nothing measurable in sight: production defers to history
+            residuals[(pair[0], countdown_bucket(countdown))].append(
+                (next_arrival - polled_at).total_seconds() / 60 - countdown
+            )
+    return residuals
+
+
 def _live_feed_minutes(route_id, stop_id):
-    """Minutes until the route's next bus at the stop, straight from the
-    live Downtowner feed (transit.downtowner.etas, cached 30 seconds), the
-    live layer's first source. None when the feed serves no eta for this
-    route at this stop, or when the feed is down: FeedUnavailable means
-    the recorded polls answer next, then history — never a crashed page.
-    Transit logs the outage itself.
+    """The route's countdown at the stop, straight from the live Downtowner
+    feed (transit.downtowner.etas, cached 30 seconds), the live layer's
+    first source and the fusion's base. None when the feed serves no eta
+    for this route at this stop, or when the feed is down:
+    FeedUnavailable means the recorded polls answer next, then history —
+    never a crashed page. Transit logs the outage itself.
     """
     try:
         arrivals = downtowner.etas(stop_id)
@@ -182,49 +336,63 @@ def _live_feed_minutes(route_id, stop_id):
 
 
 def _live_minutes(route_id, stop_id, now):
-    """Minutes until the stop's next bus, from the freshest recorded polls —
-    the live layer's second source, behind the feed.
-
-    Each recent poll implies an absolute arrival: polled_at + eta_minutes.
-    The earliest implied arrival that has not yet come due is the next bus;
-    the result ages one minute per minute as `now` advances between polls,
-    and a new poll can only lower it. None when no poll is fresh enough
-    (LIVE_MAX_AGE) or every implied arrival has come due (LIVE_EXPIRY):
-    then the history layer answers instead.
+    """The freshest recorded poll's countdown for the route at the stop,
+    aged to `now` (#117) — the same number the evaluation scores, so the
+    fallback production runs is the fallback the evaluation measured. The
+    poll's soonest eta minus the minutes since the poll, floored at 0.
+    None when no poll is fresh enough (LIVE_MAX_AGE) or that countdown has
+    run more than LIVE_EXPIRY past due (the bus was promised and never
+    shown): then the history layer answers instead.
     """
     rows = list(
         Eta.objects.filter(
             route_id=route_id,
             stop_id=stop_id,
-            eta_minutes__gte=0,
             polled_at__gt=now - LIVE_MAX_AGE,
             polled_at__lte=now,
         )
         .order_by("polled_at")
         .values_list("polled_at", "eta_minutes")
     )
-    times = [polled_at for polled_at, _ in rows]
-    implied = [polled_at + dt.timedelta(minutes=eta) for polled_at, eta in rows]
-    return _live_minutes_from(times, implied, now)
+    if not rows:
+        return None
+    freshest = max(polled_at for polled_at, _ in rows)
+    soonest = min(eta for polled_at, eta in rows if polled_at == freshest)
+    return _shown_fresh([freshest], [soonest], now)
 
 
-def _live_minutes_from(times, arrivals, now):
-    """The live countdown for polls with instants `times` implying absolute
-    arrivals `arrivals` (polled_at + eta), the earliest one that is still
-    ahead of now by no more than LIVE_EXPIRY, among polls no older than
-    LIVE_MAX_AGE. Minutes until it, or None when nothing qualifies.
-
-    Both call sites — the database query and evaluate()'s in-memory polls —
-    hand in their rows here, so the one rule lives once.
-    """
+def _shown_fresh(times, values, now):
+    """The freshest poll's countdown at `now`, aged by that poll's own lag
+    and floored at 0 — among polls no older than LIVE_MAX_AGE, and None
+    once it has run more than LIVE_EXPIRY past due, where production
+    defers to history. This is the evaluation's copy of the live answer;
+    `_shown_countdown` is the official app's copy, which carries no
+    freshness guard because the official app shows whatever it has."""
     start = bisect_right(times, now - LIVE_MAX_AGE)
     end = bisect_right(times, now)
-    due = now - LIVE_EXPIRY
-    upcoming = [arrival for arrival in arrivals[start:end] if arrival > due]
-    if not upcoming:
+    if end <= start:
         return None
-    minutes = (min(upcoming) - now).total_seconds() / 60
-    return round(max(minutes, 0.0), 1)
+    index = end - 1
+    countdown = values[index] - (now - times[index]).total_seconds() / 60
+    if countdown < -LIVE_EXPIRY.total_seconds() / 60:
+        return None
+    return max(countdown, 0.0)
+
+
+def _shown_countdown(times, values, now):
+    """The countdown a rider is shown at `now` (#116): the freshest poll's
+    soonest eta, aged by how long ago that poll landed and floored at 0 —
+    what the official app displays between its refreshes. None when no poll
+    precedes `now`. The arrays are the per-pair shown_times/shown_values the
+    evaluation loops build, one entry per poll where the pair appeared; the
+    eta may be negative when the feed lists the bus as already at the stop,
+    and the floor is what turns that into "boarding now".
+    """
+    index = bisect_right(times, now) - 1
+    if index < 0:
+        return None
+    lag = (now - times[index]).total_seconds() / 60
+    return max(values[index] - lag, 0.0)
 
 
 def evaluate(holdout_modulus=3, stride=2, days=HISTORY_DAYS, now=None):
@@ -236,14 +404,22 @@ def evaluate(holdout_modulus=3, stride=2, days=HISTORY_DAYS, now=None):
     sampled poll stands for a rider opening the app QUERY_OFFSET minutes
     later — an arbitrary minute, not the instant a poll landed. Our answer
     there is exactly what predict_minutes would give: the live layer over
-    that day's own polls, the history profile beneath it. The official ETA
-    is scored the way its own display would use it, as its implied arrival
-    aged from the poll to the query. Both are measured against the minutes
-    until the next recorded arrival. A query with no measurable next
-    arrival, or no prediction of ours, is skipped and counted instead. The
-    history layer is scored on its own too (history_mae): it is what runs
-    whenever no poll is fresh enough, so its error is the floor beneath the
-    live layer's.
+    that day's own polls, the history profile beneath it. Both are measured
+    against the minutes until the next recorded arrival. A query with no
+    measurable next arrival, or no prediction of ours, is skipped and
+    counted instead. The history layer is scored on its own too
+    (history_mae): it is what runs whenever no poll is fresh enough, so its
+    error is the floor beneath the live layer's.
+
+    The official ETA is scored twice, and the two numbers are not the same
+    (see #116). official_mae is what a rider with the official app open
+    would act on: the freshest poll's countdown at the query instant, aged
+    by that poll's own lag and floored at 0 — the app recomputes from its
+    newest data, whatever the evaluation's sampling did. official_aged_mae
+    is the older scoring, which aged the sampled poll's implied arrival by
+    the whole QUERY_OFFSET; it overstated the official's error by minutes
+    (17.3 vs 13.5 on the recorded history), and it is kept only so numbers
+    quoted before #116 stay reproducible.
     """
     now = now or timezone.now()
     since = now - dt.timedelta(days=days)
@@ -253,15 +429,19 @@ def evaluate(holdout_modulus=3, stride=2, days=HISTORY_DAYS, now=None):
     }
     test_days = held_out_days(history_days, holdout_modulus)
 
-    # One profile per pair, trained on everything except the held-out days.
+    # One profile per pair, trained on everything except the held-out days,
+    # and the countdown corrections fitted the same way (#117) — so "ours"
+    # below is the predictor production runs, learned from nothing it is
+    # scored on.
     profiles = {
         pair: _learn(moments, exclude_dates=test_days)
         for pair, moments in arrivals_by_pair.items()
     }
+    corrections = _fit_corrections(_shown_residuals(since, until=now, exclude_dates=test_days))
 
     queries = no_prediction = not_served = 0
-    history_queries = 0
-    ours_error = official_error = history_error = 0.0
+    history_queries = official_answered = 0
+    ours_error = official_error = official_aged_error = history_error = 0.0
     for day in sorted(test_days):
         day_start = dt.datetime.combine(day, dt.time(0), tzinfo=ET)
         # Just the held-out day's polls: an arrival after midnight is found
@@ -276,16 +456,16 @@ def evaluate(holdout_modulus=3, stride=2, days=HISTORY_DAYS, now=None):
             by_poll[polled_at][(route_id, stop_id)].append(eta_minutes)
         poll_times = sorted(by_poll)
 
-        # What each poll promised: implied absolute arrivals, per pair, in
-        # poll order — the same object the live layer reads from the
-        # database in production.
-        implied_times = defaultdict(list)
-        implied_arrivals = defaultdict(list)
+        # What the pair was being shown at each poll: its soonest countdown,
+        # the number the official app displays until the next poll replaces
+        # it. Both scorers of the live layer read from here — the official
+        # without a freshness guard, ours with production's (#117).
+        shown_times = defaultdict(list)
+        shown_values = defaultdict(list)
         for polled_at in poll_times:
             for pair, etas in by_poll[polled_at].items():
-                for eta in etas:
-                    implied_times[pair].append(polled_at)
-                    implied_arrivals[pair].append(polled_at + dt.timedelta(minutes=eta))
+                shown_times[pair].append(polled_at)
+                shown_values[pair].append(min(etas))
 
         for polled_at in poll_times[::stride]:
             query_at = polled_at + QUERY_OFFSET
@@ -301,8 +481,10 @@ def evaluate(holdout_modulus=3, stride=2, days=HISTORY_DAYS, now=None):
                 if next_arrival is None or next_arrival > query_at + HORIZON:
                     continue  # no measurable arrival: neither side gets scored
                 actual = (next_arrival - query_at).total_seconds() / 60
-                ours = _live_minutes_from(
-                    implied_times.get(pair, []), implied_arrivals.get(pair, []), query_at
+                ours = _fused_countdown(
+                    pair[0],
+                    _shown_fresh(shown_times.get(pair, []), shown_values.get(pair, []), query_at),
+                    corrections,
                 )
                 last_arrival = _last_arrival_before(moments, query_at)
                 if ours is None:
@@ -318,9 +500,18 @@ def evaluate(holdout_modulus=3, stride=2, days=HISTORY_DAYS, now=None):
                 if history is not None:
                     history_queries += 1
                     history_error += abs(history - actual)
+                # The official's two scores. App-like: the freshest poll's
+                # countdown at the query instant (#116). Aged: the sampled
+                # poll's implied arrival, grown stale by the whole offset.
+                official = _shown_countdown(
+                    shown_times.get(pair, []), shown_values.get(pair, []), query_at
+                )
+                if official is not None:
+                    official_answered += 1
+                    official_error += abs(official - actual)
                 official_implied = polled_at + dt.timedelta(minutes=min(etas))
-                official = max((official_implied - query_at).total_seconds() / 60, 0.0)
-                official_error += abs(official - actual)
+                official_aged = max((official_implied - query_at).total_seconds() / 60, 0.0)
+                official_aged_error += abs(official_aged - actual)
 
     return {
         "test_days": sorted(test_days),
@@ -332,7 +523,10 @@ def evaluate(holdout_modulus=3, stride=2, days=HISTORY_DAYS, now=None):
         "history_mae": (
             round(history_error / history_queries, 2) if history_queries else None
         ),
-        "official_mae": round(official_error / queries, 2) if queries else None,
+        "official_mae": (
+            round(official_error / official_answered, 2) if official_answered else None
+        ),
+        "official_aged_mae": round(official_aged_error / queries, 2) if queries else None,
     }
 
 
