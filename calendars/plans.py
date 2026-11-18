@@ -83,9 +83,7 @@ def plan_event(event, home, *, now, stops, routes_by_id):
         except downtowner.FeedUnavailable:
             board = None  # fall through to the estimate; the page never waits on the feed
         row = board.rows[0] if board and board.rows else None  # rows come soonest first
-        minutes = None
-        if row is not None:
-            minutes = row.ours if row.ours is not None else row.next_official
+        minutes = catchable_bus(row, plan.walk_to_stop)
         if minutes is not None:
             return EventPlan(
                 row=row,
@@ -100,10 +98,30 @@ def plan_event(event, home, *, now, stops, routes_by_id):
     )
 
 
+def catchable_bus(row, walk):
+    """The soonest bus the rider can still make, in minutes from now, or None
+    when no bus we know of leaves enough time for the walk to the stop — the
+    plan never says to leave in the past (#26). The soonest bus counts only
+    when we'd still be at the stop for it, by our prediction or, when we have
+    none, the feed's countdown; otherwise the first later bus in the feed's
+    list that allows the walk. official[0] is that same soonest bus, so it is
+    skipped along with it."""
+    if row is None:
+        return None
+    soonest = row.ours if row.ours is not None else row.next_official
+    if soonest is not None and soonest >= walk:
+        return soonest
+    for minute in row.official[1:]:
+        if minute >= walk:
+            return minute
+    return None
+
+
 def match_building(location):
     """The Yale building an event's location names, best match, or None.
     "Watson Center, 60 Sachem Street" matches on its building half; a street
-    address on its own matches nothing, because that would be a guess."""
+    address on its own matches nothing, because that would be a guess — and
+    neither does an address's city, state, ZIP or country."""
     text = (location or "").strip()
     if not text:
         return None
@@ -112,10 +130,29 @@ def match_building(location):
     for piece in pieces:
         words = [word for word in piece.split() if not word[:1].isdigit()]
         query = " ".join(words)
-        if not query or query in seen:
+        if not query or query in seen or query.casefold() in PLACE_TAILS:
             continue
         seen.add(query)
         found = building_search(query)
         if found:
             return found[0]
     return None
+
+
+# Pieces of a Google-style location that name no building of ours, tried on
+# their own: the city, the state and its abbreviations, the country. "New
+# Haven" alone would match Yale New Haven Hospital — a guess, not a match.
+PLACE_TAILS = {
+    "connecticut",
+    "conn",
+    "ct",
+    "new haven",
+    "west haven",
+    "east haven",
+    "north haven",
+    "hamden",
+    "usa",
+    "us",
+    "united states",
+    "united states of america",
+}

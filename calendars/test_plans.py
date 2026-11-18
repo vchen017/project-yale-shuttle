@@ -52,6 +52,12 @@ class MatchBuildingTests(SimpleTestCase):
     def test_a_street_address_alone_is_no_guess(self):
         self.assertIsNone(match_building("60 Sachem Street"))
 
+    def test_a_city_or_state_piece_never_names_a_building(self):
+        # The pieces of a Google-style address are tried on their own, so
+        # "New Haven" used to match Yale New Haven Hospital — a guess.
+        self.assertIsNone(match_building("Shake Shack, 986 Chapel St, New Haven, CT 06510, USA"))
+        self.assertIsNone(match_building("165 Whitney Ave, New Haven, CT 06511, USA"))
+
     def test_a_place_that_isnt_one_of_our_buildings_is_none(self):
         self.assertIsNone(match_building("New Haven Green"))
         self.assertIsNone(match_building(""))
@@ -91,6 +97,28 @@ class PlanEventTests(SimpleTestCase):
             plan = plan_event(event(start=soon))
         self.assertTrue(plan.estimate)
         self.assertIsNone(plan.row)
+
+    def test_a_bus_the_walk_cant_reach_is_skipped_for_a_later_one(self):
+        # Payne Whitney is an 8-minute walk from this home: a bus 3 minutes out
+        # is gone before we arrive, so the plan takes the one 12 minutes out.
+        away = SimpleNamespace(lat=41.3072, lon=-72.9298)
+        soon = NOW + dt.timedelta(minutes=20)
+        rows = [row(ours=3, official=(3, 12))]
+        with mock.patch("calendars.plans.next_buses", return_value=Board(running=True, rows=rows)) as board:
+            plan = plan_event(event(start=soon), home=away)
+        board.assert_called_once_with(PAYNE_WHITNEY["id"], SCIENCE_HILL["id"])
+        self.assertIs(plan.row, rows[0])
+        self.assertFalse(plan.estimate)
+        self.assertEqual(plan.leave_by, NOW + dt.timedelta(minutes=12 - 8))
+
+    def test_when_no_bus_allows_the_walk_it_falls_back_to_the_estimate(self):
+        away = SimpleNamespace(lat=41.3072, lon=-72.9298)
+        soon = NOW + dt.timedelta(minutes=20)
+        with mock.patch("calendars.plans.next_buses", return_value=Board(running=True, rows=[row(ours=3, official=(3, 5))])):
+            plan = plan_event(event(start=soon), home=away)
+        self.assertTrue(plan.estimate)
+        self.assertIsNone(plan.row)
+        self.assertEqual(plan.leave_by, soon - dt.timedelta(minutes=2 + 15 + 8))
 
     def test_a_down_feed_becomes_an_estimate_instead_of_an_error(self):
         soon = NOW + dt.timedelta(minutes=20)
