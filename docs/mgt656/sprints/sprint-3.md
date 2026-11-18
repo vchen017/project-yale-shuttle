@@ -57,11 +57,11 @@ Everything from sprint 2: signing up and logging in, both grader accounts,
 the home page's alerts, trip search and map, the next buses with our
 predictions, crowding, missed-bus reports, saved places, push
 notifications, `/admin/` with the accuracy dashboard, and `/ecc1032` with
-its stats. The calendar stack above is green and #125 is approved; it
-merges bottom-up, reaches
-[staging](https://yale-shuttle-staging.onrender.com) as each pull request
-merges, and [production](https://yale-shuttle.onrender.com) at the next
-promote. Before submitting (#44) we check both grader accounts on both
+its stats. #125 is merged, and [staging](https://yale-shuttle-staging.onrender.com)
+is serving it; #127 is merged into the stack, and #126 is the one pull
+request left — it carries the trip planner and the when-to-leave page to
+main, and [production](https://yale-shuttle.onrender.com) gets all of it
+at the next promote. Before submitting (#44) we check both grader accounts on both
 sites, the AI feature on staging, and every page in phone-sized and
 desktop-sized windows.
 
