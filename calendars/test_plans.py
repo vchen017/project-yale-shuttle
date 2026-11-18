@@ -108,6 +108,7 @@ class PlanEventTests(SimpleTestCase):
             plan = plan_event(event(start=soon), home=away)
         board.assert_called_once_with(PAYNE_WHITNEY["id"], SCIENCE_HILL["id"])
         self.assertIs(plan.row, rows[0])
+        self.assertEqual(plan.bus_minutes, 12)  # the later bus, not the row's soonest
         self.assertFalse(plan.estimate)
         self.assertEqual(plan.leave_by, NOW + dt.timedelta(minutes=12 - 8))
 
@@ -154,9 +155,11 @@ class PlanEventTests(SimpleTestCase):
         self.assertFalse(plan.location_unknown)
         self.assertIsNone(plan.plan)
         self.assertEqual(plan.route_names, [])
+        self.assertEqual(plan.walk_all, 7)  # the walk all the way is still worth saying
 
     def test_the_feed_being_down_still_names_the_building(self):
         plan = plan_event(event(), stops=None, routes=None)
         self.assertFalse(plan.location_unknown)
         self.assertIsNone(plan.plan)
         self.assertIsNone(plan.leave_by)
+        self.assertEqual(plan.walk_all, 26)  # the walk is computable without the feed

@@ -43,8 +43,15 @@ class EventPlan:
     plan: trips.Plan | None = None  # None: no Home, or no route links the two, or no live stops
     route_names: list = field(default_factory=list)  # the routes that link the two stops
     row: object | None = None  # the live bus to catch (transit Row), when there is one
+    bus_minutes: int | None = None  # the countdown the plan used: ours, or the feed's
+    # (it may be a later bus than the row's soonest, when the walk needs more time)
     leave_by: dt.datetime | None = None  # when to leave Home
     estimate: bool = False  # leave_by assumes a typical wait, not a live bus
+    # Minutes' walk straight from Home, for events we can't ride: with the feed
+    # down or no route linking the two, the page can still say how far it is.
+    # None when there's no Home to walk from, or a ride exists (the ride's
+    # walks live on the plan).
+    walk_all: int | None = None
 
     @property
     def location_unknown(self):
@@ -62,11 +69,16 @@ def plan_event(event, home, *, now, stops, routes_by_id):
     building = match_building(event.location)
     if building is None:
         return EventPlan(event=event, building=None)
-    if home is None or stops is None:
+    if home is None:
         return EventPlan(event=event, building=building)
+    straight = trips.walk_minutes(trips.meters_between((home.lat, home.lon), (building["lat"], building["lon"])))
+    if stops is None:
+        # The feed is down: the building and the walk still show, no ride times.
+        return EventPlan(event=event, building=building, walk_all=straight)
     plan = trips.plan((home.lat, home.lon), (building["lat"], building["lon"]), stops)
     if plan is None:
-        return EventPlan(event=event, building=building)
+        # No route running now links the two: the walk all the way is the news.
+        return EventPlan(event=event, building=building, walk_all=straight)
     route_names = [
         routes_by_id[route_id]["name"]
         for route_id in sorted(set(plan.board_at["routes"]) & set(plan.get_off_at["routes"]))
@@ -87,6 +99,7 @@ def plan_event(event, home, *, now, stops, routes_by_id):
         if minutes is not None:
             return EventPlan(
                 row=row,
+                bus_minutes=minutes,
                 leave_by=now + dt.timedelta(minutes=minutes - plan.walk_to_stop),
                 **plan_info,
             )
