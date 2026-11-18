@@ -36,6 +36,7 @@ from .predictions import (
     _shown_fresh,
     _shown_residuals,
     _stop_is_served,
+    current_stops_by_route,
     held_out_days,
 )
 
@@ -57,6 +58,11 @@ def accuracy(since, until):
     (Eastern), each with the queries scored, the mean signed error and the
     mean absolute error of each side that answered, and the rider reports
     filed there (real and sample counted apart).
+
+    Its database reads don't grow with the queries scored — the range's
+    arrivals and polls in bulk, each scored day's polls, the routes' stop
+    lists once — because the nightly job runs against the production
+    database, where every query is a network round trip.
     """
     arrivals_by_pair = _arrivals_by_pair(since, until)
     history_days = {
@@ -66,7 +72,11 @@ def accuracy(since, until):
     profiles = {
         pair: _learn(moments, exclude_dates=test_days) for pair, moments in arrivals_by_pair.items()
     }
-    corrections = _fit_corrections(_shown_residuals(since, until, exclude_dates=test_days))
+    residuals = _shown_residuals(
+        since, until, exclude_dates=test_days, arrivals_by_pair=arrivals_by_pair
+    )
+    corrections = _fit_corrections(residuals)
+    current_stops = current_stops_by_route()  # one query, not one per scored query
 
     names = {}  # (kind, key) -> the name the recorded polls served
     signed = defaultdict(float)  # (side, kind, key) -> sum of (predicted - actual)
@@ -104,7 +114,7 @@ def accuracy(since, until):
             query_at = polled_at + QUERY_OFFSET
             hour = query_at.astimezone(ET).hour
             for pair, etas in sorted(by_poll[polled_at].items()):
-                if not _stop_is_served(*pair):
+                if not _stop_is_served(*pair, current_by_route=current_stops):
                     not_served += 1
                     continue
                 moments = arrivals_by_pair.get(pair, ())

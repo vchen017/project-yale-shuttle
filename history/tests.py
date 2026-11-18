@@ -449,6 +449,25 @@ class RouteHistoryTests(TestCase):
         self.assertEqual(predictions.current_stops(3), set([1] + ROUTE_3_STOPS[:-1]))
         self.assertNotIn(14, predictions.current_stops(3))
 
+    def test_every_routes_current_stops_in_one_query_agree(self):
+        """The accuracy scoring reads every route's stop list at once (#17);
+        it must pick the same version current_stops() picks, route by route."""
+        self.assertEqual(predictions.current_stops_by_route(), {})  # nothing walked yet
+        self.walk()
+        # Two versions first seen at the same moment: the later row wins.
+        for sha, stop_ids in (("e" * 40, [5, 6]), ("f" * 40, [5])):
+            RouteStopList.objects.create(
+                route_id=7, route_name="Orange", stop_ids=stop_ids, first_seen=AT_1035, commit_sha=sha
+            )
+
+        with self.assertNumQueries(1):
+            current = predictions.current_stops_by_route()
+
+        self.assertEqual(set(current), {3, 7, 19})
+        for route_id in (3, 7, 19):
+            self.assertEqual(current[route_id], predictions.current_stops(route_id))
+        self.assertEqual(current[7], {5})
+
     def test_an_interrupted_walk_is_idempotent(self):
         self.walk()
         # A crash before the last save leaves the state at the first commit;
