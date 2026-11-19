@@ -79,11 +79,12 @@ Everything from sprint 2: signing up and logging in, both grader accounts,
 the home page's alerts, trip search and map, the next buses with our
 predictions, crowding, missed-bus reports, saved places, push
 notifications, `/admin/` with the accuracy dashboard, and `/ecc1032` with
-its stats. #125 is merged, and [staging](https://yale-shuttle-staging.onrender.com)
-is serving it along with the trip page; #127 is merged into the stack, and
-#126 is the one pull request left — approved and green — carrying the trip
-planner and the when-to-leave page to
-main, and [production](https://yale-shuttle.onrender.com) gets all of it
+its stats. All three calendar pull requests are merged
+([#125](https://github.com/vchen017/project-yale-shuttle/pull/125) directly,
+#127 into the stack, #126 last, closing #26 and #8), and
+[staging](https://yale-shuttle-staging.onrender.com) is serving the whole
+calendar MVP — verified at the merge commit. The trip planner and the
+when-to-leave page reach [production](https://yale-shuttle.onrender.com)
 at the next promote. Before submitting (#44) we check both grader accounts on both
 sites, the AI feature on staging, and every page in phone-sized and
 desktop-sized windows.
@@ -123,6 +124,6 @@ the sprint 4 report
 Making the long waits better
 ([#118](https://github.com/vchen017/project-yale-shuttle/issues/118)) was
 measured in this sprint's last days: on held-out days nothing beat the
-shipped predictor, so the proposal is to close it as measured, no code
-change, if the team agrees. Choosing where to get off during a detour
+shipped predictor, so it closed as measured, no code change. Choosing
+where to get off during a detour
 (#55) moved up into this sprint — its pull request is in review above.
