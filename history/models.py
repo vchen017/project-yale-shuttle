@@ -120,6 +120,10 @@ class Eta(models.Model):
         indexes = [
             # The lookup predictions do over and over: a stop's ETA history.
             models.Index(fields=["route_id", "stop_id", "polled_at"]),
+            # The nightly jobs' window filters, which bound polls by time
+            # alone (_shown_residuals, the per-day scoring passes): without
+            # this they sequential-scan the largest table on every run.
+            models.Index(fields=["polled_at"]),
         ]
 
     def __str__(self):

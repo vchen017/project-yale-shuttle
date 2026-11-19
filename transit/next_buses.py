@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 from django.utils import timezone
 
-from history.predictions import predict_minutes
+from history.predictions import current_stops_by_route, predict_minutes
 
 from . import downtowner
 from .network import network, text_color
@@ -130,6 +130,10 @@ def next_buses(stop_id, destination_id=None):
             minutes[arrival["route_id"]].append(arrival["minutes"])
             soonest_bus.setdefault(arrival["route_id"], arrival["bus_id"])
     ages = bus_ages()
+    # One read of every walked route's newest stop list for all the rows'
+    # served checks, instead of one query per route (the same batch the
+    # accuracy scoring takes, #17).
+    current_by_route = current_stops_by_route()
 
     rows = []
     for route in net["routes"]:
@@ -137,7 +141,7 @@ def next_buses(stop_id, destination_id=None):
             continue
         # Ours comes from our own data, not the feed: the official column
         # already shows the feed's countdown.
-        ours = predict_minutes(route["id"], stop_id, use_live_feed=False)
+        ours = predict_minutes(route["id"], stop_id, use_live_feed=False, current_by_route=current_by_route)
         age = ages.get(soonest_bus.get(route["id"]))
         too_old = age is not None and age > HIDE_PREDICTION_AFTER_MINUTES * 60
         rows.append(

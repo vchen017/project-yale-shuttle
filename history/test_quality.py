@@ -116,3 +116,22 @@ class CommandTests(SimpleTestCase):
         self.assertIn("| Blue | 2 | 1 | 2 |", report)
         self.assertIn("put a bus at a new stop 1 times. For 1 of them (100%)", report)
         self.assertIn("Grove / Temple: GPS says the bus got there between", report)
+
+    def test_a_visit_whose_bus_never_matched_reads_without_dividing_by_zero(self):
+        # The stop is served (an eta row exists for it) but that bus's ETAs
+        # never run low enough to imply an arrival, so every GPS visit is a
+        # miss and the spot-check has nothing to divide by.
+        files = {
+            "data/2026-11-15/etas.csv": [eta(0, 30)],  # served, but no arrival
+            "data/2026-11-15/buses.csv": [position(0, 6), position(5, 7, fix_minutes=4.5)],
+        }
+        gaps = [{"polled_at": at(0), "cause": "no_run"}]
+        out = StringIO()
+        with (
+            mock.patch("history.sources.read_rows", side_effect=lambda path: iter(files[path])),
+            mock.patch("history.sources.read_gaps", return_value=gaps),
+        ):
+            call_command("data_quality", days=1, until="2026-11-15", stdout=out, stderr=StringIO())
+        report = out.getvalue()
+        self.assertIn("put a bus at a new stop 1 times. For 0 of them (0%)", report)
+        self.assertIn("none of them matched an inferred arrival", report)
