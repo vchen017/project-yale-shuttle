@@ -2,12 +2,16 @@ name: scheduled jobs
 
 # Runs the app's scheduled jobs (each app's jobs.py; see jobs/registry.py) on
 # GitHub's machines, against production's database. Free for a public repo.
-# GitHub can start a scheduled run late or skip one when it's busy, so every
-# job is safe to run late, twice, or after a skipped run.
 #
 # Each cron line below belongs to the jobs whose `schedule` matches it exactly;
 # a test checks they agree. Avoid minute 0: the start of the hour is when
 # GitHub is busiest.
+#
+# GitHub starts scheduled runs hours late or not at all (8 to 9 hours late in
+# November 2026), so the job clock (clock.yml) starts each line's run on time,
+# with the line as the `schedule` input. GitHub's own late run is the backup:
+# it does nothing while the clock is working, so the database isn't woken
+# twice. Every job is safe to run late, twice, or after a skipped run.
 #
 # To run jobs by hand, on production or staging: Actions → scheduled jobs →
 # Run workflow. Every run shows up in /admin/ → Scheduled jobs.
@@ -28,13 +32,20 @@ on:
         description: Jobs to run, separated by spaces (python manage.py run_job --list)
         required: true
         default: import_history
+      schedule:
+        description: Or a cron line from above, to run its jobs instead (the job clock fills this in)
+        required: false
+        default: ""
 
 concurrency:
-  group: jobs-${{ inputs.environment || 'production' }}
+  # GitHub's late scheduled runs queue apart from the clock's, so one can never
+  # cancel a clock run that's waiting its turn.
+  group: jobs-${{ inputs.environment || 'production' }}-${{ github.event_name }}
   cancel-in-progress: false
 
 permissions:
   contents: read
+  actions: read  # to see whether the job clock is working
 
 jobs:
   run:
@@ -44,21 +55,43 @@ jobs:
     env:
       ENVIRONMENT: ${{ inputs.environment || 'production' }}
     steps:
+      # A run from GitHub's own schedule steps aside while the job clock is
+      # working: while a run the clock started has succeeded in the last two
+      # hours, as one does every hour. If GitHub can't be asked, the jobs run,
+      # since running twice does no harm.
+      - name: Leave it to the job clock, if it's working
+        id: clock
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          recent=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/jobs.yml/runs?event=workflow_dispatch&per_page=30" \
+            --jq '[.workflow_runs[] | select(.actor.login == "github-actions[bot]" and .conclusion == "success" and (.created_at | fromdateiso8601) > now - 7200)] | length' \
+            2>/dev/null || echo 0)
+          if [ "${recent:-0}" != 0 ]; then
+            echo "The job clock started these jobs on time, so this late run from GitHub's schedule does nothing."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
       # The jobs run main's code. If main has a migration the database doesn't
       # yet (production before its next promotion), run_job refuses to start,
       # so new code never runs against an old schema.
       - uses: actions/checkout@v7
+        if: steps.clock.outputs.skip != 'true'
       - uses: actions/setup-python@v7
+        if: steps.clock.outputs.skip != 'true'
         with:
           python-version-file: .python-version
           cache: pip
       - run: pip install -r requirements.txt
+        if: steps.clock.outputs.skip != 'true'
 
       - name: Run the jobs
+        if: steps.clock.outputs.skip != 'true'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           GITHUB_TOKEN: ${{ github.token }}
-          SCHEDULE: ${{ github.event.schedule }}
+          SCHEDULE: ${{ github.event.schedule || inputs.schedule }}
           JOBS: ${{ inputs.jobs }}
         run: |
           if [ -z "$DATABASE_URL" ]; then
@@ -67,9 +100,16 @@ jobs:
           fi
           # Django needs a secret key to start; jobs sign nothing, so any one will do.
           export SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(50))')"
+          if [ "$GITHUB_EVENT_NAME" = schedule ]; then
+            trigger=schedule
+          elif [ "$GITHUB_ACTOR" = "github-actions[bot]" ]; then
+            trigger="job clock"
+          else
+            trigger="Actions, by $GITHUB_ACTOR"
+          fi
           if [ -n "$SCHEDULE" ]; then
-            python manage.py run_job --schedule "$SCHEDULE" --trigger schedule
+            python manage.py run_job --schedule "$SCHEDULE" --trigger "$trigger"
           else
             # $JOBS is unquoted on purpose: one argument per job name.
-            python manage.py run_job $JOBS --trigger "Actions, by $GITHUB_ACTOR"
+            python manage.py run_job $JOBS --trigger "$trigger"
           fi
