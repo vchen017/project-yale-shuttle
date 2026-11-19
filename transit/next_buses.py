@@ -50,6 +50,15 @@ class Row:
         return self.official[0] if self.official else None
 
     @property
+    def expected(self):
+        """The one number to plan around for the soonest bus: our prediction
+        when we have one, else the feed's countdown, else None. The trip
+        page's answer (transit.answer) reads only this, so when the rule for
+        choosing between the two changes (#117 and after), this is the
+        place to change it."""
+        return self.ours if self.ours is not None else self.next_official
+
+    @property
     def later_official(self):
         return self.official[1 : 1 + LATER_BUSES]
 

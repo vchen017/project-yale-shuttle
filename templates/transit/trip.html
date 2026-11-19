@@ -1,19 +1,39 @@
 {% extends "base.html" %}
+{% load static %}
+{% block extra_head %}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.1/dist/maplibre-gl.css"
+        integrity="sha384-uTttxo/aOKbdE5RlD/SPzSDoDmNvGlUYPjONi2MN/b7c9HPSvW07OIuyP7uL6jxK" crossorigin="anonymous">
+{% endblock %}
 {% block title %}{{ origin.name }} to {{ destination.name }} · Yale Shuttle{% endblock %}
 {% block content %}
 <div class="row g-4">
   <div class="col-lg-8 order-lg-2">
-    <h1 class="h3 mb-1">{{ origin.name }} to {{ destination.name }}</h1>
+    <section class="trip-answer mb-3" aria-labelledby="trip-answer-headline">
+      <h1 class="trip-answer-headline" id="trip-answer-headline">{{ answer.headline }}</h1>
+      {% if answer.kind == "ride" %}
+        <dl class="trip-facts mb-0">
+          <div><dt>Bus at {{ plan.board_at.name }}</dt><dd>{{ answer.bus_at|date:"g:i A" }}</dd></div>
+          {% if answer.ride_minutes is not None %}
+            <div><dt>Ride</dt><dd>{{ answer.ride_minutes }} min</dd></div>
+            <div><dt>Arrive at {{ destination.name }}</dt><dd>{{ answer.arrive_at|date:"g:i A" }}</dd></div>
+            <div><dt>Leaving to arriving</dt><dd>{{ answer.total_minutes }} min</dd></div>
+          {% endif %}
+        </dl>
+        {% if answer.ride_minutes is None %}
+          <p class="small text-body-secondary mb-0 mt-2">The feed doesn't say yet how long this ride takes.</p>
+        {% endif %}
+      {% else %}
+        <p class="mb-0">{{ answer.detail }}</p>
+      {% endif %}
+    </section>
     <p class="text-body-secondary mb-3">
-      As of {{ updated_at|date:"g:i A" }} · <a href="{{ request.get_full_path }}">Refresh</a>
+      {{ origin.name }} to {{ destination.name }} · As of {{ updated_at|date:"g:i A" }} · <a href="{{ request.get_full_path }}">Refresh</a>
     </p>
 
+    {{ map_data|json_script:"trip-map-data" }}
+    <div class="trip-map rounded-4 mb-4" data-trip-map role="region" aria-label="Map of the trip"></div>
+
     {% if plan %}
-      {% if plan.walking_is_quicker %}
-        <div class="alert alert-success" role="status">
-          <i class="bi bi-person-walking me-1" aria-hidden="true"></i>Walking is quicker: it's about {{ plan.walk_all_the_way }} min on foot.
-        </div>
-      {% endif %}
       <ol class="trip-steps list-unstyled mb-4">
         <li>
           <i class="bi bi-person-walking" aria-hidden="true"></i>
@@ -36,11 +56,6 @@
       {% if not plan.walking_is_quicker %}
         <p class="small text-body-secondary mt-2 mb-0">Walking the whole way takes about {{ plan.walk_all_the_way }} min.</p>
       {% endif %}
-    {% else %}
-      <div class="alert alert-info" role="status">
-        <i class="bi bi-info-circle me-1" aria-hidden="true"></i>No shuttle route running now links stops near these two places.
-        Walking takes about {{ walk_all_the_way }} min.
-      </div>
     {% endif %}
   </div>
   <div class="col-lg-4 order-lg-1">
@@ -48,4 +63,7 @@
     {% include "transit/_trip_search.html" %}
   </div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.1/dist/maplibre-gl.js"
+        integrity="sha384-nXMl9YiLoSG5KBPTFgvxVuIqQQcqIvo0bFrvoEaGJC6r7IibIzF1S36Zbf/sKBtL" crossorigin="anonymous" defer></script>
+<script src="{% static 'core/trip-map.js' %}" defer></script>
 {% endblock %}

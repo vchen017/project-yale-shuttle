@@ -8,9 +8,11 @@ from django.views.decorators.http import require_safe
 
 from places import services as saved_places
 
+from . import answer as trip_answer
 from . import downtowner, places, trips
 from .downtowner import FeedUnavailable
 from .forms import TripForm
+from .network import network
 from .next_buses import next_buses, served_stops
 
 
@@ -95,6 +97,10 @@ def trip(request):
         destination = (ends["to"]["lat"], ends["to"]["lon"])
         plan = trips.plan(origin, destination, choices)
         board = next_buses(plan.board_at["id"], plan.get_off_at["id"]) if plan else None
+        walk_all_the_way = trips.walk_minutes(trips.meters_between(origin, destination))
+        now = timezone.now()
+        answer = trip_answer.answer(plan, board, walk_all_the_way, now)
+        map_data = _trip_map(origin, destination, plan, answer)
     except FeedUnavailable:
         return _feed_down(request)
 
@@ -106,12 +112,33 @@ def trip(request):
             "destination": ends["to"],
             "plan": plan,
             "board": board,
-            "walk_all_the_way": trips.walk_minutes(trips.meters_between(origin, destination)),
-            "updated_at": timezone.now(),
+            "walk_all_the_way": walk_all_the_way,
+            "answer": answer,
+            "map_data": map_data,
+            "updated_at": now,
             "search_from": ends["from"],
             "search_to": ends["to"],
         },
     )
+
+
+def _trip_map(origin, destination, plan, answer):
+    """What the trip page's map draws (#131), as plain lists the page hands to
+    its script: the two places, the stops on and off, and the stretch of the
+    route between them when there is a bus to ride. Coordinates are [lat, lon]."""
+    data = {"origin": list(origin), "destination": list(destination), "walking": answer.kind == trip_answer.WALK}
+    if plan is None or answer.kind != trip_answer.RIDE:
+        return data
+    route = next((r for r in network()["routes"] if r["id"] == answer.route_id), None)
+    segment = trip_answer.route_segment(route["path"], plan.board_at, plan.get_off_at) if route else []
+    data.update(
+        {
+            "board": {"name": plan.board_at["name"], "at": [plan.board_at["lat"], plan.board_at["lon"]]},
+            "get_off": {"name": plan.get_off_at["name"], "at": [plan.get_off_at["lat"], plan.get_off_at["lon"]]},
+            "route": {"name": answer.route_name, "color": answer.route_color, "path": [list(p) for p in segment]},
+        }
+    )
+    return data
 
 
 @require_safe
