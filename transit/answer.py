@@ -16,6 +16,13 @@ in the past. The rider is told to set out BUFFER_MINUTES early, and the
 headline says how early they will be. When the bus is too close for the whole
 buffer, they leave now and are told the (smaller) margin.
 
+Walking is never the headline, only a notice beside it: walking_is_quicker is
+True when walking out the door right now would get there no later than the
+bus does. Both sides are built from the same minutes the page shows (the
+bus's wait + the ride + the walk at the far end, against the walk all the
+way), so the notice always agrees with the two arrival times on the page.
+With no ride time there is nothing to compare, so no notice.
+
 How long the ride takes is the gap between the same bus's feed countdowns at
 the two stops, whichever number said when it comes: a duration, so it doesn't
 depend on that rule. When the feed doesn't show the bus at the second stop we
@@ -42,7 +49,6 @@ from .trips import meters_between
 BUFFER_MINUTES = 2
 
 RIDE = "ride"  # a bus to catch
-WALK = "walk"  # walking is no longer than the shuttle plan
 NO_BUS = "no-bus"  # a route links the stops, but no bus we know of can be caught
 NO_ROUTE = "no-route"  # no running route links the two places
 
@@ -61,6 +67,7 @@ class Answer:
     walk_from_stop: int = 0
     bus_at: dt.datetime | None = None  # the bus at the boarding stop
     ride_minutes: int | None = None  # None when the feed can't say
+    walk_arrive_at: dt.datetime | None = None  # walking from now, all the way
     arrive_at: dt.datetime | None = None  # at the destination; None with no ride time
 
     @property
@@ -74,11 +81,15 @@ class Answer:
             else:
                 start = f"Leave in {self.leave_in} min for"
             return f"{start} the {bus}, to be at the stop {self.early_phrase}"
-        if self.kind == WALK:
-            return f"Walk there: about {self.walk_all_the_way} min"
         if self.kind == NO_BUS:
             return "No bus to catch right now"
         return "No shuttle running now links these places"
+
+    @property
+    def walking_is_quicker(self):
+        """Walking the whole way from now arrives no later than the bus does.
+        False when there's no bus, or no ride time to compare against."""
+        return self.arrive_at is not None and self.walk_arrive_at <= self.arrive_at
 
     @property
     def early_phrase(self):
@@ -89,8 +100,6 @@ class Answer:
     @property
     def detail(self):
         """What goes under the headline when there's no bus to show."""
-        if self.kind == WALK:
-            return "That's no longer than getting to a stop and riding."
         return f"Walking the whole way takes about {self.walk_all_the_way} min."
 
 
@@ -104,8 +113,6 @@ def answer(plan, board, walk_all_the_way, now=None):
     now = now or timezone.now()
     if plan is None:
         return Answer(NO_ROUTE, walk_all_the_way)
-    if plan.walking_is_quicker:
-        return Answer(WALK, plan.walk_all_the_way)
     rows = {row.route_id: row for row in board.rows} if board else {}
     shared = set(plan.board_at["routes"]) & set(plan.get_off_at["routes"]) & set(rows)
     feed_here = [a for a in downtowner.etas(plan.board_at["id"]) if a["route_id"] in shared and a["minutes"] >= 0]
@@ -141,6 +148,7 @@ def answer(plan, board, walk_all_the_way, now=None):
         walk_from_stop=plan.walk_from_stop,
         bus_at=bus_at,
         ride_minutes=ride,
+        walk_arrive_at=now + dt.timedelta(minutes=plan.walk_all_the_way),
     )
     if ride is not None:
         result.arrive_at = bus_at + dt.timedelta(minutes=ride + plan.walk_from_stop)
