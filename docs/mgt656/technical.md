@@ -35,8 +35,36 @@ already run.
 ### 2. An evaluation set for the AI (AI)
 
 A fixed set of trips with the decisions we expect from the notification LLM,
-run like tests: in CI with the LLM mocked, and by hand against the real model.
-Details to come with [#39](https://github.com/vchen017/project-yale-shuttle/issues/39).
+run like tests: in CI with the LLM mocked, and by hand against the real model
+([#39](https://github.com/vchen017/project-yale-shuttle/issues/39), growing
+the set from [#37](https://github.com/vchen017/project-yale-shuttle/issues/37)).
+
+- **The set:** `assistant/evals.py` holds 22 example trips, each with the
+  decision we expect and the answer a good model would give. They cover buses
+  on time, buses running late, tight trips, routes with no prediction, and the
+  live feed being down (with our prediction, and with nothing at all). Each
+  case is graded as notify, stay quiet, or "either is fine" for judgment calls.
+  Whatever the model says, any notification must come before the rider has to
+  leave for the stop, and no notification is allowed when there is no arrival
+  time to time it by.
+- **In CI (LLM mocked):** `assistant/test_evalset.py`, `tests.py` and
+  `test_agent.py` check that the set is big enough and covers every situation,
+  that every case is turned into the request we mean to send (including
+  "the feed is unavailable" and "no prediction" in words, never blank), that
+  each case's good answer passes through both the one-shot decision and the
+  tool-using agent, and that fifteen kinds of malformed answer and five kinds
+  of failure (a timeout, no route, an HTTP 500, a rate limit, a dropped
+  connection) become "don't notify" for every case without crashing. No test
+  reaches the network.
+- **Against the real model:** `OPENROUTER_API_KEY=... python manage.py
+  evaluate_assistant` runs the same cases through OpenRouter and prints
+  PASS/FAIL per case and how many decisions match (`--agent` runs them through
+  the tool-using agent instead). An unreachable model is reported as an error,
+  not scored as a decision, so an outage can't look like a result.
+- **Latest score:** not yet run against the real model. The key isn't in
+  anyone's local environment yet; the first run (and each run after a prompt or
+  model change) gets recorded here with its date, the model
+  (`OPENROUTER_MODEL`) and the score.
 
 ### 3. Scheduled jobs (Backend)
 

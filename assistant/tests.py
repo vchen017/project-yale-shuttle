@@ -169,7 +169,7 @@ class EvaluationSetTests(SimpleTestCase):
         self.assertTrue(evals.check(either, decide.Decision(True, decide.leave_by(either["trip"]), "hi"))[0])
 
     def test_a_notification_after_the_leave_by_time_always_fails(self):
-        for case in evals.CASES:
+        for case in (c for c in evals.CASES if decide.leave_by(c["trip"]) is not None):
             with self.subTest(case["name"]):
                 late = decide.Decision(True, decide.leave_by(case["trip"]) + timedelta(minutes=1), "hi")
                 self.assertFalse(evals.check(case, late)[0])
