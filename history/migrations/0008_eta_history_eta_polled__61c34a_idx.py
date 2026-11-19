@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('history', '0006_calibration'),
+        ('history', '0007_routestatus_history_rou_polled__d1d658_idx'),
     ]
 
     operations = [
