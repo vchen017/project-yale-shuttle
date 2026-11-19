@@ -126,7 +126,7 @@ def _trip_map(origin, destination, plan, answer):
     """What the trip page's map draws (#131), as plain lists the page hands to
     its script: the two places, the stops on and off, and the stretch of the
     route between them when there is a bus to ride. Coordinates are [lat, lon]."""
-    data = {"origin": list(origin), "destination": list(destination), "walking": answer.kind == trip_answer.WALK}
+    data = {"origin": list(origin), "destination": list(destination)}
     if plan is None or answer.kind != trip_answer.RIDE:
         return data
     route = next((r for r in network()["routes"] if r["id"] == answer.route_id), None)

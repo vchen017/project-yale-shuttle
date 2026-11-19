@@ -147,11 +147,6 @@ class AnswerTests(SimpleTestCase):
             result = answers.answer(plan(), Board(running=False, rows=[]), 40, NOW)
         self.assertEqual(result.kind, answers.NO_BUS)
 
-    def test_when_walking_is_no_longer_it_says_walk(self):
-        result = answers.answer(plan(walk_to=5, walk_from=5, walk_all=8), BOARD, 8, NOW)
-        self.assertEqual(result.kind, answers.WALK)
-        self.assertEqual(result.headline, "Walk there: about 8 min")
-
     def test_no_plan_says_no_shuttle_links_the_places(self):
         result = answers.answer(None, None, 25, NOW)
         self.assertEqual(result.kind, answers.NO_ROUTE)
@@ -162,6 +157,77 @@ class AnswerTests(SimpleTestCase):
         self.assertEqual(answers.clock(NOW), "12:00 PM")
         self.assertEqual(answers.clock(NOW + dt.timedelta(hours=7, minutes=5)), "7:05 PM")
         self.assertEqual(answers.clock(NOW - dt.timedelta(hours=12)), "12:00 AM")
+
+
+class WalkingIsQuickerTests(SimpleTestCase):
+    """The notice beside the headline: walking from now arrives no later than the bus."""
+
+    def trip(self, wait, ride, walk_to=3, walk_from=0, walk_all=19):
+        """A trip whose bus is `wait` minutes from the stop and rides for `ride`."""
+        return answer_for(wait, ride, walk_to=walk_to, walk_from=walk_from, walk_all=walk_all)
+
+    def test_the_live_sample_walking_is_slower_so_no_notice(self):
+        # 4 wait + 14 ride = 18 min by bus against 19 on foot.
+        result = self.trip(wait=4, ride=14)
+        self.assertFalse(result.walking_is_quicker)
+
+    def test_a_short_hop_walking_is_quicker(self):
+        # 6 + 5 + 3 = 14 min by bus against 12 on foot.
+        result = self.trip(wait=6, ride=5, walk_to=4, walk_from=3, walk_all=12)
+        self.assertTrue(result.walking_is_quicker)
+        self.assertEqual(result.walk_arrive_at, NOW + dt.timedelta(minutes=12))
+        self.assertLess(result.walk_arrive_at, result.arrive_at)
+
+    def test_a_tie_shows_the_notice(self):
+        result = self.trip(wait=6, ride=6, walk_to=4, walk_from=3, walk_all=15)
+        self.assertEqual(result.arrive_at, result.walk_arrive_at)
+        self.assertTrue(result.walking_is_quicker)
+
+    def test_one_minute_slower_on_foot_is_no_notice(self):
+        result = self.trip(wait=6, ride=6, walk_to=4, walk_from=3, walk_all=16)
+        self.assertFalse(result.walking_is_quicker)
+
+    def test_it_never_replaces_the_bus_headline(self):
+        # Walking (8) beats even the two walks to and from the stops (5 + 5):
+        # the bus is still the headline, with the notice beside it.
+        result = self.trip(wait=9, ride=6, walk_to=5, walk_from=5, walk_all=8)
+        self.assertEqual(result.kind, answers.RIDE)
+        self.assertTrue(result.walking_is_quicker)
+        self.assertIn("Leave", result.headline)
+
+    def test_without_a_ride_time_there_is_nothing_to_compare(self):
+        with etas_by_stop([eta(10)], [eta(22, bus_id=999)]):
+            result = answers.answer(plan(walk_all=5), Board(True, [Row(1, BLUE.name, BLUE.label, BLUE.color, official=[10])]), 5, NOW)
+        self.assertIsNone(result.ride_minutes)
+        self.assertFalse(result.walking_is_quicker)
+
+    def test_without_a_bus_to_catch_there_is_no_notice(self):
+        with etas_by_stop([eta(1)], []):
+            result = answers.answer(plan(walk_to=6, walk_all=5), BOARD, 5, NOW)
+        self.assertEqual(result.kind, answers.NO_BUS)
+        self.assertFalse(result.walking_is_quicker)
+
+    def test_the_notice_always_agrees_with_the_two_arrival_times_shown(self):
+        # Every combination: the notice is on exactly when walking arrives no
+        # later than the bus, by the times the page prints.
+        for wait in range(3, 25, 3):
+            for ride in range(2, 20, 3):
+                for walk_from in (0, 2, 5):
+                    for walk_all in range(5, 45, 4):
+                        with self.subTest(wait=wait, ride=ride, walk_from=walk_from, walk_all=walk_all):
+                            result = self.trip(wait=wait, ride=ride, walk_to=2, walk_from=walk_from, walk_all=walk_all)
+                            self.assertEqual(result.arrive_at, NOW + dt.timedelta(minutes=wait + ride + walk_from))
+                            self.assertEqual(result.walk_arrive_at, NOW + dt.timedelta(minutes=walk_all))
+                            self.assertEqual(result.walking_is_quicker, walk_all <= wait + ride + walk_from)
+                            gap = (result.arrive_at - result.walk_arrive_at) / dt.timedelta(minutes=1)
+                            self.assertEqual(result.walking_is_quicker, gap >= 0)
+
+
+def answer_for(wait, ride, *, walk_to, walk_from, walk_all):
+    """The answer for one bus `wait` minutes from the boarding stop, riding `ride`."""
+    board = Board(running=True, rows=[Row(1, BLUE.name, BLUE.label, BLUE.color, official=[wait])])
+    with etas_by_stop([eta(wait)], [eta(wait + ride)]):
+        return answers.answer(plan(walk_to=walk_to, walk_from=walk_from, walk_all=walk_all), board, walk_all, NOW)
 
 
 class RouteSegmentTests(SimpleTestCase):
@@ -244,6 +310,21 @@ class TripPageAnswerTests(TestCase):
         self.assertContains(response, "The feed doesn't say yet how long this ride takes.")
         self.assertNotContains(response, "Arrive at Union")
 
+    def test_walking_is_quicker_shows_a_notice_beside_the_bus_answer(self, urlopen, predict):
+        # Grove to Union is about 22 min on foot; a bus in 30 minutes can't beat that.
+        self.stub(urlopen, [(1, 812, 30)], [(1, 812, 42)])
+        response = self.client.get(reverse("trip"), TRIP)
+        self.assertTrue(response.context["answer"].walking_is_quicker)
+        self.assertContains(response, "Walking is quicker: there by")
+        self.assertContains(response, "reaches your stop in 30 min")  # the bus is still the headline
+
+    def test_no_notice_when_the_bus_is_quicker(self, urlopen, predict):
+        self.stub(urlopen, [(1, 812, 2)], [(1, 812, 8)])
+        response = self.client.get(reverse("trip"), TRIP)
+        self.assertFalse(response.context["answer"].walking_is_quicker)
+        self.assertNotContains(response, "Walking is quicker")
+        self.assertContains(response, "Walking the whole way takes about")
+
     def test_the_map_gets_the_places_the_stops_and_the_stretch_of_route(self, urlopen, predict):
         self.stub(urlopen, [(1, 812, 10)], [(1, 812, 22)])
         data = self.client.get(reverse("trip"), TRIP).context["map_data"]
@@ -275,3 +356,30 @@ class RowExpectedTests(SimpleTestCase):
         self.assertEqual(row.expected, 10)
         row.official = []
         self.assertIsNone(row.expected)
+
+
+@mock.patch("transit.next_buses.predict_minutes", return_value=None)
+@mock.patch("transit.downtowner.urlopen")
+class TripPageDetailsTests(TestCase):
+    """The steps and the next-buses board sit in collapsed details (#133)."""
+
+    def setUp(self):
+        cache.clear()
+
+    def stub(self, urlopen, at_grove):
+        urlopen.side_effect = feed_by_stop({"20": feed_etas("20", *at_grove), "30": feed_etas("30")}, PATHED)
+
+    def test_the_steps_and_the_board_are_there_but_closed(self, urlopen, predict):
+        self.stub(urlopen, [(1, 812, 10)])
+        html = self.client.get(reverse("trip"), TRIP).content.decode()
+        self.assertEqual(html.count('<details class="trip-details'), 2)
+        self.assertNotIn(" open>", html)
+        self.assertIn("<span>Steps</span>", html)
+        self.assertIn("<span>Next buses at Grove Street</span>", html)
+        self.assertIn("Take the shuttle to", html)  # the content is in the page, just folded
+
+    def test_with_no_bus_to_catch_the_board_starts_open(self, urlopen, predict):
+        self.stub(urlopen, [])
+        html = self.client.get(reverse("trip"), TRIP).content.decode()
+        self.assertIn('<details class="trip-details" open>', html)
+        self.assertEqual(html.count(" open>"), 1)  # only the board
