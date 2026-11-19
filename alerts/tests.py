@@ -14,8 +14,9 @@ from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from detours import detect
 from history.models import Announcement as RecordedAnnouncement
-from history.models import BusPosition, Poll
+from history.models import Poll
 
 from .models import Alert, FeedAnnouncement
 
@@ -355,6 +356,7 @@ ROUTES_WITH_PATH = [
 FEED_PATHS = {
     "/routes_routes.php": ROUTES_WITH_PATH,
     "/routes_announcements.php": [],
+    "/routes_buses.php": [],  # the page's own detection read records nothing new
 }
 
 
@@ -380,38 +382,36 @@ class DetourAlertTests(TestCase):
             "staff@example.com", is_staff=True, is_superuser=True
         )
 
-    def record_an_off_path_bus(self):
-        """Three polls in a row (#22) with one bus well off route 1's path."""
-        for minutes in (10, 5, 0):
-            polled_at = NOW - dt.timedelta(minutes=minutes)
-            poll = Poll.objects.create(polled_at=polled_at)
-            BusPosition.objects.create(
-                poll=poll,
-                polled_at=polled_at,
-                bus_id=812,
-                bus_name="812",
-                route_id=1,
-                route_name="Blue - Weekday Daytime",
-                lat=41.31,
-                lon=-72.934,  # about 500 m west of the path above
-            )
+    def prime_an_off_path_streak(self, detoured=True):
+        """Prime the samples detours.detect keeps (#55), the way page loads
+        over the last 15 minutes would have: bus 812 was on route 1's path,
+        then off it three samples in a row (`detoured=False` puts it back on
+        the path — the detour is over)."""
+        at = NOW.timestamp()
+        samples = [
+            {"at": at - 15 * 60, "routes": {1: {812: False}}},
+            {"at": at - 10 * 60, "routes": {1: {812: detoured}}},
+            {"at": at - 5 * 60, "routes": {1: {812: detoured}}},
+            {"at": at, "routes": {1: {812: detoured}}},
+        ]
+        cache.set(detect._SAMPLES_KEY, samples, detect.SAMPLES_SECONDS)
 
     def test_a_detected_detour_shows_with_the_alerts(self, urlopen, now):
         urlopen.side_effect = feed_by_path(FEED_PATHS)
-        self.record_an_off_path_bus()
+        self.prime_an_off_path_streak()
 
         response = self.client.get(reverse("home-alerts"))
 
         self.assertContains(response, "Blue - Weekday Daytime: possible detour")
-        self.assertContains(response, "Detected from the bus positions we record")
+        self.assertContains(response, "Detected from the live bus positions")
 
     def test_the_notice_goes_when_the_bus_is_back_on_its_path(self, urlopen, now):
         urlopen.side_effect = feed_by_path(FEED_PATHS)
-        self.record_an_off_path_bus()
+        self.prime_an_off_path_streak()
         self.assertContains(self.client.get(reverse("home-alerts")), "possible detour")
 
         cache.clear()  # a few minutes later, the bus is back where it belongs
-        BusPosition.objects.update(lon=-72.94)
+        self.prime_an_off_path_streak(detoured=False)
 
         self.assertNotContains(self.client.get(reverse("home-alerts")), "possible detour")
 
@@ -433,7 +433,11 @@ class DetourAlertTests(TestCase):
 
     def test_an_admin_detour_alert_names_the_stops_it_skips(self, urlopen, now):
         urlopen.side_effect = feed_by_path(
-            {"/routes_routes.php": [], "/routes_announcements.php": []}
+            {
+                "/routes_routes.php": [],
+                "/routes_announcements.php": [],
+                "/routes_buses.php": [],
+            }
         )
         Alert.objects.create(
             title="Chapel Street closed",

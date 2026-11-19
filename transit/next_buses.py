@@ -36,8 +36,8 @@ class Row:
     color: str  # six hex digits, already checked by network()
     official: list = field(default_factory=list)  # minutes, soonest first
     # True when the bus positions suggest this route has left its official
-    # path for the last three recorded polls (detours.detect, #55). A badge,
-    # never a verdict: the feed's path can be stale (#54).
+    # path for the last 15 minutes of live samples (detours.detect, #55). A
+    # badge, never a verdict: the feed's path can be stale (#54).
     detoured: bool = False
     ours: int | None = None  # whole minutes, or None when we have no prediction
     # Whole minutes since the soonest bus's GPS last reported, once that's
