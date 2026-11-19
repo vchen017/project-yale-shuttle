@@ -36,13 +36,36 @@ class FeedUnavailable(Exception):
 
 
 def routes():
-    """Every route, running or not: id, name, short_name, color, active, stops, path."""
-    return _get("routes_routes.php", {"inactive": "true"})
+    """Every route, running or not: id, name, short_name, color, active,
+    stops, path. Entries without a usable id and name are left out — the
+    feed's answers carry junk sometimes, and a route nobody can identify or
+    name has nothing to tell a rider. So a malformed answer degrades the
+    way a down feed does (the pages' 503), not a crashed one."""
+    data = _get("routes_routes.php", {"inactive": "true"})
+    if not isinstance(data, list):
+        return []
+    return [
+        route
+        for route in data
+        if isinstance(route, dict)
+        and isinstance(route.get("id"), int)
+        and isinstance(route.get("name"), str)
+    ]
 
 
 def stops():
-    """Every stop: id, name, lat, lon, description."""
-    return _get("routes_stops.php")
+    """Every stop: id, name, lat, lon, description. Entries without a usable
+    id and name are left out, for the same reason as routes()."""
+    data = _get("routes_stops.php")
+    if not isinstance(data, list):
+        return []
+    return [
+        stop
+        for stop in data
+        if isinstance(stop, dict)
+        and isinstance(stop.get("id"), int)
+        and isinstance(stop.get("name"), str)
+    ]
 
 
 def buses():
