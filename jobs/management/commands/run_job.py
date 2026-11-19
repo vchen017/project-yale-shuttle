@@ -4,9 +4,10 @@
     python manage.py run_job import_history            # run these jobs now
     python manage.py run_job --schedule "17 9 * * *"   # the jobs that cron line starts
 
-.github/workflows/jobs.yml runs the --schedule form on a timer. Every run is
-recorded in the run log (/admin/ → Scheduled jobs). The command fails if any
-job failed, so the workflow run shows it.
+.github/workflows/jobs.yml runs the --schedule form, started on time by the job
+clock (jobs/clock.py). Every run is recorded in the run log (/admin/ →
+Scheduled jobs). The command fails if any job failed, so the workflow run
+shows it.
 """
 
 from django.core.management.base import BaseCommand, CommandError

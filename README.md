@@ -177,13 +177,23 @@ jobs in its own `jobs.py`, and `python manage.py run_job --list` shows them all.
 | `import_history` | daily, 9:17 UTC (4:17 AM Eastern) | loads the recorder's last three days of shuttle history (#22), plus up to five older days from the last four weeks that aren't loaded yet |
 | `fit_calibration` | daily, 10:29 UTC (5:29 AM Eastern) | refits the countdown corrections from the last four weeks of recorded history (#117); until the first fit lands, predictions answer with the raw countdown |
 | `score_accuracy` | daily, 10:53 UTC (5:53 AM Eastern) | scores our predictions over the last seven days for the accuracy dashboard (#17), and over the last 31 days on Mondays; the dashboard only shows these saved scores |
+| `refresh_calendars` | hourly, at :41 | re-reads each rider's connected calendar address and replaces its events (#25) |
 
+- **On time, by the job clock:** GitHub starts scheduled runs hours late, or
+  not at all: 8 to 9 hours late in November 2026, when the hourly line went 7
+  hours without a run. So `.github/workflows/clock.yml` keeps time instead, the
+  way the recorder does. Each clock run stays up about 5 hours, starts a
+  `jobs.yml` run in each minute one of its cron lines fires
+  (`jobs/clock.py`), then queues the next clock run. GitHub's own late runs are
+  the backup: they do nothing while a run the clock started has succeeded in
+  the last two hours. To stop the clock, disable the "job clock" workflow in
+  the Actions tab and cancel its run.
 - **The run log** is at `/admin/` → Scheduled jobs: when each run started and
-  ended, what started it, and its summary or error. A failed run also fails its
+  ended, what started it (`job clock`, `schedule` for GitHub's own, or a
+  person's name), and its summary or error. A failed run also fails its
   workflow run in the Actions tab.
 - **Safe to repeat:** runs of the same job never overlap, and every job can run
-  late, twice, or after a skipped day without harm. GitHub sometimes starts a
-  scheduled run late, or drops one when it's busy.
+  late, twice, or after a skipped day without harm.
 - **Code and schema stay in step:** the jobs run `main`'s code, and refuse to
   start while the database is missing one of its migrations, as production's is
   until the next promotion.
