@@ -60,7 +60,12 @@ class RouteStatus(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["poll", "route_id"], name="unique_route_per_poll"),
         ]
-        indexes = [models.Index(fields=["route_id", "polled_at"])]
+        indexes = [
+            models.Index(fields=["route_id", "polled_at"]),
+            # polled_at alone: the when-to-leave page asks what ran at an
+            # event's weekday and hour, without naming routes (calendars.plans).
+            models.Index(fields=["polled_at"]),
+        ]
 
     def __str__(self):
         return f"{self.route_name} {'active' if self.active else 'inactive'} at {self.polled_at:%H:%M}"

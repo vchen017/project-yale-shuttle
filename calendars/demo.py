@@ -1,20 +1,28 @@
 """Demo calendar events for graders (#8), run by `manage.py seed`.
 
 The rider account gets a demo calendar — the kind the hourly refresh never
-touches — with three events in the next few hours, so the when-to-leave page
-shows all three kinds of plan: a lecture at a building a route links to Home
-(rideable), a brunch whose location names nothing in our buildings list, and
-a pickup game with no location at all (both listed as location unknown).
+touches — with three upcoming events at fixed New York times, so the
+when-to-leave page shows all three kinds of plan: a lecture at a building a
+route links to Home (rideable), a brunch whose location names nothing in our
+buildings list, and a pickup game with no location at all (both listed as
+location unknown).
 
-Each seed run re-anchors the events' times to now, so a deploy days later
-still shows them as upcoming; nothing else about them is reset. The demo Home
-sits by the College / George stop (routes 1 and 2), a ride away from Watson
-Center, and is created only while the rider has no Home, so it never
-overrides one. It's written here rather than in `places/demo.py` only because
-it exists for this page; if the places app grows its own demo, this moves.
+Anchoring to now served only until a deploy landed in the late afternoon:
+the page lists events that haven't started, so its evening looked empty to
+the very graders the demo is for (Vivian, #126 review). Instead each seed
+run re-anchors each event to its next occurrence at a fixed local time, so
+something is always coming up, whatever hour the deploy went out — and the
+hourly job re-anchors the ones that have since started, so the page stays
+filled between deploys too. Nothing else about the events is reset. The demo
+Home sits by the College / George stop (routes 1 and 2), a ride away from
+Watson Center, and is created only while the rider has no Home, so it never
+overrides one. It's written here rather than in `places/demo.py` only
+because it exists for this page; if the places app grows its own demo, this
+moves.
 """
 
 import datetime as dt
+from zoneinfo import ZoneInfo
 
 from django.utils import timezone
 
@@ -22,14 +30,25 @@ from places.models import Place
 
 from .models import Calendar, Event
 
+ET = ZoneInfo("America/New_York")
 HOME = {"lat": 41.30589, "lon": -72.93105}  # a minute's walk from College / George (stop 39)
 LENGTH = dt.timedelta(minutes=75)
 EVENTS = [
-    # uid, title, location, how long from now
-    ("demo-lecture@yale", "MGT 656 lecture", "Watson Center, 60 Sachem Street", dt.timedelta(hours=2)),
-    ("demo-brunch@yale", "Brunch with the cohort", "New Haven Green", dt.timedelta(hours=5)),
-    ("demo-basketball@yale", "Pick-up basketball", "", dt.timedelta(hours=7)),
+    # uid, title, location, the New York time it sits at every day
+    ("demo-lecture@yale", "MGT 656 lecture", "Watson Center, 60 Sachem Street", dt.time(16, 0)),
+    ("demo-brunch@yale", "Brunch with the cohort", "New Haven Green", dt.time(17, 30)),
+    ("demo-basketball@yale", "Pick-up basketball", "", dt.time(19, 0)),
 ]
+
+
+def next_at(time_of_day, now):
+    """This New York clock time's next occurrence: today while it's still
+    ahead, tomorrow once it has passed. Wall-clock arithmetic, so it reads the
+    same across a daylight-saving boundary."""
+    when = dt.datetime.combine(timezone.localtime(now).date(), time_of_day, tzinfo=ET)
+    if when <= now:
+        when += dt.timedelta(days=1)
+    return when
 
 
 def seed(accounts, stdout):
@@ -46,8 +65,8 @@ def seed(accounts, stdout):
 
     calendar, _ = Calendar.objects.get_or_create(user=rider, is_demo=True, defaults={"ics_url": ""})
     now = timezone.now()
-    for uid, title, location, after in EVENTS:
-        start = (now + after).replace(second=0, microsecond=0)
+    for uid, title, location, time_of_day in EVENTS:
+        start = next_at(time_of_day, now)
         event = Event.objects.filter(calendar=calendar, uid=uid).first()
         if event is None:
             Event.objects.create(
@@ -67,3 +86,23 @@ def seed(accounts, stdout):
             event.end = start + LENGTH
             event.save(update_fields=["title", "location", "start", "end"])
             stdout.write(f"Re-anchored the demo event {title!r}")
+
+
+def reanchor(now=None):
+    """The demo events whose time has passed move to their next occurrence:
+    the hourly job's part of keeping the page filled between deploys. Safe to
+    run twice — a moved event is no longer behind now, so it stays put — and
+    it leaves alone anything changed since. Returns how many moved, for the
+    job's run log."""
+    now = now or timezone.now()
+    times = {uid: time_of_day for uid, _, _, time_of_day in EVENTS}
+    moved = 0
+    for event in Event.objects.filter(calendar__is_demo=True, start__lt=now):
+        time_of_day = times.get(event.uid)
+        if time_of_day is None:
+            continue
+        event.start = next_at(time_of_day, now)
+        event.end = event.start + LENGTH
+        event.save(update_fields=["start", "end"])
+        moved += 1
+    return moved

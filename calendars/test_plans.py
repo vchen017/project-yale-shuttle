@@ -35,8 +35,8 @@ def row(ours=8, official=(9,)):
     return Row(route_id=1, name="Blue - Weekday Daytime", label="Blue", color="00356b", official=list(official), ours=ours)
 
 
-def plan_event(event, home=HOME, now=NOW, stops=SERVED, routes=ROUTES):
-    return plan_one(event, home, now=now, stops=stops, routes_by_id=routes)
+def plan_event(event, home=HOME, now=NOW, stops=SERVED, routes=ROUTES, **more):
+    return plan_one(event, home, now=now, stops=stops, routes_by_id=routes, **more)
 
 
 class MatchBuildingTests(SimpleTestCase):
@@ -163,3 +163,47 @@ class PlanEventTests(SimpleTestCase):
         self.assertIsNone(plan.plan)
         self.assertIsNone(plan.leave_by)
         self.assertEqual(plan.walk_all, 26)  # the walk is computable without the feed
+
+
+class AtTheEventsHourTests(SimpleTestCase):
+    """An estimate plans on the routes running at the event's weekday and
+    hour, not the ones running now (Vivian, #126 review): the 9 PM lecture
+    checked in the afternoon rides the night route. The history lookup itself
+    needs the database, so here it's a stub."""
+
+    def test_an_estimate_plans_on_the_routes_running_at_the_event(self):
+        # Only the night Orange runs at 9 PM, and it doesn't reach Union
+        # Station, so the plan boards at Payne Whitney — 22 minutes' walk from
+        # this home, not the daytime Blue at the door.
+        plan = plan_event(event(), running_at=lambda start, now: {2})
+        self.assertEqual(plan.route_names, ["Orange - Weekday Daytime"])
+        self.assertEqual(plan.plan.board_at["name"], "Payne Whitney")
+        self.assertEqual(plan.plan.get_off_at["name"], "Science Hill")
+        self.assertTrue(plan.estimate)
+        # start minus the walk from the stop (2), minus the wait, minus the
+        # walk to the stop (22, Payne Whitney).
+        self.assertEqual(plan.leave_by, START - dt.timedelta(minutes=22 + 15 + 2))
+
+    def test_when_nothing_runs_at_the_event_hour_there_is_no_ride(self):
+        # 3 AM: the history says nothing runs, so there are no stops to board
+        # at, and the walk all the way is what's left.
+        plan = plan_event(event(), running_at=lambda start, now: set())
+        self.assertIsNone(plan.plan)
+        self.assertIsNone(plan.leave_by)
+        self.assertEqual(plan.walk_all, 26)
+
+    def test_without_history_the_estimate_falls_back_to_the_routes_running_now(self):
+        plan = plan_event(event(), running_at=lambda start, now: None)
+        self.assertEqual(plan.plan.board_at["name"], "Union Station")
+        self.assertEqual(plan.route_names, ["Blue - Weekday Daytime"])
+        self.assertTrue(plan.estimate)
+
+    def test_an_event_soon_never_asks_the_history(self):
+        def fails(start, now):
+            raise AssertionError("inside the live window, now is the event's hour")
+
+        soon = NOW + dt.timedelta(minutes=20)
+        with mock.patch("calendars.plans.next_buses", return_value=Board(running=True, rows=[row()])):
+            plan = plan_event(event(start=soon), running_at=fails)
+        self.assertFalse(plan.estimate)
+        self.assertEqual(plan.leave_by, NOW + dt.timedelta(minutes=8))

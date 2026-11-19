@@ -75,7 +75,9 @@ def leave(request):
 
     rideable, stranded, unknown = [], [], []
     for event in events:
-        plan = plans.plan_event(event, home, now=now, stops=stops, routes_by_id=routes_by_id)
+        plan = plans.plan_event(
+            event, home, now=now, stops=stops, routes_by_id=routes_by_id, running_at=plans.routes_running_at
+        )
         if plan.location_unknown:
             unknown.append(plan)
         elif plan.leave_by is not None:
