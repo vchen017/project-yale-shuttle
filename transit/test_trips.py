@@ -207,7 +207,8 @@ class TripPageTests(TestCase):
         far_away = {"from": "Boston", "from_at": "42.3601,-71.0589", "to": "NYC", "to_at": "40.7128,-74.0060"}
         with mock.patch("transit.trips.plan", return_value=None):
             response = self.client.get(reverse("trip"), far_away)
-        self.assertContains(response, "No shuttle route running now links stops near these two places.")
+        self.assertContains(response, "No shuttle running now links these places")
+        self.assertContains(response, "Walking the whole way takes about")
 
     def test_when_the_feed_is_down_the_page_says_so(self, feed_urlopen, photon_urlopen, predict):
         feed_urlopen.side_effect = URLError("down")
