@@ -79,8 +79,6 @@ class AnswerTests(SimpleTestCase):
         result = ride([eta(10)], [eta(22)], walk_to=6, walk_from=3)
         self.assertEqual(result.ride_minutes, 12)
         self.assertEqual(result.arrive_at, NOW + dt.timedelta(minutes=10 + 12 + 3))
-        # Set out, spend the margin at the stop, ride, walk on.
-        self.assertEqual(result.total_minutes, 6 + 2 + 12 + 3)
 
     def test_another_bus_at_the_far_stop_is_not_this_buss_ride(self):
         result = ride([eta(10, bus_id=812)], [eta(14, bus_id=900), eta(25, bus_id=812)])
@@ -97,7 +95,6 @@ class AnswerTests(SimpleTestCase):
         self.assertEqual(result.kind, answers.RIDE)
         self.assertIsNone(result.ride_minutes)
         self.assertIsNone(result.arrive_at)
-        self.assertIsNone(result.total_minutes)
 
     def test_a_bus_without_an_id_gives_no_ride_time(self):
         self.assertIsNone(ride([eta(10, bus_id=None)], [eta(22)]).ride_minutes)

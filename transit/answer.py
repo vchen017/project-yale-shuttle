@@ -62,7 +62,6 @@ class Answer:
     bus_at: dt.datetime | None = None  # the bus at the boarding stop
     ride_minutes: int | None = None  # None when the feed can't say
     arrive_at: dt.datetime | None = None  # at the destination; None with no ride time
-    total_minutes: int | None = None  # setting out to the destination; None with no ride time
 
     @property
     def headline(self):
@@ -145,7 +144,6 @@ def answer(plan, board, walk_all_the_way, now=None):
     )
     if ride is not None:
         result.arrive_at = bus_at + dt.timedelta(minutes=ride + plan.walk_from_stop)
-        result.total_minutes = plan.walk_to_stop + early + ride + plan.walk_from_stop
     return result
 
 

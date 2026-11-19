@@ -16,7 +16,6 @@
           {% if answer.ride_minutes is not None %}
             <div><dt>Ride</dt><dd>{{ answer.ride_minutes }} min</dd></div>
             <div><dt>Arrive at {{ destination.name }}</dt><dd>{{ answer.arrive_at|date:"g:i A" }}</dd></div>
-            <div><dt>Leaving to arriving</dt><dd>{{ answer.total_minutes }} min</dd></div>
           {% endif %}
         </dl>
         {% if answer.ride_minutes is None %}
