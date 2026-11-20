@@ -122,9 +122,11 @@ def prime_a_streak(runs, route_id=1):
 
 class FlagsFromSamplesTests(TestCase):
     """flags_from_samples, the pure rule: a route is flagged when one of its
-    buses was on the official path and then off it for three appearances in a
-    row (#55). Deliberately hard to flag: a bus straight from the garage, a
-    bus back on the path, a sample the bus missed — each blocks the flag."""
+    buses was on the official path and then off it for CONSECUTIVE_POLLS or
+    more appearances in a row spanning at least MIN_SPAN (#55). Deliberately
+    hard to flag: a bus straight from the garage, a bus back on the path, a
+    sample the bus missed, an off-run too short to be honest about "15
+    minutes" — each blocks the flag."""
 
     def flags(self, runs, route_id=1):
         samples, _ = samples_of(runs, route_id=route_id)
@@ -143,6 +145,20 @@ class FlagsFromSamplesTests(TestCase):
                     "since": newest,
                 }
             ],
+        )
+
+    def test_an_off_run_shorter_than_min_span_does_not_flag_yet(self):
+        # On the path 6 minutes ago and off ever since: three appearances in a
+        # row, but bunched into 4 minutes (Austin, #55 review). The alert says
+        # "about the last 15 minutes", so the run has to earn that first.
+        self.assertEqual(self.flags({812: [(6, False), (4, True), (2, True), (0, True)]}), [])
+
+    def test_an_off_run_spanning_exactly_min_span_flags(self):
+        # First off appearance 10 minutes ago (MIN_SPAN), newest now: the
+        # boundary holds, so the wording stays true from the minute it shows.
+        self.assertEqual(
+            [flag["route_id"] for flag in self.flags({812: [(12, False), (10, True), (5, True), (0, True)]})],
+            [1],
         )
 
     def test_a_bus_straight_from_the_garage_never_flags_its_route(self):
@@ -321,13 +337,21 @@ class DetouredRoutesTests(TestCase):
         state = {"now": timezone.now(), "lon": -72.94}
         urlopen.side_effect = self.ride(state)
 
-        self.assertEqual(detect.detoured_routes(now=state["now"]), [])
+        self.assertEqual(detect.detoured_routes(now=state["now"]), [])  # on the path
         self.step(state, 4, OFF_LON)
-        self.assertEqual(detect.detoured_routes(now=state["now"]), [])
+        self.assertEqual(detect.detoured_routes(now=state["now"]), [])  # just left it
+        self.step(state, 4, OFF_LON)
+        self.assertEqual(detect.detoured_routes(now=state["now"]), [])  # 4 minutes off
+        # The rule wants CONSECUTIVE_POLLS appearances spanning at least
+        # MIN_SPAN (Austin, #55 review): an 8-minute off-run isn't honest
+        # about "about the last 15 minutes", so it keeps quiet.
         self.step(state, 4, OFF_LON)
         self.assertEqual(detect.detoured_routes(now=state["now"]), [])
 
-        self.step(state, 4, OFF_LON)
+        # One more sighting, 10½ minutes after the first, and the flag shows
+        # — while the on-path sighting, 14½ minutes back, is still inside
+        # SAMPLE_SPAN, so the rule can tell a garage bus from a detoured one.
+        self.step(state, 2.5, OFF_LON)
         flagged = detect.detoured_routes(now=state["now"])
         self.assertEqual([flag["route_id"] for flag in flagged], [1])
         newest_sample = cache.get(detect._SAMPLES_KEY)[-1]
@@ -384,10 +408,12 @@ class DetouredRoutesTests(TestCase):
     def test_the_answer_is_cached_for_a_minute(self, urlopen):
         state = {"now": timezone.now(), "lon": -72.94}
         urlopen.side_effect = self.ride(state)
-        for _ in range(3):  # the bus starts on its path and steps away
+        detect.detoured_routes(now=state["now"])  # the bus starts on its path
+        for minutes in (4, 4, 4):  # page loads record it staying away
+            self.step(state, minutes, OFF_LON)
             detect.detoured_routes(now=state["now"])
-            self.step(state, 4, OFF_LON)
-        first = detect.detoured_routes(now=state["now"])  # the flagging load
+        self.step(state, 2.5, OFF_LON)  # 10½ minutes off: the flagging load
+        first = detect.detoured_routes(now=state["now"])
         self.assertNotEqual(first, [])
 
         urlopen.side_effect = URLError("feed down")  # a second call reads the cache
