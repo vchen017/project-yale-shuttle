@@ -47,7 +47,10 @@ def seed(accounts, stdout):
         stdout.write("Kept the sample crowding reports")
         return
 
-    CrowdReport.objects.filter(is_sample=True).delete()
+    # The samples the refresh replaces, and only those: a sample an admin
+    # removed through moderation stays removed — its record is the audit
+    # trail, and seed never undoes an admin's change (AGENTS.md).
+    CrowdReport.objects.filter(is_sample=True, removed_at__isnull=True).delete()
     rider = accounts["rider"]
     today = timezone.localtime(now).date()
     reports = []
