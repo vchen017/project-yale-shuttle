@@ -31,7 +31,7 @@ class Trip:
     stop: str
     needed_at: datetime  # when the rider needs to be at their destination
     walking_minutes: int  # walk to the stop
-    official_arrival: datetime  # the Downtowner's ETA for the next bus
+    official_arrival: datetime | None  # the Downtowner's ETA for the next bus, or None when the feed is down
     predicted_arrival: datetime | None = None  # ours, or None when we have none
 
 
@@ -46,9 +46,10 @@ DONT_NOTIFY = Decision(notify=False)
 
 def leave_by(trip):
     """When the rider has to leave for the stop to meet the bus: arithmetic, so it's done here
-    and handed to the model, not left for it to work out. Our prediction wins when we have one."""
+    and handed to the model, not left for it to work out. Our prediction wins when we have one.
+    None when there's no arrival time at all (feed down and no prediction)."""
     arrival = trip.predicted_arrival or trip.official_arrival
-    return arrival - timedelta(minutes=trip.walking_minutes)
+    return None if arrival is None else arrival - timedelta(minutes=trip.walking_minutes)
 
 
 REPLY_FORMAT = f"""\
@@ -64,9 +65,11 @@ SYSTEM_PROMPT = f"""\
 You decide whether and when to notify a Yale shuttle rider about an upcoming trip.
 
 You get the route, the stop, the time the rider needs to be there, how many
-minutes they walk to the stop, the official arrival time of the next bus, our own
-predicted arrival time (it may be missing), and "Leave for the stop by": the bus's
-arrival (ours when we have one, otherwise the official time) minus the walking time.
+minutes they walk to the stop, the official arrival time of the next bus (it is
+missing when the live feed is down), our own predicted arrival time (it may be
+missing), and "Leave for the stop by": the bus's arrival (ours when we have one,
+otherwise the official time) minus the walking time. When there is no arrival time
+at all, don't notify: there is nothing to time a notification by, and don't guess.
 Our prediction is usually better than the official time when it exists.
 
 You don't know how long the ride takes, so don't promise the rider will arrive on time.
@@ -88,14 +91,17 @@ def _local(moment):
 
 def build_messages(trip):
     predicted = _local(trip.predicted_arrival) if trip.predicted_arrival else "none (no prediction)"
+    official = _local(trip.official_arrival) if trip.official_arrival else "none (the live feed is unavailable)"
+    leave = leave_by(trip)
+    leave = _local(leave) if leave else "none (no arrival time to work from)"
     facts = (
         f"Route: {trip.route}\n"
         f"Stop: {trip.stop}\n"
         f"Rider needs to be there by: {_local(trip.needed_at)}\n"
         f"Walking time to the stop: {trip.walking_minutes} minutes\n"
-        f"Official arrival of the next bus: {_local(trip.official_arrival)}\n"
+        f"Official arrival of the next bus: {official}\n"
         f"Our predicted arrival: {predicted}\n"
-        f"Leave for the stop by: {_local(leave_by(trip))}\n"
+        f"Leave for the stop by: {leave}\n"
     )
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -156,7 +162,14 @@ def decide_notification(trip, *, strict=False):
         logger.warning("Not notifying: %s", error)
         return DONT_NOTIFY
     try:
-        return parse_answer(reply, trip)
+        decision = parse_answer(reply, trip)
     except InvalidAnswer as error:
         logger.warning("Not notifying: the LLM's answer didn't fit (%s): %.200r", error, reply)
         return DONT_NOTIFY
+    if decision.notify:
+        latest = leave_by(trip)
+        if latest is None:
+            # Nothing to time a notification by: held in code, like the agent's rule.
+            logger.warning("Not notifying: no arrival time to time it by: %.200r", reply)
+            return DONT_NOTIFY
+    return decision
