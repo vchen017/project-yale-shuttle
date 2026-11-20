@@ -90,6 +90,25 @@ another app's code or migrations when your issue says to, and tell its owner.
 - **Tests never reach the outside world.** Mock the Downtowner feed, OpenRouter,
   push services (`notifications.push.webpush`) and anything else on the
   network. The course checks this.
+- **Test against real data, not only mocks.** Mocked tests prove the logic,
+  not that it survives our data, and every one of these bugs passed its mocks:
+  a malformed feed answer that would have been a 500 on four pages (#135);
+  buses going to or from the garage that looked like 23 false detours when
+  replayed over the recorded polls (#129); a 23-minute ride on a short trip
+  that only showed against the live feed (#132); a crowding refresh that
+  deleted samples an admin had removed (#137). Before you open a pull
+  request, think about the real data the code will meet and say in the
+  description what you checked:
+  - the **live feed**: missing fields, wrong types, stale positions, buses off
+    their path at the start and end of service, routes and stops that changed;
+  - the **recorded history**: gaps, partly imported days, data from before a
+    route or stop changed;
+  - **rows people changed**: moderated reports, saved places, anything an
+    admin or rider edited or removed.
+
+  Where you can, run the change against the live feed (the tests stay
+  mocked) or replay it over the recorded polls, and write down what you saw.
+  If you couldn't, say that. A pass on mocks alone is not "works".
 - **The LLM is called from the server only**, through OpenRouter, with the key
   in `OPENROUTER_API_KEY`. Never from browser JavaScript.
 - **Scheduled jobs** go in your app's `jobs.py`, with `@job(schedule=...)` and the
@@ -129,6 +148,8 @@ another app's code or migrations when your issue says to, and tell its owner.
 
 - Every acceptance criterion in the issue is met.
 - Tests cover it, with outside services mocked, and they pass.
+- You checked it against real data (see Rules), and the pull request says what
+  you saw, or why you couldn't.
 - Any migrations are included.
 - It works in a phone-sized and a desktop-sized window.
 - The pull request uses the template: `Closes #N`, what the AI produced, what
