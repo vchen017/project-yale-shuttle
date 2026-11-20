@@ -40,19 +40,24 @@ the rest of the AI notification flow
 - **Choosing where to get off during a detour**
   ([#129](https://github.com/vchen017/project-yale-shuttle/pull/129), for
   [#55](https://github.com/vchen017/project-yale-shuttle/issues/55)): when a
-  running route has a bus that was on its official path and then stayed more
-  than 200 m off it for three sightings in a row spanning about 10–15
-  minutes, the next-buses page marks the route "possible detour" and the
-  home page's alerts say to ask the driver where to get off — the question
-  Austin's detoured bus couldn't answer on Nov 12. Admins can name the stops
-  a detour skips on any alert, and a sample detour alert joins the demo
-  seed. Detection samples the live feed into a one-minute cache — the home
-  page's first paint never waits on the feed — and is deliberately
-  conservative: a bus flags its route only after the feed showed it on the
-  official path (a garage departure never was, and that was every false
-  flag in a replay of Nov 10–18), a sighting it misses restarts its run,
-  and the off-run must span those 10 minutes before the badge shows, so
-  "about the last 15 minutes" is true whenever a rider reads it. In review.
+  running route has a bus that was on its official path in the last hour and
+  then stayed more than 200 m off it for three sightings in a row spanning
+  at least 10 minutes, the next-buses page marks the route "possible
+  detour" and the home page's alerts say to ask the driver where to get
+  off — the question Austin's detoured bus couldn't answer on Nov 12. The
+  flag stays up for as long as the bus stays off its path. Admins can name
+  the stops a detour skips on any alert, and a sample detour alert joins
+  the demo seed. Detection samples the live feed into a small table (one
+  row at most every 2 minutes, an hour kept), so a detour survives a
+  restart or a Render sleep — the home page's first paint never waits on
+  the feed. Deliberately conservative: a bus flags its route only after the
+  feed showed it on the official path (a garage departure never was), a
+  sighting it misses restarts its run, the off-run must span those 10
+  minutes before the badge shows, and a nightly job reads the recorded
+  history and refuses to flag a route in the hours it is routinely off its
+  drawn path — Pink's 5 AM garage runs, Purple's evening loops and
+  Blue-Night's 6 PM and midnight hours, measured over Nov 8–20 — while a
+  real detour is one day, not half the window. In review.
 - **Scheduled jobs start on time**
   ([#130](https://github.com/vchen017/project-yale-shuttle/pull/130)): a
   job clock fires each job in its due minute even when GitHub's runner
@@ -119,8 +124,14 @@ before anything shipped: it crashed when the feed answered with entries
 that weren't routes at all, and it computed detection during the home
 page's first paint, which would have made the page wait on the feed —
 exactly what #13's design forbids. Both fixes were small: ignore entries
-that aren't route-shaped, and on first paint read only the one-minute
-detection cache and let the page's swap-in do the real work (#129).
+that aren't route-shaped, and on first paint read only the warm detection
+cache and let the page's swap-in do the real work (#129). Its second
+round's tests all passed while the samples still lived in the in-memory
+cache; replaying the recorded polls — the check #139 just made a rule —
+caught what the mocks couldn't: JSON turns numbers' keys into strings, so
+the samples came back with `"1"` where the code looked up route `1`, and
+detection would have silently done nothing in production. Two lines fixed
+it and a test pins the round-trip (#129).
 
 A full-codebase audit by two read-only agents on Nov 19 surfaced eight
 real bugs across the apps — a malformed-but-parseable feed answer was a
@@ -151,4 +162,10 @@ Making the long waits better
 measured in this sprint's last days: on held-out days nothing beat the
 shipped predictor, so it closed as measured, no code change. Choosing
 where to get off during a detour
-(#55) moved up into this sprint — its pull request is in review above.
+(#55) moved up into this sprint — its pull request is in review above. Two
+more pull requests are up for review as the sprint closes: the job that
+watches riders' trips and sends the agent's notifications
+([#142](https://github.com/vchen017/project-yale-shuttle/pull/142), for
+[#29](https://github.com/vchen017/project-yale-shuttle/issues/29)) and the
+`technical.md` detail (#41) Vivian drafted
+([#143](https://github.com/vchen017/project-yale-shuttle/pull/143)).
