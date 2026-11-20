@@ -1,6 +1,7 @@
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
+from django.core.exceptions import ValidationError
 
-from .models import User
+from .models import RESERVED_USERNAMES, User
 
 
 class BootstrapFormMixin:
@@ -33,3 +34,9 @@ class SignUpForm(BootstrapFormMixin, UserCreationForm):
         # One short line instead of Django's list of password rules.
         self.fields["password1"].help_text = "At least 8 characters, not too common, and not only numbers."
         self.fields["password2"].help_text = ""
+
+    def clean_username(self):
+        username = self.cleaned_data.get("username")
+        if username and username.lower() in RESERVED_USERNAMES:
+            raise ValidationError("That username is reserved.")
+        return username
