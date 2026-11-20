@@ -52,6 +52,18 @@ class RunnerTests(TestCase):
         self.assertEqual(calls, [])
         self.assertEqual(JobRun.objects.count(), 1)
 
+    def test_a_job_that_takes_over_closes_the_run_still_going(self):
+        older = JobRun.objects.create(job="sample")  # the last hour's trip watch, still going
+        job = Job(
+            name="sample", func=lambda: "watched", schedule="45 * * * *",
+            timeout=dt.timedelta(hours=2), description="A test job.", takes_over=True,
+        )
+        self.assertIsNotNone(run_quietly(self, job))
+        older.refresh_from_db()
+        self.assertEqual(older.status, JobRun.Status.SUCCEEDED)
+        self.assertEqual(older.output, runner.HANDED_OVER)
+        self.assertIsNotNone(older.finished_at)
+
     def test_another_jobs_run_doesnt_block_this_one(self):
         JobRun.objects.create(job="other")
         self.assertIsNotNone(run_quietly(self, make_job(lambda: None)))

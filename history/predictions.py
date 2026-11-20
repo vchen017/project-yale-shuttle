@@ -240,6 +240,55 @@ def predict_minutes(route_id, stop_id, now=None, use_live_feed=True, current_by_
     return _predict_history(profile, now, _last_arrival_before(arrivals, now))
 
 
+class HistoryPredictor:
+    """The history layer's predictions for chosen (route, stop) pairs, loaded
+    in one go, for a caller that asks again and again and mustn't touch the
+    database each time: the trip watch (#29) checks every 5 minutes for up to
+    2 hours. Two queries when it's made, none after.
+
+    It answers as predict_minutes(..., use_live_feed=False) does once no
+    recorded poll is fresh, which the daily import makes the usual case: the
+    walk-up median for the time of day, conditioned on the last arrival the
+    history saw. Arrivals recorded after it was made aren't seen.
+    """
+
+    def __init__(self, pairs, now=None):
+        now = now or timezone.now()
+        pairs = set(pairs)
+        self._served = current_stops_by_route()
+        arrivals = {pair: [] for pair in pairs}
+        if pairs:
+            rows = (
+                Eta.objects.filter(
+                    route_id__in={route_id for route_id, _ in pairs},
+                    stop_id__in={stop_id for _, stop_id in pairs},
+                    eta_minutes__lte=ARRIVAL_ETA,
+                    polled_at__gt=now - dt.timedelta(days=HISTORY_DAYS),
+                    polled_at__lte=now,
+                )
+                .order_by("polled_at", "bus_id")
+                .values_list("route_id", "stop_id", "polled_at", "bus_id", "eta_minutes")
+            )
+            grouped = defaultdict(list)
+            for route_id, stop_id, polled_at, bus_id, eta in rows:
+                if (route_id, stop_id) in arrivals:
+                    grouped[(route_id, stop_id)].append((polled_at, bus_id, eta))
+            for pair, moments in grouped.items():
+                arrivals[pair] = _arrival_events(moments)
+        self._arrivals = arrivals
+        self._profiles = {pair: _learn(moments) for pair, moments in arrivals.items()}
+
+    def minutes(self, route_id, stop_id, now):
+        """Our minutes until the route's next bus reaches the stop, from
+        history; None when history has nothing, the pair wasn't loaded, or
+        the route no longer serves the stop."""
+        pair = (route_id, stop_id)
+        if pair not in self._profiles or not _stop_is_served(route_id, stop_id, self._served):
+            return None
+        last_arrival = _last_arrival_before(self._arrivals[pair], now)
+        return _predict_history(self._profiles[pair], now, last_arrival)
+
+
 def _fused_countdown(route_id, countdown, corrections):
     """The live answer (#117): the countdown, plus the history's correction
     for countdowns of its size — unless it is at or below RAW_MAX, where the
