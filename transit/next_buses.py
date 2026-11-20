@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 
 from django.utils import timezone
 
+from detours.detect import detoured_routes
 from history.predictions import current_stops_by_route, predict_minutes
 
 from . import downtowner
@@ -34,6 +35,10 @@ class Row:
     label: str
     color: str  # six hex digits, already checked by network()
     official: list = field(default_factory=list)  # minutes, soonest first
+    # True when the bus positions suggest this route has left its official
+    # path (detours.detect, #55). A badge, never a verdict: the feed's path
+    # can be stale (#54).
+    detoured: bool = False
     ours: int | None = None  # whole minutes, or None when we have no prediction
     # Whole minutes since the soonest bus's GPS last reported, once that's
     # older than STALE_AFTER_MINUTES; None when it's fresh or we can't tell.
@@ -123,6 +128,11 @@ def next_buses(stop_id, destination_id=None):
     if not serving:
         return Board(running=True, rows=[])
 
+    try:
+        detoured = {flag["route_id"] for flag in detoured_routes()}
+    except downtowner.FeedUnavailable:
+        detoured = set()  # the board still shows; the badge may just be missing
+
     minutes = defaultdict(list)
     soonest_bus = {}  # route id -> bus id of its soonest arrival
     for arrival in downtowner.etas(stop_id):  # soonest first
@@ -151,6 +161,7 @@ def next_buses(stop_id, destination_id=None):
                 label=route["label"],
                 color=route["color"],
                 official=sorted(minutes[route["id"]]),
+                detoured=route["id"] in detoured,
                 ours=None if ours is None or too_old else round(ours),
                 last_seen=int(age // 60) if age is not None and age > STALE_AFTER_MINUTES * 60 else None,
                 ours_hidden=too_old and ours is not None,

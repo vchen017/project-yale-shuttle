@@ -34,7 +34,7 @@ class AlertAdmin(admin.ModelAdmin):
     list_display = ("title", "starts_at", "ends_at", "status")
     list_filter = (StatusFilter,)
     search_fields = ("title", "message")
-    fields = ("title", "message", "starts_at", "ends_at")
+    fields = ("title", "message", "skipped_stops", "starts_at", "ends_at")
     actions = ["end_now"]
 
     @admin.display(description="Status")

@@ -24,6 +24,13 @@ class Alert(models.Model):
 
     title = models.CharField(max_length=200)
     message = models.TextField()
+    skipped_stops = models.TextField(
+        blank=True,
+        default="",
+        help_text="Detours (#55): the stops this detour skips, one per line. "
+        "Riders see them under the message, so they can ask the driver "
+        "for the right drop-off.",
+    )
     starts_at = models.DateTimeField(
         default=timezone.now,
         help_text="Eastern time. Riders see it from this time, which is shown as its posting time.",
