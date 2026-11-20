@@ -7,6 +7,8 @@ routes with their stops, as the report form wants them.
 
 import datetime as dt
 
+from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.utils import timezone
 
 from transit import downtowner
@@ -50,31 +52,36 @@ def report(user, route, stop, kind, now=None):
 
     `route` and `stop` are the form's dicts ({"id", "name", ...}). Raises
     TooSoon when the same rider reported the same route and stop inside the
-    rate limit; sample reports never count towards it.
+    rate limit; sample reports never count towards it. The rider's row is
+    locked while checking, so two quick taps can't both get through — the
+    same guard crowding's report takes (PostgreSQL; SQLite runs one write
+    at a time anyway).
     """
     now = now or timezone.now()
-    recent = (
-        RiderReport.objects.filter(
+    with transaction.atomic():
+        get_user_model().objects.select_for_update().filter(pk=user.pk).first()
+        recent = (
+            RiderReport.objects.filter(
+                user=user,
+                route_id=route["id"],
+                stop_id=stop["id"],
+                is_sample=False,
+                created_at__gt=now - RATE_LIMIT,
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        if recent:
+            raise TooSoon(recent.created_at + RATE_LIMIT)
+        return RiderReport.objects.create(
             user=user,
             route_id=route["id"],
+            route_name=route["name"],
             stop_id=stop["id"],
-            is_sample=False,
-            created_at__gt=now - RATE_LIMIT,
+            stop_name=stop["name"],
+            kind=kind,
+            created_at=now,
         )
-        .order_by("-created_at")
-        .first()
-    )
-    if recent:
-        raise TooSoon(recent.created_at + RATE_LIMIT)
-    return RiderReport.objects.create(
-        user=user,
-        route_id=route["id"],
-        route_name=route["name"],
-        stop_id=stop["id"],
-        stop_name=stop["name"],
-        kind=kind,
-        created_at=now,
-    )
 
 
 def recent(now=None, hours=RECENT_HOURS):

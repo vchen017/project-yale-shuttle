@@ -122,6 +122,10 @@ class Command(BaseCommand):
             f"({inferred / visits:.0%}) the history inferred an arrival for the same bus and stop "
             f"within {int(quality.SLACK.total_seconds() // 60)} minutes:\n"
         )
+        if not inferred:
+            # Every visit was a miss: nothing to divide by, and no median.
+            self._write("- none of them matched an inferred arrival\n")
+            return
         self._write(f"- inside the GPS window: {summary['inside']:,} ({summary['inside'] / inferred:.0%})")
         self._write(f"- within 2 minutes of it: {summary['within_2']:,} ({summary['within_2'] / inferred:.0%})")
         self._write(f"- more than 2 minutes early: {summary['early']:,}; more than 2 minutes late: {summary['late']:,}")

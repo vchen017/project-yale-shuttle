@@ -979,6 +979,17 @@ class CalibrationTests(TestCase):
         call_command("fit_calibration", stdout=stdout)
         self.assertEqual(Calibration.objects.count(), 0)
 
+    def test_the_fit_command_drops_the_stored_corrections_cache(self):
+        # A page read warms the 10-minute corrections cache; the nightly fit
+        # must be answered at once, not when the cache happens to expire.
+        add_eta_poll(eastern(dt.date(2026, 11, 3), 12), bus_id=9, eta_minutes=8)
+        self.assertEqual(predictions.stored_corrections().overall, 0.0)  # the cache is warm
+        self.assertIsNotNone(cache.get("history.calibration"))
+
+        call_command("fit_calibration", stdout=StringIO())
+
+        self.assertIsNone(cache.get("history.calibration"))
+
 
 class ConditionedHistoryTests(TestCase):
     """When no poll is fresh but a bus did come recently, the wait shrinks
