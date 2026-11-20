@@ -3,8 +3,6 @@
 import datetime as dt
 from collections import defaultdict
 
-import zoneinfo
-
 from django.utils import timezone
 
 from history.models import BusPosition
