@@ -66,11 +66,8 @@ the rest of the AI notification flow
   reads instead of a query per scored query
   ([#124](https://github.com/vchen017/project-yale-shuttle/pull/124),
   Vivian's follow-up to #17, merged 2026-11-18), and the nightly jobs are
-  running green on it. Four audit-fix pull requests came out of the
-  Nov 19 audit and are all in review:
-  [#135](https://github.com/vchen017/project-yale-shuttle/pull/135) (parse
-  guards for malformed feed answers — a junk answer now 503s like a down
-  feed instead of showing empty pages),
+  running green on it. The Nov 19 audit turned into four fix pull
+  requests, three merged the same evening:
   [#136](https://github.com/vchen017/project-yale-shuttle/pull/136)
   (history fixes: an index for the nightly scoring window, a corrections
   cache that clears when a new fit lands, a per-query lookup, a rate-limit
@@ -78,7 +75,17 @@ the rest of the AI notification flow
   (the crowding demo no longer deletes moderated samples), and
   [#138](https://github.com/vchen017/project-yale-shuttle/pull/138) (the
   grader usernames reserved at signup, so nobody can take
-  `admin@example.com` or `rider@example.com`).
+  `admin@example.com` or `rider@example.com`);
+  [#135](https://github.com/vchen017/project-yale-shuttle/pull/135) (parse
+  guards for malformed feed answers — per review, a junk answer now 503s
+  like a down feed instead of showing empty pages) is in review. Two more
+  of Austin's merged the same night: the notification evaluation set grew
+  to 22 trips, each tested against 15 kinds of malformed answer and 5
+  kinds of outage with the model mocked
+  ([#141](https://github.com/vchen017/project-yale-shuttle/pull/141)), and
+  AGENTS.md now asks every author to check their change against real data
+  and say what they saw
+  ([#140](https://github.com/vchen017/project-yale-shuttle/pull/140)).
 
 ## What works on staging and production
 
@@ -90,7 +97,9 @@ its stats. All three calendar pull requests are merged
 ([#125](https://github.com/vchen017/project-yale-shuttle/pull/125) directly,
 #127 into the stack, #126 last, closing #26 and #8), and
 [staging](https://yale-shuttle-staging.onrender.com) is serving the whole
-calendar MVP — verified at the merge commit. The trip planner and the
+calendar MVP — verified at the merge commit, and again at `3c2a3bb` on
+Nov 19 with the evening's audit fixes aboard (home, login, signup and a
+stop page all answering). The trip planner and the
 when-to-leave page reach [production](https://yale-shuttle.onrender.com)
 at the next promote. Before submitting (#44) we check both grader accounts on both
 sites, the AI feature on staging, and every page in phone-sized and
