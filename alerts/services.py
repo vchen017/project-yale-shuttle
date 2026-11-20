@@ -28,9 +28,8 @@ DETOUR = "detour"
 DOWNTOWNER = "downtowner"
 
 DETOUR_MESSAGE = (
-    "Recent bus positions suggest this route has left its usual path for "
-    "about the last 15 minutes. Some stops may be skipped — ask the driver "
-    "where to get off."
+    "Recent bus positions suggest this route has left its usual path. Some "
+    "stops may be skipped — ask the driver where to get off."
 )
 
 

@@ -14,7 +14,7 @@ from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from detours import detect
+from detours.models import Sample
 from history.models import Announcement as RecordedAnnouncement
 from history.models import Poll
 
@@ -383,18 +383,16 @@ class DetourAlertTests(TestCase):
         )
 
     def prime_an_off_path_streak(self, detoured=True):
-        """Prime the samples detours.detect keeps (#55), the way page loads
+        """Record the samples detours.detect keeps (#55), the way page loads
         over the last 15 minutes would have: bus 812 was on route 1's path,
         then off it three samples in a row (`detoured=False` puts it back on
         the path — the detour is over)."""
-        at = NOW.timestamp()
-        samples = [
-            {"at": at - 15 * 60, "routes": {1: {812: False}}},
-            {"at": at - 10 * 60, "routes": {1: {812: detoured}}},
-            {"at": at - 5 * 60, "routes": {1: {812: detoured}}},
-            {"at": at, "routes": {1: {812: detoured}}},
-        ]
-        cache.set(detect._SAMPLES_KEY, samples, detect.SAMPLES_SECONDS)
+        at = NOW.replace(microsecond=0)
+        Sample.objects.all().delete()  # the clock is frozen; rewrite the streak
+        for minutes_ago, off in ((15, False), (10, detoured), (5, detoured), (0, detoured)):
+            Sample.objects.create(
+                at=at - dt.timedelta(minutes=minutes_ago), off_by_bus={1: {812: off}}
+            )
 
     def test_a_detected_detour_shows_with_the_alerts(self, urlopen, now):
         urlopen.side_effect = feed_by_path(FEED_PATHS)

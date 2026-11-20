@@ -1,16 +1,22 @@
 """Routes that look detoured right now (#55).
 
 Detection samples the live feed: every time a page computes the flags it
-records what the buses' positions say now, and keeps the last few samples in
-the cache — they outlive the minute-long answer cache, so a streak survives
-between requests. A route shows "possible detour" when one of its buses was
-on the route's official path — the line in the feed's routes answer, the same
-one the home page's map draws — and has stayed farther than OFF_PATH_METERS
-from it through an off-run that spans at least MIN_SPAN of the last
-SAMPLE_SPAN: at least about 10 and at most about 15 minutes, which is what
-makes the alert's "about the last 15 minutes" true. Samples land at most one
-per SAMPLE_SPACING, so at the densest page traffic an off-run needs
-CONSECUTIVE_POLLS or more appearances to get that long.
+records what the buses' positions say now, and keeps the samples in the
+database — the in-memory cache each process holds is wiped after 15 quiet
+minutes on Render's free plan (Vivian, #55 review), which is shorter than
+most detours, so a detour already under way when the site wakes up would
+never be seen. Samples land at most one per SAMPLE_SPACING and are pruned to
+the horizon on every write, so the table stays at about an hour of page
+traffic. A route shows "possible detour" when one of its buses was on the
+route's official path — the line in the feed's routes answer, the same one
+the home page's map draws — and has stayed farther than OFF_PATH_METERS from
+it ever since: CONSECUTIVE_POLLS or more appearances in a row, spanning at
+least MIN_SPAN from its first off-path appearance to now. The on-path
+sighting may be up to ON_PATH_MEMORY old, so the flag stays up for as long
+as the bus stays off its path (Vivian, #55 review: requiring a fresh on-path
+sighting inside the 15-minute span flagged a detour for only about three
+minutes) while still refusing every bus that was never on the path in the
+horizon — the ones fresh from the garage.
 
 Deliberately conservative, because buses spend time off their path without
 detouring:
@@ -18,9 +24,9 @@ detouring:
 - **A bus coming from or going to the garage was never on the path** in our
   samples (Vivian, #55 review): replaying the recorded polls flagged 23 short
   "possible detours" on 8 of 9 days, every one at the start or end of a
-  route's service. Only a bus seen on the path first can flag its route, and
-  a bus that misses a sample — in the garage, or gone from the feed — starts
-  over when it reappears.
+  route's service. Only a bus seen on the path in the last ON_PATH_MEMORY can
+  flag its route, and a bus that misses a sample — in the garage, or gone
+  from the feed — starts over when it reappears.
 - **A stale fix says nothing about now**: a bus whose GPS hasn't reported in
   FRESH_FIX_SECONDS is left out (the position can be minutes old, #58).
 - **One bus's excursion can flag its route**: the rule is per bus — a bus
@@ -33,11 +39,20 @@ detouring:
   evening of Nov 12, and the old rule never said a word because its sibling
   ran the route as drawn.) What a route is never flagged on is a bus that
   was never on the path — fresh from the garage (Vivian, #55 review) — an
-  off-run too short to be honest about "15 minutes" (Austin, #55 review),
-  a route with no fresh buses, or a route without an official path to leave.
+  off-run too short to be more than a detour-sized guess (Austin, #55
+  review), a route with no fresh buses, or a route without an official path
+  to leave.
+- **Some off-path time is the route's usual shape, not a detour**: Purple's
+  central-campus loop and Blue-Night's northern loop run most evenings, and
+  buses walk back to the garage at the end of service — replaying Nov 10-18
+  flagged them 30 times for every real detour (Vivian, #55 review). The
+  nightly `record_usual_shapes` job (jobs.py) sums up, from the recorded
+  history (#22), the Eastern hours each route spends off its drawn path on
+  day after day, and detection refuses to flag a route in one of those
+  hours. A real detour is novel; the usual shape is not. Until the job has
+  run, nothing is suppressed.
 - Samples closer together than SAMPLE_SPACING count as one, so a rider
-  refreshing a page can't compress "15 minutes" into seconds, and samples
-  older than SAMPLE_SPAN are dropped.
+  refreshing a page can't compress ten minutes into seconds.
 
 The word is "possible" on purpose — a stale or moved official path can flag
 a healthy route — so this is a heads-up to riders, never a verdict.
@@ -45,31 +60,37 @@ a healthy route — so this is a heads-up to riders, never a verdict.
 The only network read is the feed read pages already make (transit.downtowner
 caches each answer for 30 seconds), and it raises
 transit.downtowner.FeedUnavailable when the feed is down, so pages answer as
-they already do then. Nothing here touches the database: a few small cache
-reads and writes per request, no scheduled job.
+they already do then. The database writes are page-driven, at most one small
+row per SAMPLE_SPACING and the matching prune — never a scheduled job's — so
+they cannot keep Neon awake on their own; the nightly usual-shapes job reads
+the recorded history once a day like the other nightly jobs.
 """
 
 import datetime as dt
 import math
+import zoneinfo
 
 from django.core.cache import cache
 from django.utils import timezone
 
 from transit import downtowner
 
+from .models import Sample, UsualOffPath
+
+ET = zoneinfo.ZoneInfo("America/New_York")
+
 CACHE_SECONDS = 60  # the computed flags; the home page's first paint reads only these
-SAMPLES_SECONDS = 20 * 60  # the raw samples outlive the flags so streaks survive
-SAMPLE_SPAN = dt.timedelta(minutes=15)  # samples older than this stop counting
+SAMPLES_HORIZON = dt.timedelta(minutes=60)  # samples kept; also the on-path memory
+SAMPLE_SPAN = dt.timedelta(minutes=15)  # the freshest window the counts come from
 SAMPLE_SPACING = dt.timedelta(minutes=2)  # one sample at most this often
 MIN_SPAN = dt.timedelta(minutes=10)  # an off-run must span at least this, first off
 # appearance to now (Austin, #55 review): three appearances two minutes apart is
-# four minutes, and the alert's "about the last 15 minutes" wouldn't be true
+# four minutes, and calling that "about 15 minutes" would be a guess
 CONSECUTIVE_POLLS = 3  # off the path this many appearances in a row, after being on it
 OFF_PATH_METERS = 200  # farther than this from the official path is off it
 FRESH_FIX_SECONDS = 180  # a GPS fix older than this says nothing about right now
 
 _CACHE_KEY = "detours:flagged-routes"
-_SAMPLES_KEY = "detours:position-samples"
 
 
 def detoured_routes(now=None):
@@ -77,8 +98,7 @@ def detoured_routes(now=None):
     [{"route_id", "route_name", "bus_count", "since"}], with the buses counted
     from the newest sample and since that sample's time (what riders see as
     when the detour was noticed). [] until some bus's off-run has CONSECUTIVE_POLLS
-    or more appearances spanning at least MIN_SPAN of the last SAMPLE_SPAN:
-    less than that, and "about the last 15 minutes" would be a guess.
+    or more appearances spanning at least MIN_SPAN.
 
     Raises downtowner.FeedUnavailable when the feed is down.
     """
@@ -92,8 +112,12 @@ def detoured_routes(now=None):
         for route in downtowner.routes()
         if isinstance(route, dict) and route.get("active") and isinstance(route.get("id"), int)
     }
+    usual = {
+        row.route_id: set(row.hours)
+        for row in UsualOffPath.objects.all()  # a handful of rows, once a minute at most
+    }
     samples = record_sample(_positions_from_feed(now.timestamp()), now)
-    flagged = flags_from_samples(samples, active, now)
+    flagged = flags_from_samples(samples, active, now, usual)
     cache.set(_CACHE_KEY, flagged, CACHE_SECONDS)
     return flagged
 
@@ -128,38 +152,70 @@ def _positions_from_feed(now_ts):
 
 
 def record_sample(positions, now):
-    """Fold one moment's bus positions into the cached samples, and return
-    every sample still in SAMPLE_SPAN, oldest first, as
+    """Fold one moment's bus positions into the samples table, and return
+    every sample in the horizon, oldest first, as
     [{"at": unix seconds, "routes": {route_id: {bus_id: off_the_path}}}.
-    Samples closer together than SAMPLE_SPACING count as one — the newest
-    positions win nothing by arriving twice — and anything older than the
-    span plus a sample is dropped. Whether a bus was off its route's path is
-    judged here, where the live paths are at hand, and stored per bus so the
+    Samples land at most one per SAMPLE_SPACING — the newest positions win
+    nothing by arriving twice — and anything older than the horizon is
+    deleted on every write. Whether a bus was off its route's path is judged
+    here, where the live paths are at hand, and stored per bus so the
     flagging itself stays pure (and testable)."""
-    now_ts = now.timestamp() if isinstance(now, dt.datetime) else now
-    samples = cache.get(_SAMPLES_KEY, [])
-    samples = [s for s in samples if now_ts - s["at"] <= SAMPLE_SPAN.total_seconds()]
+    now_dt = now if isinstance(now, dt.datetime) else dt.fromtimestamp(now, tz=dt.timezone.utc)
+    now_ts = now_dt.timestamp()
+    samples = _samples_at(now_dt)
     if not samples or now_ts - samples[-1]["at"] >= SAMPLE_SPACING.total_seconds():
-        samples.append({"at": now_ts, "routes": _off_by_bus(positions)})
-        cache.set(_SAMPLES_KEY, samples, SAMPLES_SECONDS)
+        Sample.objects.get_or_create(
+            at=now_dt.replace(microsecond=0), defaults={"off_by_bus": _off_by_bus(positions)}
+        )
+        Sample.objects.filter(at__lt=now_dt - SAMPLES_HORIZON).delete()
+        samples = _samples_at(now_dt)
     return samples
 
 
-def flags_from_samples(samples, active, now):
+def _samples_at(now_dt):
+    """The samples in the horizon, oldest first, shaped like the pure
+    functions expect. JSON stores numbers' keys as strings, so the route and
+    bus ids are turned back into ints; a row that won't parse is skipped
+    rather than breaking every page that computes detection."""
+    rows = Sample.objects.filter(at__gte=now_dt - SAMPLES_HORIZON).order_by("at")
+    samples = []
+    for row in rows:
+        try:
+            samples.append(
+                {
+                    "at": row.at.timestamp(),
+                    "routes": {
+                        int(route_id): {int(bus_id): off for bus_id, off in buses.items()}
+                        for route_id, buses in row.off_by_bus.items()
+                    },
+                }
+            )
+        except (KeyError, TypeError, ValueError, AttributeError):
+            continue
+    return samples
+
+
+def flags_from_samples(samples, active, now, usual=None):
     """The flagged routes from recorded samples, as detoured_routes returns
     them. Pure, so the recorded history (#22) can replay it and tests can
     drive it directly: `samples` is record_sample's output, `active` the
-    running routes by id from the feed, `now` an aware datetime."""
+    running routes by id from the feed, `now` an aware datetime, `usual` the
+    {route_id: set(Eastern hours)} the nightly job recorded (None or missing
+    hours: nothing is suppressed)."""
     now_ts = now.timestamp() if isinstance(now, dt.datetime) else now
-    recent = [s for s in samples if now_ts - s["at"] <= SAMPLE_SPAN.total_seconds()]
-    if len(recent) < CONSECUTIVE_POLLS:
+    hist = [s for s in samples if now_ts - s["at"] <= SAMPLES_HORIZON.total_seconds()]
+    recent = [s for s in hist if now_ts - s["at"] <= SAMPLE_SPAN.total_seconds()]
+    if not hist:
         return []
+    hour = _eastern_hour(now)
     flagged = []
     for route_id, route in active.items():
+        if hour is not None and hour in (usual or {}).get(route_id, ()):
+            continue  # the route's usual shape in this hour, not a detour (#55)
         path = route.get("path") or []
         if not path:
             continue  # no official path to leave: never flagged (#55)
-        streaks = _bus_streaks(recent, route_id)
+        streaks = _bus_streaks(hist, route_id)
         if any(
             streak["saw_on_path"]
             and streak["off_run"] >= CONSECUTIVE_POLLS
@@ -180,12 +236,13 @@ def flags_from_samples(samples, active, now):
 def _bus_streaks(samples, route_id):
     """Each bus's run of off-path appearances on one route, oldest sample
     first: {bus_id: {"saw_on_path", "off_run", "off_since"}} — off_since the
-    time of the first appearance of the current off-run, which flags_from_samples
-    holds against MIN_SPAN. A bus flags its route only after being on the path
-    (buses from the garage never were, Vivian, #55 review) and then staying
-    farther than OFF_PATH_METERS from it for CONSECUTIVE_POLLS appearances in
-    a row across at least MIN_SPAN (Austin, #55 review); a sample the bus
-    missed — in the garage, or gone from the feed — starts its run over."""
+    time of the first appearance of the current off-run, which
+    flags_from_samples holds against MIN_SPAN. A bus flags its route only
+    after being on the path in the horizon (buses from the garage never
+    were, Vivian, #55 review) and then staying farther than OFF_PATH_METERS
+    from it for CONSECUTIVE_POLLS appearances in a row across at least
+    MIN_SPAN (Austin, #55 review); a sample the bus missed — in the garage,
+    or gone from the feed — starts its run over."""
     streaks = {}
     for sample in samples:
         buses = sample["routes"].get(route_id) or {}
@@ -206,6 +263,11 @@ def _bus_streaks(samples, route_id):
                 streak["off_since"] = None
                 streak["saw_on_path"] = True
     return streaks
+
+
+def _eastern_hour(now):
+    """The hour of day in Eastern, the clock the usual shapes are summed in."""
+    return now.astimezone(ET).hour
 
 
 def _off_by_bus(positions):

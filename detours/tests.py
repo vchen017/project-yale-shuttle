@@ -1,7 +1,8 @@
 """Detour detection (#55). The Downtowner feed is mocked at
 transit.downtowner.urlopen, answering with fixture routes and buses, so no
 test reaches the network, and the streaks are driven with hand-built samples
-in record_sample's shape, so no test touches the database."""
+in record_sample's shape — pure for the rule itself, database rows for the
+storage."""
 
 import datetime as dt
 import io
@@ -9,6 +10,7 @@ import json
 from unittest import mock
 from urllib.error import URLError
 from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo
 
 from django.core.cache import cache
 from django.test import TestCase
@@ -16,8 +18,12 @@ from django.urls import reverse
 from django.utils import timezone
 
 from alerts.models import Alert
-from detours import demo, detect
+from detours import demo, detect, jobs
+from detours.models import Sample, UsualOffPath
+from history.models import BusPosition, Poll
 from transit import downtowner
+
+ET = ZoneInfo("America/New_York")
 
 # A straight north-south path, the way the feed's routes answer carries one:
 # a flat [lat, lon, lat, lon, ...] list. 41.305 to 41.315 is about 1.1 km.
@@ -113,20 +119,27 @@ def samples_of(runs, route_id=1):
 
 
 def prime_a_streak(runs, route_id=1):
-    """Put a recorded streak in the cache, the way page loads over the last
-    15 minutes would have. Returns the newest sample's time."""
+    """Record a streak as Sample rows, the way page loads over the last hour
+    would have. The routes dicts go through the JSON column, so the ids come
+    back as strings exactly as they will in production. Returns the newest
+    sample's time."""
     samples, newest = samples_of(runs, route_id=route_id)
-    cache.set(detect._SAMPLES_KEY, samples, detect.SAMPLES_SECONDS)
+    for sample in samples:
+        Sample.objects.create(
+            at=dt.datetime.fromtimestamp(sample["at"], tz=dt.timezone.utc),
+            off_by_bus=sample["routes"],
+        )
     return newest
 
 
 class FlagsFromSamplesTests(TestCase):
     """flags_from_samples, the pure rule: a route is flagged when one of its
-    buses was on the official path and then off it for CONSECUTIVE_POLLS or
-    more appearances in a row spanning at least MIN_SPAN (#55). Deliberately
-    hard to flag: a bus straight from the garage, a bus back on the path, a
-    sample the bus missed, an off-run too short to be honest about "15
-    minutes" — each blocks the flag."""
+    buses was on the official path in the horizon and then off it for
+    CONSECUTIVE_POLLS or more appearances in a row spanning at least
+    MIN_SPAN, and stays flagged for as long as it stays off (#55).
+    Deliberately hard to flag: a bus straight from the garage, a bus back on
+    the path, a sample the bus missed, an off-run too short to be more than
+    a guess — each blocks the flag."""
 
     def flags(self, runs, route_id=1):
         samples, _ = samples_of(runs, route_id=route_id)
@@ -149,16 +162,35 @@ class FlagsFromSamplesTests(TestCase):
 
     def test_an_off_run_shorter_than_min_span_does_not_flag_yet(self):
         # On the path 6 minutes ago and off ever since: three appearances in a
-        # row, but bunched into 4 minutes (Austin, #55 review). The alert says
-        # "about the last 15 minutes", so the run has to earn that first.
+        # row, but bunched into 4 minutes (Austin, #55 review). A run that
+        # short is a guess, so it keeps quiet until it spans MIN_SPAN.
         self.assertEqual(self.flags({812: [(6, False), (4, True), (2, True), (0, True)]}), [])
 
     def test_an_off_run_spanning_exactly_min_span_flags(self):
         # First off appearance 10 minutes ago (MIN_SPAN), newest now: the
-        # boundary holds, so the wording stays true from the minute it shows.
+        # boundary holds.
         self.assertEqual(
             [flag["route_id"] for flag in self.flags({812: [(12, False), (10, True), (5, True), (0, True)]})],
             [1],
+        )
+
+    def test_the_flag_stays_up_after_the_on_path_sighting_falls_out_of_the_span(self):
+        # On the path 30 minutes ago, off ever since for 12 minutes: the
+        # on-path sighting is long out of the 15-minute span, but well inside
+        # the horizon, so the detour keeps showing (Vivian, #55 review: the
+        # old rule flagged a 40-minute detour for about three minutes).
+        self.assertEqual(
+            [flag["route_id"] for flag in self.flags({812: [(30, False), (10, True), (5, True), (0, True)]})],
+            [1],
+        )
+
+    def test_an_on_path_sighting_older_than_the_horizon_is_forgotten(self):
+        # The bus was last on its path 70 minutes ago, beyond
+        # SAMPLES_HORIZON: our samples can't say it belongs to this route
+        # now, so it is treated like a bus from the garage.
+        self.assertEqual(
+            self.flags({812: [(70, False), (10, True), (5, True), (0, True)]}),
+            [],
         )
 
     def test_a_bus_straight_from_the_garage_never_flags_its_route(self):
@@ -184,12 +216,25 @@ class FlagsFromSamplesTests(TestCase):
         self.assertEqual(self.flags({812: [(10, False), (5, True), (0, True)]}), [])
         self.assertEqual(self.flags({812: [(5, True), (0, True)]}), [])
 
-    def test_samples_past_the_span_stop_counting(self):
-        # The bus was on its path 20 minutes ago; that sample has fallen out
-        # of SAMPLE_SPAN, so this is three off-path samples and nothing else —
-        # a bus from the garage, not a detour.
+    def test_a_route_in_one_of_its_usual_hours_is_never_flagged(self):
+        # Purple's central-campus loop runs most evenings; when the nightly
+        # job has marked this hour as one of the route's usual off-path
+        # hours, detection refuses to flag it (Vivian, #55 review).
+        now = timezone.now()
+        usual_hour = now.astimezone(ET).hour
+        samples, _ = samples_of({812: [(14, False), (10, True), (5, True), (0, True)]})
+
         self.assertEqual(
-            self.flags({812: [(20, False), (10, True), (5, True), (0, True)]}), []
+            detect.flags_from_samples(samples, ACTIVE, now, usual={1: [usual_hour]}),
+            [],
+        )
+
+    def test_a_route_outside_its_usual_hours_still_flags(self):
+        samples, _ = samples_of({812: [(14, False), (10, True), (5, True), (0, True)]})
+
+        self.assertEqual(
+            [flag["route_id"] for flag in detect.flags_from_samples(samples, ACTIVE, timezone.now(), usual={1: [3, 4]})],
+            [1],
         )
 
     def test_a_route_without_an_official_path_is_never_flagged(self):
@@ -251,8 +296,10 @@ class PositionsFromFeedTests(TestCase):
 
 @mock.patch("transit.downtowner.urlopen")
 class RecordSampleTests(TestCase):
-    """record_sample folds one moment's positions into the cached samples: at
-    most one sample every SAMPLE_SPACING, nothing older than the span."""
+    """record_sample folds one moment's positions into the samples table: at
+    most one sample every SAMPLE_SPACING, nothing older than the horizon.
+    The rows survive a restart or a Render sleep — the in-memory cache would
+    not (Vivian, #55 review)."""
 
     def setUp(self):
         cache.clear()
@@ -270,6 +317,7 @@ class RecordSampleTests(TestCase):
 
         self.assertEqual(second, first)
         self.assertEqual(len(second), 1)
+        self.assertEqual(Sample.objects.count(), 1)
 
     def test_a_sample_is_recorded_once_the_spacing_passes(self, urlopen):
         self.feed(urlopen)
@@ -281,27 +329,48 @@ class RecordSampleTests(TestCase):
         )
 
         self.assertEqual(len(samples), 2)
+        # The ids survive the JSON round-trip as ints, even though JSON
+        # stores numbers' keys as strings.
         self.assertEqual(samples[-1]["routes"], {1: {812: True}})
 
-    def test_samples_that_fell_out_of_the_span_are_dropped(self, urlopen):
+    def test_samples_that_fell_out_of_the_horizon_are_dropped(self, urlopen):
         self.feed(urlopen)
         now = timezone.now()
-        old = {"at": (now - dt.timedelta(minutes=20)).timestamp(), "routes": {1: {812: True}}}
-        keep = {"at": (now - dt.timedelta(minutes=10)).timestamp(), "routes": {1: {812: False}}}
-        cache.set(detect._SAMPLES_KEY, [old, keep], detect.SAMPLES_SECONDS)
+        Sample.objects.create(
+            at=now - dt.timedelta(minutes=70), off_by_bus={1: {812: True}}
+        )
+        Sample.objects.create(
+            at=now - dt.timedelta(minutes=10), off_by_bus={1: {812: False}}
+        )
 
         samples = detect.record_sample({1: {812: (41.31, OFF_LON)}}, now)
 
         self.assertEqual(len(samples), 2)
-        self.assertEqual(samples[0], keep)
+        self.assertEqual(samples[0]["routes"], {1: {812: False}})
         self.assertEqual(samples[-1]["routes"], {1: {812: True}})
+        self.assertEqual(Sample.objects.count(), 2)  # the 70-minute-old row is gone
+
+    def test_a_sample_survives_a_wiped_cache(self, urlopen):
+        # The whole point of the table: after Render's 15 quiet minutes wipe
+        # every process's memory, the streak is still there (Vivian, #55
+        # review).
+        self.feed(urlopen)
+        now = timezone.now()
+        detect.record_sample({1: {812: (41.31, -72.94)}}, now)
+
+        cache.clear()  # the restart, or the sleep
+
+        samples = detect.record_sample({1: {812: (41.31, OFF_LON)}}, now + dt.timedelta(minutes=2, seconds=1))
+        self.assertEqual(len(samples), 2)
+        self.assertEqual(samples[0]["routes"], {1: {812: False}})
 
 
 @mock.patch("transit.downtowner.urlopen")
 class DetouredRoutesTests(TestCase):
-    """detoured_routes end to end: every call samples the live feed and keeps
-    the streak in the cache, so page loads minutes apart add up — the fix for
-    the #55 review, since the recorded polls only reach us once a day."""
+    """detoured_routes end to end: every call samples the live feed and
+    keeps the streak in the samples table, so page loads minutes apart add
+    up, and the streak survives a restart — the fix for the #55 review,
+    since the recorded polls only reach us once a day."""
 
     def setUp(self):
         cache.clear()
@@ -350,15 +419,48 @@ class DetouredRoutesTests(TestCase):
 
         # One more sighting, 10½ minutes after the first, and the flag shows
         # — while the on-path sighting, 14½ minutes back, is still inside
-        # SAMPLE_SPAN, so the rule can tell a garage bus from a detoured one.
+        # the horizon, so the rule can tell a garage bus from a detoured one.
         self.step(state, 2.5, OFF_LON)
         flagged = detect.detoured_routes(now=state["now"])
         self.assertEqual([flag["route_id"] for flag in flagged], [1])
-        newest_sample = cache.get(detect._SAMPLES_KEY)[-1]
-        self.assertEqual(
-            flagged[0]["since"],
-            dt.datetime.fromtimestamp(newest_sample["at"], tz=dt.timezone.utc),
+        self.assertEqual(flagged[0]["since"], Sample.objects.latest("at").at)
+
+    def test_a_streak_survives_a_wiped_cache_mid_detour(self, urlopen):
+        # Render wipes every process's memory after 15 quiet minutes, and
+        # restarts wipe it sooner: the detour a rider sees when the site
+        # wakes up has to come from the samples table, not from a lucky
+        # streak of page loads (Vivian, #55 review).
+        state = {"now": timezone.now(), "lon": -72.94}
+        urlopen.side_effect = self.ride(state)
+
+        detect.detoured_routes(now=state["now"])  # the bus starts on its path
+        for _ in range(3):  # and it leaves its path while pages keep loading
+            self.step(state, 4, OFF_LON)
+            self.assertEqual(detect.detoured_routes(now=state["now"]), [])
+
+        cache.clear()  # the restart, or the sleep
+
+        self.step(state, 4, OFF_LON)  # 16 minutes off, 16 minutes on from the sighting
+        flagged = detect.detoured_routes(now=state["now"])
+        self.assertEqual([flag["route_id"] for flag in flagged], [1])
+
+    def test_a_route_in_one_of_its_usual_hours_is_never_flagged(self, urlopen):
+        # The nightly job has marked this hour as one of route 1's usual
+        # off-path hours: an off-run that would otherwise flag stays quiet.
+        # The clock is frozen so the run can't step across an hour boundary.
+        state = {"now": dt.datetime(2026, 11, 20, 19, 30, tzinfo=dt.timezone.utc), "lon": -72.94}
+        UsualOffPath.objects.create(
+            route_id=1,
+            hours=[state["now"].astimezone(ET).hour],  # 14: 2:30 PM Eastern
+            window_days=14,
+            updated_at=state["now"],
         )
+        urlopen.side_effect = self.ride(state)
+
+        detect.detoured_routes(now=state["now"])  # on the path
+        for _ in range(4):
+            self.step(state, 4, OFF_LON)
+            self.assertEqual(detect.detoured_routes(now=state["now"]), [])
 
     def test_a_bus_that_was_never_on_the_path_doesnt_flag_its_route(self, urlopen):
         # Straight from the garage and off down the road (Vivian, #55 review).
@@ -495,15 +597,15 @@ class NextBusesBadgeTests(TestCase):
         self.assertFalse(any(row.detoured for row in response.context["board"].rows))
         self.assertNotContains(response, "possible detour")
 
-    def test_a_streak_that_has_fallen_out_of_the_span_doesnt_flag(self, urlopen, predict):
-        # The same three off-path samples, but from half an hour ago: the
-        # page's own sample is all it has, and one sample says nothing.
+    def test_a_streak_whose_bus_has_gone_from_the_feed_doesnt_flag(self, urlopen, predict):
+        # An old streak in the samples table, but the feed serves no buses
+        # now: the page's own sample misses the bus, which starts its run
+        # over — one sample says nothing.
         now = timezone.now()
-        stale = [
-            {"at": (now - dt.timedelta(minutes=45 + m)).timestamp(), "routes": {1: {812: off}}}
-            for m, off in ((15, False), (10, True), (5, True), (0, True))
-        ]
-        cache.set(detect._SAMPLES_KEY, stale, detect.SAMPLES_SECONDS)
+        for m, off in ((15, False), (10, True), (5, True), (0, True)):
+            Sample.objects.create(
+                at=now - dt.timedelta(minutes=45 + m), off_by_bus={1: {812: off}}
+            )
         urlopen.side_effect = feed_by_path(
             {
                 "/routes_routes.php": ROUTES,
@@ -547,6 +649,83 @@ class HomeFirstPaintTests(TestCase):
 
         urlopen.assert_not_called()
         self.assertNotContains(response, "possible detour")
+
+
+class UsualShapeJobTests(TestCase):
+    """The nightly record_usual_shapes job (#55): from the recorded history,
+    the Eastern hours each route spends off its drawn path on day after day,
+    which detection then refuses to flag. Feed mocked; history fabricated."""
+
+    def setUp(self):
+        cache.clear()  # the feed's answers and its outage memory live there
+        self.addCleanup(cache.clear)
+
+    def poll_with_bus(self, polled_at, route_id, lat, lon, bus_id=812):
+        poll = Poll.objects.create(polled_at=polled_at)
+        BusPosition.objects.create(
+            poll=poll,
+            polled_at=polled_at,
+            bus_id=bus_id,
+            bus_name=str(bus_id),
+            route_id=route_id,
+            route_name=f"Route {route_id}",
+            lat=lat,
+            lon=lon,
+            last_update=polled_at,  # a fresh fix, the way detection likes it
+        )
+
+    def evening_fixes(self, route_id, days):
+        """Bus fixes for `days` evenings, 500 m off the fixture path, at
+        20:00 and 21:00 Eastern — four fixes an evening-hour, so the hour
+        clears MIN_FIXES — plus one daytime fix on the path each day."""
+        for index in days:
+            evening = dt.datetime(2026, 11, 10 + index, 20, 0, tzinfo=ET)
+            for hour, minute in ((0, m) for m in (0, 5, 10, 15)):
+                self.poll_with_bus(
+                    evening + dt.timedelta(hours=hour, minutes=minute), route_id, 41.31, OFF_LON
+                )
+                self.poll_with_bus(
+                    evening + dt.timedelta(hours=1, minutes=minute), route_id, 41.31, OFF_LON
+                )
+            self.poll_with_bus(
+                dt.datetime(2026, 11, 10 + index, 8, 0, tzinfo=ET), route_id, 41.31, -72.94
+            )
+
+    @mock.patch("transit.downtowner.urlopen", return_value=feed_answer(ROUTES))
+    def test_a_route_looping_most_evenings_gets_its_evening_hours(self, urlopen):
+        self.evening_fixes(1, days=list(range(5)))  # five evenings, 8 AM on the path
+
+        summary = jobs.record_usual_shapes()
+
+        row = UsualOffPath.objects.get(route_id=1)
+        self.assertEqual(row.hours, [20, 21])  # the evenings, not the mornings
+        self.assertEqual(row.window_days, jobs.WINDOW_DAYS)
+        self.assertIn("route 1 at [20, 21]", summary)
+
+    @mock.patch("transit.downtowner.urlopen", return_value=feed_answer(ROUTES))
+    def test_a_novel_off_path_day_is_not_usual(self, urlopen):
+        self.evening_fixes(1, days=[0])  # one evening of off-path fixes
+
+        jobs.record_usual_shapes()
+
+        self.assertFalse(UsualOffPath.objects.exists())  # too few days to be a shape
+
+    @mock.patch("transit.downtowner.urlopen", return_value=feed_answer(ROUTES))
+    def test_rerunning_rewrites_the_same_rows_and_drops_stale_routes(self, urlopen):
+        self.evening_fixes(1, days=list(range(5)))
+        UsualOffPath.objects.create(route_id=3, hours=[20], window_days=7, updated_at=timezone.now())
+
+        jobs.record_usual_shapes()
+        jobs.record_usual_shapes()
+
+        self.assertEqual(UsualOffPath.objects.count(), 1)  # route 3 no longer loops
+        self.assertEqual(UsualOffPath.objects.get(route_id=1).hours, [20, 21])
+
+    def test_the_feed_being_down_fails_loudly(self):
+        with mock.patch("transit.downtowner.urlopen", side_effect=URLError("timed out")):
+            with self.assertRaises(downtowner.FeedUnavailable):
+                jobs.record_usual_shapes()
+        self.assertFalse(UsualOffPath.objects.exists())
 
 
 class DemoTests(TestCase):
