@@ -39,11 +39,12 @@ def routes():
     """Every route, running or not: id, name, short_name, color, active,
     stops, path. Entries without a usable id and name are left out — the
     feed's answers carry junk sometimes, and a route nobody can identify or
-    name has nothing to tell a rider. So a malformed answer degrades the
-    way a down feed does (the pages' 503), not a crashed one."""
+    name has nothing to tell a rider. An answer that isn't a list at all
+    raises FeedUnavailable, the same as a down feed: showing no routes
+    would tell a rider no shuttle is running, and it might be a lie."""
     data = _get("routes_routes.php", {"inactive": "true"})
     if not isinstance(data, list):
-        return []
+        raise FeedUnavailable("The Downtowner feed's routes answer isn't a list")
     return [
         route
         for route in data
@@ -55,10 +56,11 @@ def routes():
 
 def stops():
     """Every stop: id, name, lat, lon, description. Entries without a usable
-    id and name are left out, for the same reason as routes()."""
+    id and name are left out, for the same reason as routes(); an answer that
+    isn't a list raises FeedUnavailable, the same as a down feed."""
     data = _get("routes_stops.php")
     if not isinstance(data, list):
-        return []
+        raise FeedUnavailable("The Downtowner feed's stops answer isn't a list")
     return [
         stop
         for stop in data

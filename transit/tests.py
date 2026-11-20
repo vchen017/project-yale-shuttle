@@ -67,11 +67,16 @@ class FeedTests(SimpleTestCase):
         self.assertEqual(downtowner.routes(), [{"id": 1, "name": "Blue"}])
         self.assertEqual(downtowner.stops(), [{"id": 7, "name": "Grove", "lat": 41.3, "lon": -72.9}])
 
-    def test_a_routes_or_stops_answer_that_isnt_a_list_is_none_of_them(self, urlopen):
+    def test_a_routes_or_stops_answer_that_isnt_a_list_raises_feed_unavailable(self, urlopen):
+        # Not []: an empty list would have pages say no shuttle is running,
+        # which a junk answer doesn't prove. This way riders see the same
+        # "the feed is unavailable" page a down feed gives them.
         urlopen.return_value = answer({"routes": []})
-        self.assertEqual(downtowner.routes(), [])
+        with self.assertRaises(downtowner.FeedUnavailable):
+            downtowner.routes()
         urlopen.return_value = answer({"stops": []})
-        self.assertEqual(downtowner.stops(), [])
+        with self.assertRaises(downtowner.FeedUnavailable):
+            downtowner.stops()
 
     def test_each_feed_reads_its_own_endpoint(self, urlopen):
         urlopen.side_effect = lambda *args, **kwargs: answer([])
