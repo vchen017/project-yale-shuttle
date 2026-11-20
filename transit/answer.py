@@ -66,6 +66,7 @@ class Answer:
     walk_to_stop: int = 0
     walk_from_stop: int = 0
     bus_at: dt.datetime | None = None  # the bus at the boarding stop
+    bus_id: int | None = None  # the feed's id for that bus, when it names one: what a shared trip follows (#10)
     ride_minutes: int | None = None  # None when the feed can't say
     walk_arrive_at: dt.datetime | None = None  # walking from now, all the way
     arrive_at: dt.datetime | None = None  # at the destination; None with no ride time
@@ -147,6 +148,7 @@ def answer(plan, board, walk_all_the_way, now=None):
         walk_to_stop=plan.walk_to_stop,
         walk_from_stop=plan.walk_from_stop,
         bus_at=bus_at,
+        bus_id=bus["bus_id"] if bus else None,
         ride_minutes=ride,
         walk_arrive_at=now + dt.timedelta(minutes=plan.walk_all_the_way),
     )

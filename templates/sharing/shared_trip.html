@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% load static %}
+{% block extra_head %}
+  <meta name="robots" content="noindex, nofollow">
+  {# Without JavaScript the page reloads itself; with it, share.js updates the bus and the times in place. #}
+  {% if not is_owner %}<noscript><meta http-equiv="refresh" content="{{ refresh_seconds }}"></noscript>{% endif %}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.1/dist/maplibre-gl.css"
+        integrity="sha384-uTttxo/aOKbdE5RlD/SPzSDoDmNvGlUYPjONi2MN/b7c9HPSvW07OIuyP7uL6jxK" crossorigin="anonymous">
+{% endblock %}
+{% block title %}A shared shuttle trip · Yale Shuttle{% endblock %}
+{% block content %}
+{# Nothing about the rider goes on this page: no name, none of their places (#10). #}
+<div class="row g-4 justify-content-center">
+  <div class="col-lg-8">
+    <p class="text-body-secondary mb-2"><i class="bi bi-share" aria-hidden="true"></i> {% if is_owner %}You're sharing this trip{% else %}Someone shared their shuttle trip with you{% endif %}</p>
+    <div data-share-live data-refresh-seconds="{{ refresh_seconds }}" aria-live="polite">
+    <section class="trip-answer mb-3" aria-labelledby="share-headline">
+      <h1 class="trip-answer-headline" id="share-headline">
+        {% if live.feed_down %}Live shuttle times are unavailable right now
+        {% elif live.minutes == 0 %}The {{ share.route_name }} bus is reaching {{ share.get_off_stop_name }} now
+        {% elif live.minutes is not None %}The {{ share.route_name }} bus reaches {{ share.get_off_stop_name }} in {{ live.minutes }} min
+        {% else %}No arrival time at {{ share.get_off_stop_name }} right now{% endif %}
+      </h1>
+      {% if live.feed_down %}
+        <p class="mb-0">The shuttle feed isn't answering. This page tries again every {{ refresh_seconds }} seconds.</p>
+      {% else %}
+        <dl class="trip-facts mb-0">
+          {% if live.arrives_at %}<div><dt>At {{ share.get_off_stop_name }}</dt><dd>{{ live.arrives_at|date:"g:i A" }}</dd></div>{% endif %}
+          <div><dt>Bus</dt><dd>{{ share.route_name }}{% if live.bus.name %} · {{ live.bus.name }}{% endif %}</dd></div>
+        </dl>
+        {% if not live.bus %}
+          <p class="small text-body-secondary mb-0 mt-2">The bus isn't on the shuttle map right now.</p>
+        {% elif live.bus.age_minutes %}
+          <p class="small text-body-secondary mb-0 mt-2">The bus last reported where it is {{ live.bus.age_minutes }} min ago.</p>
+        {% endif %}
+        {% if live.minutes is None %}
+          <p class="small text-body-secondary mb-0 mt-2">The bus may already be past {{ share.get_off_stop_name }}, or the feed hasn't timed it yet.</p>
+        {% endif %}
+      {% endif %}
+    </section>
+    <p class="text-body-secondary mb-3">
+      As of {{ now|date:"g:i A" }} · updates every {{ refresh_seconds }} seconds · the link stops working at {{ share.expires_at|date:"g:i A" }}
+    </p>
+    </div>
+
+    {% if live.map %}
+      {{ live.map|json_script:"share-map-data" }}
+      <div class="trip-map rounded-4 mb-4" data-share-map role="region" aria-label="Map of the bus and the stop"></div>
+    {% endif %}
+
+    {% if is_owner %}
+      <section class="card mb-4" aria-labelledby="share-link-heading">
+        <div class="card-body">
+          <h2 class="h6" id="share-link-heading">Send this link to a friend</h2>
+          <p class="small text-body-secondary">Anyone with it can follow this bus until {{ share.expires_at|date:"g:i A" }}, without logging in. They won't see your name or your places.</p>
+          <div class="input-group mb-3">
+            <input class="form-control" id="share-link" type="text" value="{{ share_url }}" readonly aria-label="The link to share">
+            <button class="btn btn-outline-primary" type="button" data-copy-link="share-link"><i class="bi bi-clipboard" aria-hidden="true"></i> Copy</button>
+          </div>
+          <form method="post" action="{% url 'share-stop' share.token %}">
+            {% csrf_token %}
+            <button class="btn btn-outline-danger" type="submit"><i class="bi bi-stop-circle" aria-hidden="true"></i> Stop sharing</button>
+          </form>
+        </div>
+      </section>
+    {% endif %}
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.1/dist/maplibre-gl.js"
+        integrity="sha384-nXMl9YiLoSG5KBPTFgvxVuIqQQcqIvo0bFrvoEaGJC6r7IibIzF1S36Zbf/sKBtL" crossorigin="anonymous" defer></script>
+<script src="{% static 'core/share.js' %}" defer></script>
+{% endblock %}

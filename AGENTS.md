@@ -68,6 +68,7 @@ or create clashing migrations:
 | `notifications` | Vivian | Browser push: riders' devices and sending to them (#27), and the trip-notification job (#29) |
 | `assistant` | Austin | The AI feature (#37, #28) |
 | `jobs` | Vivian | The scheduled-job runner and its run log (#40). Each app's own jobs go in its `jobs.py` |
+| `sharing` | Vivian | Live trips a rider shares with a friend: the link, its page and stopping it (#10) |
 
 Later areas, such as trips and crowding, get new apps the same way. Only change
 another app's code or migrations when your issue says to, and tell its owner.
