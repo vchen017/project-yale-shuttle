@@ -57,7 +57,17 @@ the rest of the AI notification flow
   history and refuses to flag a route in the hours it is routinely off its
   drawn path — Pink's 5 AM garage runs, Purple's evening loops and
   Blue-Night's 6 PM and midnight hours, measured over Nov 8–20 — while a
-  real detour is one day, not half the window. In review.
+  real detour is one day, not half the window. Vivian's replay of Nov
+  9–20 at the page's real two-minute pace then caught 35 flags the
+  fraction rule alone couldn't refuse — one bus's loop never moves 15%
+  of a route's fixes — so the job now learns, per route and hour, three
+  shapes on three of the last 14 days: the whole route off its drawn
+  path, one bus making detour-sized runs off it alone, and the walk back
+  to the garage at the day's end. The same replay now shows 22 episodes
+  (Nov 10–18: 30 → 19): each recurring shape's first two occurrences
+  before the nightly job learns it, two plausible minor Purple detours,
+  one four-minute bus that left the feed — and Green's real Nov 12
+  detour still flags. In review.
 - **Scheduled jobs start on time**
   ([#130](https://github.com/vchen017/project-yale-shuttle/pull/130)): a
   job clock fires each job in its due minute even when GitHub's runner
@@ -83,14 +93,18 @@ the rest of the AI notification flow
   `admin@example.com` or `rider@example.com`);
   [#135](https://github.com/vchen017/project-yale-shuttle/pull/135) (parse
   guards for malformed feed answers — per review, a junk answer now 503s
-  like a down feed instead of showing empty pages) is in review. Two more
+  like a down feed instead of showing empty pages) is approved and
+  awaiting merge. Two more
   of Austin's merged the same night: the notification evaluation set grew
   to 22 trips, each tested against 15 kinds of malformed answer and 5
   kinds of outage with the model mocked
   ([#141](https://github.com/vchen017/project-yale-shuttle/pull/141)), and
   AGENTS.md now asks every author to check their change against real data
   and say what they saw
-  ([#140](https://github.com/vchen017/project-yale-shuttle/pull/140)).
+  ([#140](https://github.com/vchen017/project-yale-shuttle/pull/140)) —
+  extended the next day to every push, with the check repeatable and
+  paced to what the code really runs
+  ([#144](https://github.com/vchen017/project-yale-shuttle/pull/144)).
 
 ## What works on staging and production
 
@@ -104,9 +118,10 @@ its stats. All three calendar pull requests are merged
 [staging](https://yale-shuttle-staging.onrender.com) is serving the whole
 calendar MVP — verified at the merge commit, and again at `3c2a3bb` on
 Nov 19 with the evening's audit fixes aboard (home, login, signup and a
-stop page all answering). The trip planner and the
-when-to-leave page reach [production](https://yale-shuttle.onrender.com)
-at the next promote. Before submitting (#44) we check both grader accounts on both
+stop page all answering). Production was promoted on Nov 20 (serving
+`3c2a3bb`) and has the calendar MVP too — the whole sprint is on both
+sites, checked via `/healthz` and page answers on each. Before
+submitting (#44) we check both grader accounts on both
 sites, the AI feature on staging, and every page in phone-sized and
 desktop-sized windows.
 
@@ -133,6 +148,18 @@ the samples came back with `"1"` where the code looked up route `1`, and
 detection would have silently done nothing in production. Two lines fixed
 it and a test pins the round-trip (#129).
 
+The third round came from Vivian running the recorded polls through the
+real detection at the pace riders actually hit the page — a load every
+two minutes — where our own replay had stepped the polls at their
+recorded five-minute pace and found nothing to fix. At page pace the
+usual loops and garage walks flagged 35 times in twelve days; the fix is
+her suggested one, a nightly job that learns each route's hours from
+three shapes instead of one, and the lesson is now a rule: match the
+pace the code really runs (#129, #144). Her harness also caught the
+job's own tests dying on a fixed date the moment Nov 10 rolled out of
+its 14-day window — CI would have gone red for every pull request on
+Nov 24.
+
 A full-codebase audit by two read-only agents on Nov 19 surfaced eight
 real bugs across the apps — a malformed-but-parseable feed answer was a
 500 on four pages sharing one cache, a stale corrections cache left raw
@@ -152,20 +179,28 @@ data's own arrival time instead of a number nobody measured.
 
 ## Backlog changes for Sprint 4
 
-Opening state, to grow as the sprint goes: finishing `technical.md`'s
-per-item detail
-([#41](https://github.com/vchen017/project-yale-shuttle/issues/41)) and
-the sprint 4 report
+Opening state, to grow as the sprint goes: the sprint 4 report
 ([#45](https://github.com/vchen017/project-yale-shuttle/issues/45)).
+`technical.md`'s per-item detail
+([#41](https://github.com/vchen017/project-yale-shuttle/issues/41))
+merged as
+[#143](https://github.com/vchen017/project-yale-shuttle/pull/143).
 Making the long waits better
 ([#118](https://github.com/vchen017/project-yale-shuttle/issues/118)) was
 measured in this sprint's last days: on held-out days nothing beat the
 shipped predictor, so it closed as measured, no code change. Choosing
 where to get off during a detour
-(#55) moved up into this sprint — its pull request is in review above. Two
-more pull requests are up for review as the sprint closes: the job that
-watches riders' trips and sends the agent's notifications
+(#55) moved up into this sprint — its pull request is in review above.
+Up for review as the sprint closes: the job that watches riders' trips
+and sends the agent's notifications
 ([#142](https://github.com/vchen017/project-yale-shuttle/pull/142), for
-[#29](https://github.com/vchen017/project-yale-shuttle/issues/29)) and the
-`technical.md` detail (#41) Vivian drafted
-([#143](https://github.com/vchen017/project-yale-shuttle/pull/143)).
+[#29](https://github.com/vchen017/project-yale-shuttle/issues/29)), the
+notifications setup checklist
+([#145](https://github.com/vchen017/project-yale-shuttle/pull/145), for
+[#11](https://github.com/vchen017/project-yale-shuttle/issues/11)), the
+shareable live-trip link
+([#146](https://github.com/vchen017/project-yale-shuttle/pull/146), for
+[#10](https://github.com/vchen017/project-yale-shuttle/issues/10)), and
+the A/B reset button for the graded run
+([#147](https://github.com/vchen017/project-yale-shuttle/pull/147), for
+[#47](https://github.com/vchen017/project-yale-shuttle/issues/47)).
