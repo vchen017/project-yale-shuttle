@@ -26,6 +26,19 @@
         {% if answer.ride_minutes is None %}
           <p class="small text-body-secondary mb-0 mt-2">The feed doesn't say yet how long this ride takes.</p>
         {% endif %}
+        {# Share this bus with a friend (#10): the link shows the bus and the stop, nothing about the rider. #}
+        {% if user.is_authenticated %}
+          <form class="mt-3" method="post" action="{% url 'share-create' %}">
+            {% csrf_token %}
+            <input type="hidden" name="route_id" value="{{ answer.route_id }}">
+            <input type="hidden" name="bus_id" value="{{ answer.bus_id|default_if_none:'' }}">
+            <input type="hidden" name="board_stop_id" value="{{ plan.board_at.id }}">
+            <input type="hidden" name="get_off_stop_id" value="{{ plan.get_off_at.id }}">
+            <button class="btn btn-outline-primary btn-sm" type="submit"><i class="bi bi-share" aria-hidden="true"></i> Share this bus with a friend</button>
+          </form>
+        {% else %}
+          <p class="small mb-0 mt-3"><a href="{% url 'login' %}?next={{ request.get_full_path|urlencode }}">Log in</a> to share this bus with a friend.</p>
+        {% endif %}
       {% else %}
         <p class="mb-0">{{ answer.detail }}</p>
       {% endif %}
