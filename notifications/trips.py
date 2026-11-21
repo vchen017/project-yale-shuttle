@@ -9,15 +9,19 @@ about each. That is its one routine visit to the database. With nothing
 coming up, the run ends right there.
 
 Otherwise it checks every trip each CHECK_EVERY against the live feed, in
-memory. Once the time to leave is within DECIDE_AHEAD, the agent (#28)
-decides whether and when to notify, reading the live countdown, our
-history-based prediction (loaded with the run, history.HistoryPredictor) and
-the crowding read at the start. A notification goes out at the time the
-agent picked. It's recorded first, under a unique constraint
-(TripNotification), so overlapping runs or a rerun never send it twice. A
-trip gets one notification, and another only when its time to leave moves by
-RENOTIFY_SHIFT or more. Recording what it sends is the only other time the
-watch touches the database.
+memory. The time to leave comes from the feed's countdown, or from our history
+prediction when the feed has none: the order predict_minutes uses, since a
+countdown is near-perfect once a bus is close (the Nov 17 audit) and history
+only knows the usual wait for the time of day. Once the time to leave is
+within DECIDE_AHEAD, the agent (#28) decides whether and when to notify,
+reading the live countdown, our history-based prediction (loaded with the run,
+history.HistoryPredictor) and the crowding read at the start. A notification
+goes out at the time the agent picked. It's recorded first, under a unique
+constraint (TripNotification), so overlapping runs or a rerun never send it
+twice. When no device receives it, the record is dropped again, so the next
+check can retry. A trip gets one notification, and another only when its time
+to leave moves by RENOTIFY_SHIFT or more. Recording what it sends is the only
+other time the watch touches the database.
 
 The watch keeps going for up to WATCH, so a run that starts late, or never,
 leaves no gap. The next hourly run takes over from it: jobs.yml cancels the
@@ -199,9 +203,9 @@ def check(trips, now, data, decide=None):
     data.now = now
     asked = 0
     for trip in trips:
-        if now >= trip.start:
+        if now >= trip.start or not trip.subscriptions:
             trip.decision = None
-            continue
+            continue  # it's started, or the rider has no device left to tell
         request, leave_by = _request(trip, data)
         if request is None:
             continue
@@ -223,8 +227,9 @@ def check(trips, now, data, decide=None):
 
 def _request(trip, data):
     """The agent's question about the trip now, and its time to leave: for the
-    linking route whose next bus the rider can still catch soonest, by our
-    prediction or else the feed. (None, None) when no route has a time."""
+    linking route whose next bus the rider can still catch soonest. Each
+    route's next bus is timed by the feed's countdown, or by our history
+    prediction when the feed has none. (None, None) when no route has a time."""
     best = None
     for route_id, name in sorted(trip.routes.items()):
         request = TripRequest(
@@ -232,12 +237,11 @@ def _request(trip, data):
             walking_minutes=trip.walk_to_stop, route_id=route_id, stop_id=trip.stop_id,
         )
         try:
-            official = data.official_minutes(request)
+            minutes = data.official_minutes(request)
         except FeedUnavailable:
-            official = None
-        minutes = data.predicted_minutes(request)
+            minutes = None
         if minutes is None:
-            minutes = official
+            minutes = data.predicted_minutes(request)
         if minutes is None:
             continue
         catchable = minutes >= trip.walk_to_stop
@@ -267,7 +271,8 @@ def send_due(trips, now, reconnect=False):
 
 def _send(trip, decision, leave_by, now, reconnect=False):
     """Record the notification, then push it to the rider's devices. False when
-    another run already sent this one."""
+    another run already sent this one, or when no device received it: then the
+    record is dropped, so a later check can try again."""
     sequence = len(trip.sent)
     if reconnect and not connection.in_atomic_block:
         connection.close()  # Django opens a new one for the next query
@@ -300,6 +305,10 @@ def _send(trip, decision, leave_by, now, reconnect=False):
                 trip.subscriptions.remove(subscription)  # gone: push.send deleted it
         except push.PushError:
             logger.exception("Couldn't send the notification about %s to %s", trip.title, subscription)
+    if not delivered:
+        record.delete()
+        trip.sent.pop()
+        return False
     record.devices = delivered
     record.save(update_fields=["devices"])
     return True

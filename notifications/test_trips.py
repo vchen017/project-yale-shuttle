@@ -21,7 +21,7 @@ from transit.downtowner import FeedUnavailable
 
 from . import trips
 from .models import PushSubscription, TripNotification
-from .tests import AUTH, KEYS, P256DH
+from .tests import AUTH, KEYS, P256DH, push_error
 
 User = get_user_model()
 
@@ -196,6 +196,26 @@ class WatchTests(TestCase):
         webpush.assert_called_once()
         self.assertEqual(second[0].sent, [START + dt.timedelta(minutes=5)])  # and caught up
 
+    def test_a_notification_no_device_received_is_tried_again(self, network, plan_event, webpush):
+        self.lecture(minutes_away=40)  # due at 10:00, as above
+        webpush.side_effect = [OSError("timed out"), None]  # the push service is out of reach once
+        with self.assertLogs("notifications.trips", "ERROR"):
+            summary = self.watch(Bus(self.clock, arrives=START + dt.timedelta(minutes=25)))
+        self.assertEqual(webpush.call_count, 2)
+        sent = TripNotification.objects.get()
+        self.assertEqual((sent.sequence, sent.devices), (0, 1))
+        self.assertEqual(sent.sent_at, START + dt.timedelta(minutes=20))  # the next check, 5 minutes on
+        self.assertIn("1 notification(s) sent", summary)
+
+    def test_a_rider_whose_devices_are_all_gone_isnt_asked_again(self, network, plan_event, webpush):
+        self.lecture(minutes_away=40)
+        webpush.side_effect = push_error(410)  # the rider turned notifications off
+        self.watch(Bus(self.clock, arrives=START + dt.timedelta(minutes=25)))
+        webpush.assert_called_once()
+        self.assertFalse(PushSubscription.objects.exists())
+        self.assertFalse(TripNotification.objects.exists())  # nobody received it
+        self.assertEqual(len(self.agent.asked), 1)
+
     def test_checks_touch_no_database(self, network, plan_event, webpush):
         self.lecture(minutes_away=40)
         loaded = trips.load_trips(START)
@@ -209,6 +229,43 @@ class WatchTests(TestCase):
         self.lecture(minutes_away=100)  # the bus at 11:15, leave by 11:10: 85 minutes away
         self.watch(Bus(self.clock, arrives=START + dt.timedelta(minutes=90)))
         self.assertGreaterEqual(self.agent.asked[0] - START, trips.CHECK_EVERY * 11)  # once it's 30 minutes off
+
+    def test_the_feed_countdown_comes_before_our_history_prediction(self, network, plan_event, webpush):
+        """Ayush's case on #142: on a quiet route our history prediction is the
+        usual wait for the hour, 40 minutes, while the feed sees a bus 8
+        minutes out. The feed times the trip, so the agent is asked in time."""
+        self.lecture(minutes_away=40)
+        loaded = trips.load_trips(START)
+        data = trips.watch_data(loaded, START)
+        bus = Bus(self.clock, arrives=START + dt.timedelta(minutes=8))
+        with mock.patch.object(trips.downtowner, "etas", side_effect=bus.etas), \
+             mock.patch.object(data.history, "minutes", return_value=40):
+            self.assertEqual(trips._request(loaded[0], data)[1], START + dt.timedelta(minutes=3))
+            self.assertEqual(trips.check(loaded, START, data, decide=self.agent), 1)
+
+    def test_without_a_countdown_our_history_prediction_times_the_trip(self, network, plan_event, webpush):
+        self.lecture(minutes_away=60)
+        loaded = trips.load_trips(START)
+        data = trips.watch_data(loaded, START)
+        with mock.patch.object(trips.downtowner, "etas", side_effect=FeedUnavailable("down")), \
+             mock.patch.object(data.history, "minutes", return_value=12):
+            self.assertEqual(trips._request(loaded[0], data)[1], START + dt.timedelta(minutes=7))
+
+    def test_routes_are_compared_by_the_countdown_where_the_feed_has_one(self, network, plan_event, webpush):
+        """Blue and Red both link the stop to the event. The feed sees Red's
+        bus 6 minutes out and no Blue bus, whose usual wait is 10 minutes. Red
+        wins, though its usual wait is 30."""
+        trip = trips.Trip(
+            user_id=self.rider.pk, calendar_id=self.calendar.pk, uid="econ-101", start=START + dt.timedelta(hours=1),
+            title="Econ 101", stop_id=10, stop_name="Grove St", routes={1: "Blue", 2: "Red"}, walk_to_stop=WALK,
+            subscriptions=[],
+        )
+        history = mock.Mock()
+        history.minutes.side_effect = lambda route_id, stop_id, now: {1: 10, 2: 30}[route_id]
+        red = [{"route_id": 2, "bus_id": 9, "bus_name": "#9", "minutes": 6}]
+        with mock.patch.object(trips.downtowner, "etas", return_value=red):
+            request, leave_by = trips._request(trip, trips.WatchData(history, {}, START))
+        self.assertEqual((request.route, leave_by), ("Red", START + dt.timedelta(minutes=1)))
 
     def test_a_watch_hands_over_when_the_next_run_cancels_it(self, network, plan_event, webpush):
         self.lecture(minutes_away=90)
