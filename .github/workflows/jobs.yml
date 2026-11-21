@@ -21,6 +21,7 @@ on:
     - cron: "29 10 * * *"  # fit_calibration: daily, 5:29 AM Eastern, after the import
     - cron: "53 10 * * *"  # score_accuracy: daily, 5:53 AM Eastern, after the import
     - cron: "41 * * * *"  # refresh_calendars: hourly, at :41 past
+    - cron: "45 * * * *"  # notify_trips: hourly, after the refresh; watches up to 2 hours (#29)
   workflow_dispatch:
     inputs:
       environment:
@@ -38,10 +39,14 @@ on:
         default: ""
 
 concurrency:
-  # GitHub's late scheduled runs queue apart from the clock's, so one can never
-  # cancel a clock run that's waiting its turn.
-  group: jobs-${{ inputs.environment || 'production' }}-${{ github.event_name }}
-  cancel-in-progress: false
+  # One queue per cron line (or per set of jobs run by hand), so a long run of
+  # one line, like the trip watch, never holds up another's. A clock run
+  # replaces its line's run still going: that's how the trip watch hands over
+  # to the next hourly run (#29), and every other line finishes in minutes,
+  # long before its next run. GitHub's late scheduled runs queue apart from the
+  # clock's, so one can never cancel a clock run that's waiting its turn.
+  group: jobs-${{ inputs.environment || 'production' }}-${{ github.event_name }}-${{ github.event.schedule || inputs.schedule || inputs.jobs }}
+  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' && inputs.schedule != '' }}
 
 permissions:
   contents: read
@@ -50,7 +55,7 @@ permissions:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 130  # the trip watch runs up to 2 hours
     environment: ${{ inputs.environment || 'production' }}
     env:
       ENVIRONMENT: ${{ inputs.environment || 'production' }}
@@ -91,6 +96,12 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           GITHUB_TOKEN: ${{ github.token }}
+          # The trip watch (#29) asks the AI agent and sends push notifications.
+          # Use the same values as the site's Render environment: devices
+          # subscribed with its VAPID public key, so only its pair can reach them.
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
           SCHEDULE: ${{ github.event.schedule || inputs.schedule }}
           JOBS: ${{ inputs.jobs }}
         run: |

@@ -153,3 +153,8 @@ class WorkflowTests(SimpleTestCase):
         self.assertEqual(clock_yml["permissions"]["actions"], "write")
         self.assertIn("python3 jobs/clock.py", clock_text)
         self.assertIn("gh workflow run clock.yml", clock_text)  # queues the next clock run
+
+    def test_each_line_queues_apart_and_a_clock_run_replaces_its_lines_run(self):
+        concurrency = yaml.safe_load((WORKFLOWS / "jobs.yml").read_text())["concurrency"]
+        self.assertIn("github.event.schedule || inputs.schedule", concurrency["group"])
+        self.assertIn("inputs.schedule != ''", concurrency["cancel-in-progress"])  # the trip watch's handover
