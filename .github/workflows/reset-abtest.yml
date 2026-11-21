@@ -1,0 +1,98 @@
+name: reset the A/B test
+run-name: reset the A/B test on ${{ inputs.environment }}
+
+# Deletes every A/B test visit on one site, so its /ecc1032/stats starts from
+# zero. Before the graded A/B run, our own test visits have to go (#47): open
+# Actions → "reset the A/B test" → Run workflow, pick the site and type its
+# name to confirm. Left blank, it only counts the visits. It uses the site's
+# own DATABASE_URL secret, so nobody copies the connection string to a laptop.
+#
+# Run it after the last promotion: a promotion opens /ecc1032 to check it, and
+# that counts as a visit.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Which site's A/B visits
+        type: choice
+        options: [production, staging]
+        default: production
+      confirm:
+        description: Type the site's name to delete its visits (left blank, they're only counted)
+        required: false
+        default: ""
+
+concurrency:
+  # On production this is promote.yml's group, so a reset waits for a deploy.
+  group: ${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Delete the visits
+        id: reset
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SITE: ${{ inputs.environment }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Add a DATABASE_URL secret to the $SITE environment (Settings → Environments)"
+            exit 1
+          fi
+          # Django needs a secret key to start; this signs nothing, so any one will do.
+          export SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(50))')"
+          typed=$(printf '%s' "$CONFIRM" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+          if [ "$typed" = "$SITE" ]; then
+            python manage.py reset_abtest --yes
+            echo "deleted=true" >> "$GITHUB_OUTPUT"
+          else
+            python manage.py reset_abtest
+            echo "::notice::Nothing was deleted. To delete them, run it again and type $SITE in the confirm box."
+          fi
+
+      # Production's own stats page reads production's database, so this also
+      # shows the secret pointed at the right one.
+      - name: Check production's stats show zero
+        if: inputs.environment == 'production' && steps.reset.outputs.deleted == 'true'
+        env:
+          URL: ${{ vars.PRODUCTION_URL }}
+        run: |
+          if [ -z "$URL" ]; then
+            echo "::warning::Set the PRODUCTION_URL repository variable so this step can check /ecc1032/stats"
+            exit 0
+          fi
+          # Production may be asleep (Render's free plan), so give it time to wake.
+          stats=""
+          for attempt in 1 2 3 4; do
+            if stats=$(curl -fsS -m 60 "$URL/ecc1032/stats"); then
+              break
+            fi
+            stats=""
+            sleep 15
+          done
+          if [ -z "$stats" ]; then
+            echo "::error::Couldn't load $URL/ecc1032/stats"
+            exit 1
+          fi
+          echo "$URL/ecc1032/stats: $stats"
+          seen=$(printf '%s' "$stats" | python -c 'import json, sys; s = json.load(sys.stdin); print(s["kudos"]["impressions"] + s["thanks"]["impressions"])')
+          if [ "$seen" != 0 ]; then
+            echo "::error::Production's stats aren't at zero (impressions: $seen). Either someone opened /ecc1032 since the reset (run it again), or the production environment's DATABASE_URL isn't the database production uses."
+            exit 1
+          fi
+          echo "Production's /ecc1032/stats shows zero impressions."
