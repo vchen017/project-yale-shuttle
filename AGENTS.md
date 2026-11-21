@@ -96,9 +96,9 @@ another app's code or migrations when your issue says to, and tell its owner.
   buses going to or from the garage that looked like 23 false detours when
   replayed over the recorded polls (#129); a 23-minute ride on a short trip
   that only showed against the live feed (#132); a crowding refresh that
-  deleted samples an admin had removed (#137). Before you open a pull
-  request, think about the real data the code will meet and say in the
-  description what you checked:
+  deleted samples an admin had removed (#137). Before every push, including
+  fixes after a review, think about the real data the code will meet, and say
+  what you checked in the description or in your reply to the review:
   - the **live feed**: missing fields, wrong types, stale positions, buses off
     their path at the start and end of service, routes and stops that changed;
   - the **recorded history**: gaps, partly imported days, data from before a
@@ -109,6 +109,21 @@ another app's code or migrations when your issue says to, and tell its owner.
   Where you can, run the change against the live feed (the tests stay
   mocked) or replay it over the recorded polls, and write down what you saw.
   If you couldn't, say that. A pass on mocks alone is not "works".
+  `manage.py import_history --since YYYY-MM-DD` loads the recorded polls
+  (buses, ETAs, route status) into your local database. It takes minutes a
+  day, so a few days is usually enough.
+
+  Make the check one someone else can repeat:
+  - **Match the pace the code really runs.** A page that reads the feed on
+    every visit can see a bus every minute or two, but the recorded polls are
+    5 minutes apart, so a replay of the polls can miss what visitors would
+    see. Watch the live feed at the real pace too, or say what the replay
+    can't show.
+  - **Say how to rerun it:** the command or script, and the dates you used,
+    so a reviewer gets the same numbers. Reviews that cite real data do the
+    same.
+  - **When a review reports a result from real data, rerun that case** before
+    you push a fix, and reply with what you got.
 - **The LLM is called from the server only**, through OpenRouter, with the key
   in `OPENROUTER_API_KEY`. Never from browser JavaScript.
 - **Scheduled jobs** go in your app's `jobs.py`, with `@job(schedule=...)` and the
@@ -148,8 +163,8 @@ another app's code or migrations when your issue says to, and tell its owner.
 
 - Every acceptance criterion in the issue is met.
 - Tests cover it, with outside services mocked, and they pass.
-- You checked it against real data (see Rules), and the pull request says what
-  you saw, or why you couldn't.
+- You checked it against real data (see Rules) after your last change, and the
+  pull request says what you saw, or why you couldn't.
 - Any migrations are included.
 - It works in a phone-sized and a desktop-sized window.
 - The pull request uses the template: `Closes #N`, what the AI produced, what
