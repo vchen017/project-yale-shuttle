@@ -124,6 +124,10 @@ recorded and safe to repeat ([#40](https://github.com/vchen017/project-yale-shut
 - The A/B test page is tested over HTTP the way a browser uses it: each visitor
   keeps their variant, one impression per visitor, at most one click, the
   CSRF-protected form, the 50/50 split, and `preferred` chosen by click rate.
+  Clearing our own visits before the graded run (#47) is tested too:
+  `reset_abtest` deletes nothing without `--yes`, and the tests run its
+  workflow's script to check it deletes only once someone types the site's
+  name.
 - The seed command is tested for being safe to rerun, for refusing to run
   without passwords, for creating each app's demo data (#46) without undoing an
   admin's changes, and for never adding A/B test visits.
@@ -162,6 +166,6 @@ recorded and safe to repeat ([#40](https://github.com/vchen017/project-yale-shut
     window, before each submission.
   - The real model's answers. They cost money and vary from run to run, so
     `evaluate_assistant` runs them by hand.
-  - The workflows themselves (CI, promotion, the jobs and the clock). They
-    only run on GitHub, so we watch their first runs in the Actions tab after
-    each change.
+  - The workflows themselves (CI, promotion, the jobs, the clock, and the A/B
+    reset beyond its confirm check). They only run on GitHub, so we watch
+    their first runs in the Actions tab after each change.
