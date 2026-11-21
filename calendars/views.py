@@ -37,8 +37,8 @@ def connect(request):
         imported = services.try_refresh(saved)
         if imported:
             # The hourly trip watch loaded its trips before these existed: a trip
-            # in the next 2 hours gets its first check now (#29).
-            trips.first_check(request.user)
+            # in the next 2 hours gets its first check now, beside this request (#29).
+            trips.first_check_soon(request.user)
             messages.success(request, f"Connected. Imported {imported} upcoming events.")
         elif saved.last_error:
             messages.warning(request, f"Connected, but we couldn't read events yet: {saved.last_error}")

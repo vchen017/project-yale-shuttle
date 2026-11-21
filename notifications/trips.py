@@ -28,18 +28,20 @@ leaves no gap. The next hourly run takes over from it: jobs.yml cancels the
 older run, and the job runner lets the new one start (takes_over).
 
 A rider who connects a calendar mid-hour doesn't wait for the next run:
-`first_check(user)` checks their trips in that web request.
+`first_check_soon(user)` checks their trips right away, in a thread of its
+own, so the page never waits for the agent or the push service.
 """
 
 import datetime as dt
 import logging
+import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
-from django.db import IntegrityError, connection, transaction
+from django.db import IntegrityError, connection, connections, transaction
 from django.urls import reverse
 from django.utils import timezone
 
@@ -102,10 +104,14 @@ class WatchData(DataSource):
         self.history, self.crowding_by_route, self.now = history, crowding_by_route, now
 
     def official_minutes(self, trip):
+        """The feed's countdown to the route's soonest bus the rider can still
+        walk to the stop for. A bus that comes sooner is skipped, as on the
+        trip page (calendars.plans.catchable_bus). None when the feed lists no
+        such bus."""
         times = [
             arrival["minutes"]
             for arrival in downtowner.etas(trip.stop_id)
-            if arrival["route_id"] == trip.route_id and arrival["minutes"] >= 0
+            if arrival["route_id"] == trip.route_id and arrival["minutes"] >= trip.walking_minutes
         ]
         return min(times) if times else None
 
@@ -356,6 +362,26 @@ def watch(clock=timezone.now, sleep=time.sleep, decide=None):
         f"{checks} checks, {asked} decisions, {sent} notification(s) sent"
     )
     return summary + (", then handed over to the next run" if handed_over else "")
+
+
+def first_check_soon(user):
+    """first_check(user) once this request's changes are committed, in a thread
+    of its own, so the page doesn't wait for it: it may ask the agent and push
+    to devices, which can take longer than the 30 seconds Render gives a
+    request (one gunicorn worker, at its default timeout). Best effort: if the
+    server stops first, the hourly watch still checks those trips."""
+    transaction.on_commit(lambda: _in_background(_first_check_and_close, user))
+
+
+def _in_background(target, *args):
+    threading.Thread(target=target, args=args, daemon=True).start()
+
+
+def _first_check_and_close(user):
+    try:
+        first_check(user)
+    finally:
+        connections.close_all()  # the connection this thread opened
 
 
 def first_check(user, now=None, decide=None):

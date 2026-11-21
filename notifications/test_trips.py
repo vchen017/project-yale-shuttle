@@ -3,6 +3,7 @@ are mocked: nothing here reaches the network."""
 
 import datetime as dt
 import json
+import threading
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -68,6 +69,12 @@ class Bus:
     def etas(self, stop_id):
         minutes = round((self.arrives - self.clock()).total_seconds() / 60)
         return [{"route_id": 1, "bus_id": 7, "bus_name": "#7", "minutes": minutes}] if minutes >= 0 else []
+
+
+def inline(target, user):
+    """Stands in for trips._in_background in the connect-page tests: the first
+    check runs at once, in the test's thread and database connection."""
+    trips.first_check(user)
 
 
 class Agent:
@@ -251,6 +258,28 @@ class WatchTests(TestCase):
              mock.patch.object(data.history, "minutes", return_value=12):
             self.assertEqual(trips._request(loaded[0], data)[1], START + dt.timedelta(minutes=7))
 
+    def test_a_bus_the_rider_cant_walk_to_in_time_is_skipped(self, network, plan_event, webpush):
+        """Austin's case on #142: the soonest bus is 3 minutes out and the walk
+        is 8, so the time to leave comes from the next bus, 15 minutes out, and
+        the agent's tool reads that one too."""
+        trip = trips.Trip(
+            user_id=self.rider.pk, calendar_id=self.calendar.pk, uid="econ-101", start=START + dt.timedelta(hours=1),
+            title="Econ 101", stop_id=10, stop_name="Grove St", routes={1: "Blue"}, walk_to_stop=8, subscriptions=[],
+        )
+        history = mock.Mock()
+        history.minutes.return_value = None
+        data = trips.WatchData(history, {}, START)
+        buses = [
+            {"route_id": 1, "bus_id": 7, "bus_name": "#7", "minutes": 3},
+            {"route_id": 1, "bus_id": 8, "bus_name": "#8", "minutes": 15},
+        ]
+        with mock.patch.object(trips.downtowner, "etas", return_value=buses):
+            request, leave_by = trips._request(trip, data)
+            self.assertEqual(leave_by, START + dt.timedelta(minutes=7))
+            self.assertEqual(data.official_minutes(request), 15)
+        with mock.patch.object(trips.downtowner, "etas", return_value=buses[:1]):
+            self.assertEqual(trips._request(trip, data), (None, None))  # no bus they can make, and no history
+
     def test_routes_are_compared_by_the_countdown_where_the_feed_has_one(self, network, plan_event, webpush):
         """Blue and Red both link the stop to the event. The feed sees Red's
         bus 6 minutes out and no Blue bus, whose usual wait is 10 minutes. Red
@@ -340,7 +369,9 @@ class FirstCheckTests(TestCase):
         with mock.patch("calendars.services.ical.fetch", return_value=self.ics(now + dt.timedelta(minutes=35))), \
              mock.patch.object(trips.downtowner, "etas", return_value=bus), \
              mock.patch.object(trips, "decide_with_tools", side_effect=agent), \
-             mock.patch.object(trips, "next_run_at", side_effect=lambda now: now + dt.timedelta(hours=1)):
+             mock.patch.object(trips, "next_run_at", side_effect=lambda now: now + dt.timedelta(hours=1)), \
+             mock.patch.object(trips, "_in_background", side_effect=inline), \
+             self.captureOnCommitCallbacks(execute=True):
             response = self.client.post(reverse("calendar"), {"ics_url": "https://calendar.example.com/b.ics"})
         self.assertEqual(response.status_code, 302)
         self.assertEqual(len(agent.asked), 1)
@@ -351,10 +382,38 @@ class FirstCheckTests(TestCase):
         now = timezone.now()
         with mock.patch("calendars.services.ical.fetch", return_value=self.ics(now + dt.timedelta(minutes=35))), \
              mock.patch.object(trips, "load_trips", side_effect=RuntimeError("boom")), \
-             self.assertLogs("notifications.trips", "ERROR"):
+             mock.patch.object(trips, "_in_background", side_effect=inline), \
+             self.assertLogs("notifications.trips", "ERROR"), \
+             self.captureOnCommitCallbacks(execute=True):
             response = self.client.post(reverse("calendar"), {"ics_url": "https://calendar.example.com/b.ics"})
         self.assertEqual(response.status_code, 302)
         webpush.assert_not_called()
+
+    def test_the_page_doesnt_wait_for_the_first_check(self, network, plan_event, webpush):
+        """Austin's point on #142: asking the agent can take longer than the 30
+        seconds a request gets, so the connect page only starts the check."""
+        now = timezone.now()
+        with mock.patch("calendars.services.ical.fetch", return_value=self.ics(now + dt.timedelta(minutes=35))), \
+             mock.patch.object(trips, "first_check") as first_check, \
+             mock.patch.object(trips, "_in_background") as in_background, \
+             self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(reverse("calendar"), {"ics_url": "https://calendar.example.com/b.ics"})
+        self.assertEqual(response.status_code, 302)
+        in_background.assert_called_once_with(trips._first_check_and_close, self.rider)
+        first_check.assert_not_called()  # not in the request
+
+    def test_the_first_check_runs_in_a_thread_of_its_own_and_closes_its_connection(
+        self, network, plan_event, webpush
+    ):
+        ran_in, closed = [], threading.Event()
+        with mock.patch.object(trips, "first_check", side_effect=lambda user: ran_in.append(threading.current_thread())), \
+             mock.patch.object(trips.connections, "close_all", side_effect=closed.set):
+            with self.captureOnCommitCallbacks(execute=True):
+                trips.first_check_soon(self.rider)
+                self.assertEqual(ran_in, [])  # nothing before the commit
+            self.assertTrue(closed.wait(5))
+        self.assertEqual(len(ran_in), 1)
+        self.assertIsNot(ran_in[0], threading.current_thread())
 
 
 class ScheduleTests(TestCase):
