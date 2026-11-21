@@ -44,13 +44,16 @@ detouring:
   to leave.
 - **Some off-path time is the route's usual shape, not a detour**: Purple's
   central-campus loop and Blue-Night's northern loop run most evenings, and
-  buses walk back to the garage at the end of service — replaying Nov 10-18
-  flagged them 30 times for every real detour (Vivian, #55 review). The
-  nightly `record_usual_shapes` job (jobs.py) sums up, from the recorded
-  history (#22), the Eastern hours each route spends off its drawn path on
-  day after day, and detection refuses to flag a route in one of those
-  hours. A real detour is novel; the usual shape is not. Until the job has
-  run, nothing is suppressed.
+  buses walk back to the garage at the end of service — replaying Nov 9-20
+  at the live two-minute page pace flagged them 35 times for one real
+  detour (Vivian, #55 review). The nightly `record_usual_shapes` job
+  (jobs.py) sums up, from the recorded history (#22), the Eastern hours
+  where a route's usual shapes live — hours the whole route rides off its
+  drawn path, hours where one bus alone makes detour-sized runs off it day
+  after day, and the end-of-service hours around a day whose recorded fixes
+  end in the walk home — and detection refuses to flag a route in one of
+  those hours. A real detour is novel; the usual shape is not. Until the
+  job has run, nothing is suppressed.
 - Samples closer together than SAMPLE_SPACING count as one, so a rider
   refreshing a page can't compress ten minutes into seconds.
 

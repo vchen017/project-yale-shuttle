@@ -653,15 +653,17 @@ class HomeFirstPaintTests(TestCase):
 
 class UsualShapeJobTests(TestCase):
     """The nightly record_usual_shapes job (#55): from the recorded history,
-    the Eastern hours each route spends off its drawn path on day after day,
-    which detection then refuses to flag. Feed mocked; history fabricated."""
+    the Eastern hours where a route's usual shapes live — the whole route off
+    its drawn path, one bus making detour-sized runs off it alone, and the
+    walk back to the garage at day's end — which detection then refuses to
+    flag. Feed mocked; history fabricated."""
 
     def setUp(self):
         cache.clear()  # the feed's answers and its outage memory live there
         self.addCleanup(cache.clear)
 
     def poll_with_bus(self, polled_at, route_id, lat, lon, bus_id=812):
-        poll = Poll.objects.create(polled_at=polled_at)
+        poll, _ = Poll.objects.get_or_create(polled_at=polled_at)  # one poll carries many buses
         BusPosition.objects.create(
             poll=poll,
             polled_at=polled_at,
@@ -675,21 +677,62 @@ class UsualShapeJobTests(TestCase):
         )
 
     def evening_fixes(self, route_id, days):
-        """Bus fixes for `days` evenings, 500 m off the fixture path, at
-        20:00 and 21:00 Eastern — four fixes an evening-hour, so the hour
-        clears MIN_FIXES — plus one daytime fix on the path each day."""
+        """Bus fixes `days` ago, 500 m off the fixture path, at 20:00 and
+        21:00 Eastern — four fixes an evening-hour, five evenings, so the
+        hour clears MIN_FIXES — plus one daytime fix on the path each day.
+        Relative to now, so the job's 14-day window can never age the data
+        out (fixed dates started failing CI the evening of Nov 24 — Vivian,
+        #55 review)."""
+        now = timezone.now()
         for index in days:
-            evening = dt.datetime(2026, 11, 10 + index, 20, 0, tzinfo=ET)
-            for hour, minute in ((0, m) for m in (0, 5, 10, 15)):
+            evening = now.astimezone(ET).replace(hour=20, minute=0, second=0, microsecond=0) - dt.timedelta(
+                days=index
+            )
+            for minute in (0, 5, 10, 15):
                 self.poll_with_bus(
-                    evening + dt.timedelta(hours=hour, minutes=minute), route_id, 41.31, OFF_LON
+                    evening + dt.timedelta(minutes=minute), route_id, 41.31, OFF_LON
                 )
                 self.poll_with_bus(
                     evening + dt.timedelta(hours=1, minutes=minute), route_id, 41.31, OFF_LON
                 )
             self.poll_with_bus(
-                dt.datetime(2026, 11, 10 + index, 8, 0, tzinfo=ET), route_id, 41.31, -72.94
+                evening.replace(hour=8), route_id, 41.31, -72.94
             )
+
+    def single_bus_runs(self, route_id, days):
+        """One bus 500 m off the fixture path for ten minutes — three
+        five-minute fixes — in the 22:00 Eastern hour on each of `days`,
+        with twenty sibling fixes on the path in the same hour, so the
+        hour's off fraction is 3 of 23 and only the run rule can mark it.
+        The day's last fix is on the path, so the tail rule stays out."""
+        now = timezone.now()
+        for index in days:
+            night = now.astimezone(ET).replace(hour=22, minute=0, second=0, microsecond=0) - dt.timedelta(
+                days=index
+            )
+            for minute in (0, 5, 10):
+                self.poll_with_bus(
+                    night + dt.timedelta(minutes=minute), route_id, 41.31, OFF_LON, bus_id=8000 + route_id
+                )
+            for minute in range(1, 40, 2):  # odd minutes: never the same poll as the running bus
+                self.poll_with_bus(
+                    night + dt.timedelta(minutes=minute), route_id, 41.31, -72.94, bus_id=8100 + route_id
+                )
+
+    def garage_walk(self, route_id, days, midnight_minute=5):
+        """Each of `days`, the route serves noon on the path, then its last
+        fixes just after midnight Eastern are off it — the walk home. The
+        25-minute tail before that last fix spans hours 23 and 0."""
+        now = timezone.now()
+        for index in days:
+            midnight = (
+                now.astimezone(ET)
+                .replace(hour=0, minute=midnight_minute, second=0, microsecond=0)
+                - dt.timedelta(days=index)
+            )
+            self.poll_with_bus(midnight.replace(hour=12), route_id, 41.31, -72.94)
+            self.poll_with_bus(midnight, route_id, 41.31, OFF_LON)
+            self.poll_with_bus(midnight + dt.timedelta(minutes=5), route_id, 41.31, OFF_LON)
 
     @mock.patch("transit.downtowner.urlopen", return_value=feed_answer(ROUTES))
     def test_a_route_looping_most_evenings_gets_its_evening_hours(self, urlopen):
@@ -709,6 +752,59 @@ class UsualShapeJobTests(TestCase):
         jobs.record_usual_shapes()
 
         self.assertFalse(UsualOffPath.objects.exists())  # too few days to be a shape
+
+    @mock.patch("transit.downtowner.urlopen", return_value=feed_answer(ROUTES))
+    def test_one_bus_running_off_path_ten_minutes_on_three_days_marks_the_hour(self, urlopen):
+        """One bus's evening loop: three days of ten-minute off-runs in the
+        same hour, with the rest of the route on the path, is the route's
+        usual shape there (Vivian, #55 review) — though two days are still
+        novel enough to flag."""
+        self.single_bus_runs(1, days=[0, 1, 2])
+        self.single_bus_runs(3, days=[0, 1])
+
+        jobs.record_usual_shapes()
+
+        self.assertEqual(UsualOffPath.objects.get(route_id=1).hours, [22])
+        self.assertFalse(UsualOffPath.objects.filter(route_id=3).exists())
+
+    @mock.patch("transit.downtowner.urlopen", return_value=feed_answer(ROUTES))
+    def test_a_run_survives_one_missed_poll_but_not_two(self, urlopen):
+        """The recorded polls have gaps, so a bus missing one poll doesn't
+        end its off-run — 22:00 to 22:15 with 22:10 gone is one 15-minute
+        run — but missing two does: 21:00–21:05 and 21:30–21:35 are two
+        short halves, and neither is detour-sized."""
+        now = timezone.now()
+        for index in (0, 1, 2):
+            night = now.astimezone(ET).replace(hour=22, minute=0, second=0, microsecond=0) - dt.timedelta(
+                days=index
+            )
+            for minute in (0, 5, 15):
+                self.poll_with_bus(night + dt.timedelta(minutes=minute), 1, 41.31, OFF_LON)
+            self.poll_with_bus(night + dt.timedelta(minutes=40), 1, 41.31, -72.94)
+        for index in (0, 1, 2):
+            night = now.astimezone(ET).replace(hour=21, minute=0, second=0, microsecond=0) - dt.timedelta(
+                days=index
+            )
+            for minute in (0, 5, 30, 35):
+                self.poll_with_bus(night + dt.timedelta(minutes=minute), 3, 41.31, OFF_LON)
+            self.poll_with_bus(night + dt.timedelta(minutes=40), 3, 41.31, -72.94)
+
+        jobs.record_usual_shapes()
+
+        self.assertEqual(UsualOffPath.objects.get(route_id=1).hours, [22])
+        self.assertFalse(UsualOffPath.objects.filter(route_id=3).exists())
+
+    @mock.patch("transit.downtowner.urlopen", return_value=feed_answer(ROUTES))
+    def test_the_walk_back_to_the_garage_marks_the_end_of_service_hours(self, urlopen):
+        """A route whose recorded day ends off the path just after midnight
+        Eastern, three days running, has its end-of-service hours marked:
+        the alert would name a bus no rider can still catch (Vivian, #55
+        review)."""
+        self.garage_walk(1, days=[1, 2, 3])
+
+        jobs.record_usual_shapes()
+
+        self.assertEqual(UsualOffPath.objects.get(route_id=1).hours, [0, 23])
 
     @mock.patch("transit.downtowner.urlopen", return_value=feed_answer(ROUTES))
     def test_rerunning_rewrites_the_same_rows_and_drops_stale_routes(self, urlopen):

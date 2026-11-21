@@ -9,8 +9,10 @@ detection — never by a scheduled job — so it cannot keep Neon awake by
 itself; a page that computes detection reads the database anyway.
 
 `UsualOffPath` is the nightly summary of when each route is routinely off its
-drawn path (evening loops, the walk back to the garage): hours whose recorded
-fixes are usually off it, which detection refuses to flag (see jobs.py).
+drawn path: the Eastern hours where its usual shapes live — the whole route
+riding its evening loop off the drawn path, one bus alone making detour-sized
+runs off it day after day, and the walk back to the garage at the end of
+service — which detection refuses to flag (see jobs.py).
 """
 
 from django.db import models
