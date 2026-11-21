@@ -1,0 +1,75 @@
+35 shown episodes
+Mon Nov 09 06:46 PM-06:54 PM route  8 Pink - VA Hospital / M
+   bus 68862: max 4542 m at (41.3245,-72.9355); route inactive from 06:55 PM; same spot on 2 day(s); stops ['VA Entrance Outbound'] -> garage run (left service)
+Tue Nov 10 06:56 PM-06:58 PM route 10 Purple - West Campus
+   bus 68920: max 1838 m at (41.3135,-72.9206); back on path 07:00 PM; same spot on 10 day(s); stops ['300 George St', 'Union Station (S)'] -> usual loop (same spot 3+ days)
+Tue Nov 10 07:36 PM-07:48 PM route 13 Blue - Night
+   bus 68932: max  968 m at (41.3275,-72.9215); back on path 07:50 PM; same spot on 5 day(s); stops ['Prospect / Sachem (N)'] -> usual loop (same spot 3+ days)
+Tue Nov 10 09:00 PM-09:04 PM route 10 Purple - West Campus
+   bus 68934: max 2423 m at (41.3165,-72.9206); back on path 09:05 PM; same spot on 10 day(s); stops ['Building 900', 'Union Station (S)'] -> usual loop (same spot 3+ days)
+Wed Nov 11 07:30 PM-07:38 PM route 10 Purple - West Campus
+   bus 68978: max 1575 m at (41.3076,-72.9224); back on path 07:40 PM; same spot on 6 day(s); stops ['Building 900', '300 George St'] -> usual loop (same spot 3+ days)
+Wed Nov 11 11:30 PM-11:38 PM route 13 Blue - Night
+   bus 69002: max 1155 m at (41.3287,-72.9166); back on path 11:40 PM; same spot on 5 day(s); stops ['Prospect / Sachem (N)', 'College / Wall (S)'] -> usual loop (same spot 3+ days)
+Thu Nov 12 01:46 PM-01:54 PM route  9 Green - West Campus
+   bus 69015: max 2030 m at (41.2690,-72.9451); back on path 01:55 PM; same spot on 1 day(s); stops ['Orange / Bradley (S)', 'Building 900', 'Building 750'] -> one-off, back on path
+Thu Nov 12 07:40 PM-07:48 PM route 10 Purple - West Campus
+   bus 69037: max 1987 m at (41.3150,-72.9241); back on path 07:50 PM; same spot on 9 day(s); stops ['Building 600'] -> usual loop (same spot 3+ days)
+Thu Nov 12 09:30 PM-09:30 PM route 13 Blue - Night
+   bus 69058: max 1153 m at (41.3263,-72.9203); back on path 09:30 PM; same spot on 5 day(s); stops ['Prospect / Sachem (N)', 'Temple / Grove', 'LEPH / 60 College'] -> usual loop (same spot 3+ days)
+Fri Nov 13 08:16 PM-08:18 PM route 13 Blue - Night
+   bus 69108: max 1154 m at (41.3264,-72.9181); back on path 08:20 PM; same spot on 5 day(s); stops ['Prospect / Sachem (N)', 'Peabody Museum / Whitney / Sachem', 'Phelps Gate'] -> usual loop (same spot 3+ days)
+Fri Nov 13 11:02 PM-11:08 PM route 10 Purple - West Campus
+   bus 69105: max 2183 m at (41.3168,-72.9194); back on path 11:10 PM; same spot on 10 day(s); stops ['333 Cedar', '100 Church Street South', 'Union Station (S)'] -> usual loop (same spot 3+ days)
+Sat Nov 14 12:00 AM-12:04 AM route 10 Purple - West Campus
+   bus 69105: max 2175 m at (41.3110,-72.9284); route inactive from 12:05 AM; same spot on 6 day(s); stops ['Building 900'] -> garage run (left service)
+Sun Nov 15 12:00 AM-12:04 AM route 10 Purple - West Campus
+   bus 69129: max 4013 m at (41.3280,-72.9210); route inactive from 12:05 AM; same spot on 2 day(s); stops ['Building 900'] -> garage run (left service)
+Sun Nov 15 12:16 AM-12:18 AM route 14 Orange - Night
+   bus 69132: max 2994 m at (41.3394,-72.9244); route inactive from 12:20 AM; same spot on 1 day(s); stops ['Canner / Whitney (N)'] -> garage run (left service)
+Sun Nov 15 12:16 AM-12:18 AM route 16 Blue West
+   bus 69128: max 2852 m at (41.3367,-72.9320); route inactive from 12:20 AM; same spot on 1 day(s); stops ['333 Cedar'] -> garage run (left service)
+Sun Nov 15 06:40 PM-06:40 PM route  4 Blue - Weekend Daytime
+   bus 69154: max  899 m at (41.3357,-72.9208); route inactive from 06:40 PM; same spot on 1 day(s); stops ['Prospect / Huntington'] -> garage run (left service)
+Sun Nov 15 07:30 PM-07:38 PM route 10 Purple - West Campus
+   bus 69149: max 2383 m at (41.3138,-72.9210); back on path 07:40 PM; same spot on 10 day(s); stops ['333 Cedar', 'Union Station (S)'] -> usual loop (same spot 3+ days)
+Sun Nov 15 07:50 PM-07:54 PM route 10 Purple - West Campus
+   bus 69159: max 2371 m at (41.3142,-72.9228); back on path 07:55 PM; same spot on 10 day(s); stops ['Building 900', '100 Church Street South', 'Union Station (S)'] -> usual loop (same spot 3+ days)
+Sun Nov 15 10:50 PM-10:54 PM route 10 Purple - West Campus
+   bus 69159: max 2362 m at (41.3149,-72.9204); back on path 10:55 PM; same spot on 10 day(s); stops ['Building 900', '100 Church Street South', 'West Haven Train Station'] -> usual loop (same spot 3+ days)
+Mon Nov 16 05:00 PM-05:04 PM route 10 Purple - West Campus
+   bus 69200: max  741 m at (41.2863,-72.9379); back on path 05:05 PM; same spot on 1 day(s); stops ['Union Station (S)', 'West Haven Train Station'] -> one-off, back on path
+Mon Nov 16 05:56 PM-05:58 PM route 10 Purple - West Campus
+   bus 69210: max  642 m at (41.2518,-72.9989); back on path 06:00 PM; same spot on 1 day(s); stops ['Building 400', 'Building 600', 'Building 900'] -> one-off, back on path
+Mon Nov 16 07:36 PM-07:40 PM route 10 Purple - West Campus
+   bus 69195: max 1666 m at (41.3106,-72.9226); back on path 07:40 PM; same spot on 9 day(s); stops ['333 Cedar'] -> usual loop (same spot 3+ days)
+Mon Nov 16 09:50 PM-09:54 PM route 10 Purple - West Campus
+   bus 69216: max 1896 m at (41.3106,-72.9178); back on path 09:55 PM; same spot on 8 day(s); stops ['Building 900', 'Union Station (S)'] -> usual loop (same spot 3+ days)
+Tue Nov 17 01:56 PM-01:58 PM route  3 Red - Weekday Daytime
+   bus 69243: max 2791 m at (41.3419,-72.9297); bus gone from feed 02:00 PM; same spot on 1 day(s); stops ['Winchester / Division'] -> garage run (left service)
+Tue Nov 17 06:46 PM-06:54 PM route  8 Pink - VA Hospital / M
+   bus 69252: max 4800 m at (41.3296,-72.9343); route inactive from 06:55 PM; same spot on 2 day(s); stops ['Quigley Stadium Inbound'] -> garage run (left service)
+Tue Nov 17 10:06 PM-10:18 PM route 10 Purple - West Campus
+   bus 69272: max 2395 m at (41.3168,-72.9159); back on path 10:20 PM; same spot on 9 day(s); stops ['Building 900', 'Union Station (S)'] -> usual loop (same spot 3+ days)
+Wed Nov 18 12:00 AM-12:04 AM route 10 Purple - West Campus
+   bus 69272: max 4786 m at (41.3388,-72.9139); route inactive from 12:05 AM; same spot on 1 day(s); stops ['Building 900'] -> garage run (left service)
+Wed Nov 18 06:56 PM-07:18 PM route  8 Pink - VA Hospital / M
+   bus 69307: max 5087 m at (41.3352,-72.9339); route inactive from 07:20 PM; same spot on 2 day(s); stops ['Davenport / Howard'] -> garage run (left service)
+Wed Nov 18 07:56 PM-07:58 PM route 10 Purple - West Campus
+   bus 69326: max 2326 m at (41.3170,-72.9278); back on path 08:05 PM; same spot on 4 day(s); stops ['Union Station (S)'] -> usual loop (same spot 3+ days)
+Wed Nov 18 10:50 PM-10:54 PM route 10 Purple - West Campus
+   bus 69326: max 1429 m at (41.3117,-72.9184); back on path 10:55 PM; same spot on 9 day(s); stops ['Union Station (S)', 'West Haven Train Station'] -> usual loop (same spot 3+ days)
+Thu Nov 19 12:10 AM-12:14 AM route 16 Blue West
+   bus 69328: max 2394 m at (41.3254,-72.9336); route inactive from 12:15 AM; same spot on 1 day(s); stops ['Chapel / Dwight'] -> garage run (left service)
+Thu Nov 19 06:56 PM-07:24 PM route  8 Pink - VA Hospital / M
+   bus 69364: max 5093 m at (41.3371,-72.9332); route inactive from 07:25 PM; same spot on 2 day(s); stops ['Davenport / Howard'] -> garage run (left service)
+Thu Nov 19 07:40 PM-07:44 PM route 10 Purple - West Campus
+   bus 69371: max 2176 m at (41.3153,-72.9182); back on path 07:45 PM; same spot on 10 day(s); stops ['Building 900', '333 Cedar'] -> usual loop (same spot 3+ days)
+Thu Nov 19 09:30 PM-09:34 PM route 13 Blue - Night
+   bus 69395: max 1158 m at (41.3250,-72.9209); back on path 09:35 PM; same spot on 5 day(s); stops ['Prospect / Sachem (N)', 'Temple / Grove', 'LEPH / 60 College'] -> usual loop (same spot 3+ days)
+Thu Nov 19 09:56 PM-10:04 PM route 10 Purple - West Campus
+   bus 69393: max 2362 m at (41.3147,-72.9175); back on path 10:05 PM; same spot on 10 day(s); stops ['100 Church Street South', 'Union Station (S)'] -> usual loop (same spot 3+ days)
+by category (episodes, rider-visible minutes):
+  garage run (left service)           12  ~  112 min
+  one-off, back on path                3  ~   20 min
+  usual loop (same spot 3+ days)      20  ~  148 min
