@@ -40,7 +40,9 @@ migrations match the models. GitHub won't merge until all of them pass.
 
 Your laptop runs the app on SQLite, but CI and the servers use PostgreSQL. When
 tests pass locally and fail in CI, that difference is the usual cause, so avoid
-database-specific tricks.
+database-specific tricks. SQLite also ignores `max_length`, which PostgreSQL
+enforces: size text fields for the longest real value, and use that value in a
+test.
 
 ## Where code goes
 
@@ -124,6 +126,18 @@ another app's code or migrations when your issue says to, and tell its owner.
     same.
   - **When a review reports a result from real data, rerun that case** before
     you push a fix, and reply with what you got.
+- **Answers riders can act on, at any hour.** Check what the code says at
+  night, on weekends, at the start and end of service, and when no bus is
+  running. Then it should say so, not predict a wait. Anything about a later
+  time, like tonight's event or tomorrow's class, uses the routes that run
+  then, not the ones running now (`calendars.plans.routes_running_at`). Never
+  show a time that has already passed, or a bus the rider can't walk to in
+  time.
+- **Input as riders really give it.** Test with what calendars and phones
+  actually send: full addresses the way Google, Apple and Outlook write them
+  ("986 Chapel St, New Haven, CT 06510, USA"), `webcal://` links, and empty or
+  very long fields. A common piece, like the city, state or ZIP code, must
+  never make a match on its own.
 - **The LLM is called from the server only**, through OpenRouter, with the key
   in `OPENROUTER_API_KEY`. Never from browser JavaScript.
 - **Scheduled jobs** go in your app's `jobs.py`, with `@job(schedule=...)` and the
@@ -132,8 +146,21 @@ another app's code or migrations when your issue says to, and tell its owner.
   hourly at most: Neon stays awake 5 minutes after each use, and its free plan's
   100 compute hours a month cover staging and production together, so a job
   every 5 minutes would use them up and suspend both databases.
-- **Nothing lasting on local disk.** Data goes in the database; the servers'
-  disks are wiped on every deploy.
+- **Nothing lasting on local disk or in memory.** Data goes in the database.
+  The servers' disks are wiped on every deploy, and their memory, Django's
+  cache included, whenever they restart or sleep (Render's free plan sleeps
+  after 15 quiet minutes). Each process also has its own cache: there's no
+  shared `CACHES` setting.
+- **Pages answer in a second or two.** Render's free plan runs the site as one
+  gunicorn worker, which stops a request after 30 seconds, and nobody else
+  gets a page while it runs. Time anything that reads a lot of history, or a
+  big download like a calendar, against real data. If it's slow, do the work
+  in a scheduled job and have the page show the saved result.
+- **`render.yaml` changes Render as soon as it's on `main`.** Render syncs the
+  Blueprint, so a service added there is created when it merges. Everything
+  stays on free plans: no cron jobs or paid services (scheduled work goes in
+  `jobs.yml`). Keep `/healthz` answering 200 over plain HTTP, since Render's
+  health checks use it.
 - **Schema changes are migrations**, committed with the code that needs them.
   Keep them safe for the previous version to run against, so a rollback works:
   add tables and nullable columns freely, and remove or rename things in a
@@ -150,7 +177,9 @@ another app's code or migrations when your issue says to, and tell its owner.
 - **Demo data:** if graders need data to see your feature, add a `demo.py` to
   your app with `seed(accounts, stdout)` (see `alerts/demo.py`). The `seed`
   command runs it on every deploy, so it must be safe to run twice and leave
-  alone anything an admin has changed since. Never add A/B test visits: the
+  alone anything an admin has changed since. Put dated demo data at fixed
+  Eastern times on the coming days, not at times relative to the deploy, so
+  it's still there whenever graders look. Never add A/B test visits: the
   graded A/B run counts every visit.
 - **Don't break what graders use.** The seed command manages the two grader
   logins (`admin@example.com` and `rider@example.com`), so leave them alone.
@@ -166,6 +195,11 @@ another app's code or migrations when your issue says to, and tell its owner.
 - You checked it against real data (see Rules) after your last change, and the
   pull request says what you saw, or why you couldn't.
 - Any migrations are included.
+- Your branch has the latest `main` merged in, and the tests pass after it.
+  Reread any config file the merge touched (`render.yaml`, settings,
+  workflows): git can put a line in the wrong block without a conflict.
+- The description matches the code. If the approach changes during review,
+  update the description, and the issue's acceptance criteria if they change.
 - It works in a phone-sized and a desktop-sized window.
 - The pull request uses the template: `Closes #N`, what the AI produced, what
   you changed or rejected, and how you tested it.
@@ -215,7 +249,10 @@ working with the AI: its first tests called the real feed, so i had it mock the 
 - **The recorded history:** a snapshot every 5 minutes since Oct 26, 2026, in
   [downtowner-recorder](https://github.com/vchen017/downtowner-recorder), under
   `data/<UTC date>/`. Its README describes each CSV's columns, and
-  `data/gaps.csv` lists the polls that are missing.
+  `data/gaps.csv` lists the polls that are missing. Our database gets it once
+  a day (the `import_history` job, 4:17 AM Eastern), so during the day its
+  newest rows are hours old. Anything about right now reads the live feed; the
+  history is for patterns.
 - **Yale buildings** for the trip search come from our own list,
   `buildings/data/buildings.json`, matched by the names riders use (#98).
   **Other addresses** come from [Photon](https://photon.komoot.io), a free
