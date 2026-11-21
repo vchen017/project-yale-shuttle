@@ -137,6 +137,15 @@ class NextBusesPageTests(TestCase):
         self.assertContains(response, "Live shuttle times are unavailable right now.", status_code=503)
         self.assertContains(response, 'href="/stops/10/?to=40"', status_code=503)
 
+    def test_an_answer_that_isnt_the_shape_we_expect_says_the_same_thing(self, urlopen):
+        # Readable JSON but not a list: an empty board would tell riders no
+        # shuttle is running, which a junk answer doesn't prove (#54's review).
+        urlopen.side_effect = feed(routes={"error": "Bad Gateway"}, stops={"error": "Bad Gateway"})
+
+        response = self.get(10)
+
+        self.assertContains(response, "Live shuttle times are unavailable right now.", status_code=503)
+
     def test_the_feed_is_cached_for_30_seconds(self, urlopen):
         urlopen.side_effect = feed()
         self.get(10)
