@@ -187,8 +187,9 @@ class ViewTests(TestCase):
         self.assertContains(response, "Enter a valid URL", status_code=400)
 
     def test_replacing_the_address_keeps_the_one_calendar(self):
-        self.client.post(reverse("calendar"), {"ics_url": ADDRESS})
-        self.client.post(reverse("calendar"), {"ics_url": "https://calendar.example.com/new.ics"})
+        with mock.patch("calendars.ical.urlopen", new_callable=ics_answer):  # no real address is read
+            self.client.post(reverse("calendar"), {"ics_url": ADDRESS})
+            self.client.post(reverse("calendar"), {"ics_url": "https://calendar.example.com/new.ics"})
         calendars = Calendar.objects.filter(user=self.user, is_demo=False)
         self.assertEqual(calendars.count(), 1)
         self.assertEqual(calendars.get().ics_url, "https://calendar.example.com/new.ics")
