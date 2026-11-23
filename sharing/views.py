@@ -95,8 +95,9 @@ def stop(request, token):
 
 
 def _live(share, now):
-    """What the feed says now: the bus's position, and its minutes to the stop
-    where the rider gets off. {"feed_down": True} when the feed is down."""
+    """What the feed says now: whether the shared route is running, the bus's
+    position, and its minutes to the stop where the rider gets off.
+    {"feed_down": True} when the feed is down."""
     try:
         buses = downtowner.buses()
         arrivals = downtowner.etas(share.get_off_stop_id)
@@ -125,6 +126,10 @@ def _live(share, now):
     }
     return {
         "feed_down": False,
+        "running": net["running"],
+        # network() lists every route when none is running, so only a running
+        # network can say the shared route is among the running ones.
+        "route_running": net["running"] and route is not None,
         "bus": bus,
         "minutes": minutes,
         "arrives_at": now + dt.timedelta(minutes=minutes) if minutes is not None else None,

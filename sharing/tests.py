@@ -170,3 +170,33 @@ class SharedTripTests(TestCase):
         buses_.side_effect = lambda: buses(age_seconds=600)
         self.assertContains(self.client.get(self.url), "last reported where it is 10 min ago")
 
+    def test_after_the_last_shuttle_it_says_none_are_running_not_that_the_bus_passed(self, network, buses_, etas):
+        # Late at night network() lists every route, with running False.
+        network.return_value = {**NETWORK, "running": False}
+        buses_.side_effect = None
+        buses_.return_value = []
+        etas.return_value = []
+        response = self.client.get(self.url)
+        self.assertContains(response, "No shuttles are running right now")
+        self.assertContains(response, "bi-moon-stars")
+        self.assertContains(response, "no bus to follow to Science Hill for now")
+        self.assertNotContains(response, "No arrival time")
+        self.assertNotContains(response, "may already be past")
+        self.assertFalse(response.context["live"]["route_running"])
+
+    def test_when_only_other_routes_run_it_says_this_one_isnt_running(self, network, buses_, etas):
+        # A daytime share opened in the evening: only a night route is running.
+        network.return_value = {
+            "running": True,
+            "routes": [{"id": 2, "name": "Orange - Night", "label": "Orange", "color": "f5a623", "path": PATH}],
+            "stops": [NETWORK["stops"][2]],
+        }
+        buses_.side_effect = None
+        buses_.return_value = []
+        etas.return_value = []
+        response = self.client.get(self.url)
+        self.assertContains(response, "The Blue route isn't running right now")
+        self.assertContains(response, "no bus to follow to Science Hill for now")
+        self.assertNotContains(response, "may already be past")
+        self.assertNotContains(response, "bi-moon-stars")  # other shuttles are running
+

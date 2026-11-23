@@ -17,12 +17,16 @@
     <section class="trip-answer mb-3" aria-labelledby="share-headline">
       <h1 class="trip-answer-headline" id="share-headline">
         {% if live.feed_down %}Live shuttle times are unavailable right now
+        {% elif not live.running %}No shuttles are running right now
+        {% elif not live.route_running %}The {{ share.route_name }} route isn't running right now
         {% elif live.minutes == 0 %}The {{ share.route_name }} bus is reaching {{ share.get_off_stop_name }} now
         {% elif live.minutes is not None %}The {{ share.route_name }} bus reaches {{ share.get_off_stop_name }} in {{ live.minutes }} min
         {% else %}No arrival time at {{ share.get_off_stop_name }} right now{% endif %}
       </h1>
       {% if live.feed_down %}
         <p class="mb-0">The shuttle feed isn't answering. This page tries again every {{ refresh_seconds }} seconds.</p>
+      {% elif not live.route_running %}
+        <p class="mb-0">{% if not live.running %}<i class="bi bi-moon-stars me-1" aria-hidden="true"></i>{% endif %}There's no bus to follow to {{ share.get_off_stop_name }} for now.</p>
       {% else %}
         <dl class="trip-facts mb-0">
           {% if live.arrives_at %}<div><dt>At {{ share.get_off_stop_name }}</dt><dd>{{ live.arrives_at|date:"g:i A" }}</dd></div>{% endif %}
