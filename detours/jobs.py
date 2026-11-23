@@ -48,10 +48,15 @@ TAIL_MINUTES = dt.timedelta(minutes=25)  # how long before the day's last fix is
 
 
 def service_day(polled_at):
-    """The service day a fix belongs to: its Eastern date shifted back twelve
-    hours, so the day runs noon to noon and the fixes after midnight Eastern
-    stay with the evening that spawned them instead of starting a new day."""
-    return (polled_at.astimezone(ET) - dt.timedelta(hours=12)).date()
+    """The service day a fix belongs to: its Eastern date shifted back four
+    hours, so the day runs 4 AM to 4 AM Eastern and the fixes after midnight
+    stay with the evening that spawned them, ending the day when service
+    does. Nothing in the recorded history runs between 3 and 5 AM (Oct 26 -
+    Nov 20), so nothing straddles the boundary. A noon-to-noon day hid the
+    walk home from the routes that run through midday (Vivian, #55 review):
+    Purple's next late-morning fix was the day's last, so the tail rule
+    never saw its just-after-midnight walk to the garage."""
+    return (polled_at.astimezone(ET) - dt.timedelta(hours=4)).date()
 
 
 @job(schedule="41 9 * * *", timeout=dt.timedelta(minutes=45))
@@ -76,18 +81,26 @@ def record_usual_shapes():
     )
     # route -> hour -> [off fixes, all fixes, {service days with an off fix}]
     counted = defaultdict(lambda: defaultdict(lambda: [0, 0, set()]))
-    # route -> hour -> {service days on which a single bus ran >= RUN_MIN_SPAN off the path}
+    # route -> hour -> {service days on which a single bus ran >= RUN_MIN_SPAN
+    # off the path}. A run counts in every hour it covers, not just the one it
+    # starts in: detection flags once the run is RUN_MIN_SPAN old, which can
+    # land in the next hour (Vivian, #55 review: a loop that leaves the path
+    # at 8:50 PM was learned as hour 20 and then flagged at 9 PM).
     run_days = defaultdict(lambda: defaultdict(set))
     # route -> hour -> {service days whose walk home overlaps the hour}
     tail_days = defaultdict(lambda: defaultdict(set))
     # (route, service day) -> the day's last fresh fix: (polled_at, off the path)
     last_fix = {}
-    runs = {}  # (route, bus) -> the open run: [first off, last off, start hour, service day]
+    runs = {}  # (route, bus) -> the open run: [first off, last off, service day]
 
     def close_run(key):
-        first_off, last_off, hour, day = runs.pop(key)
+        first_off, last_off, day = runs.pop(key)
         if last_off - first_off >= RUN_MIN_SPAN:
-            run_days[key[0]][hour].add(day)
+            moment = first_off  # five-minute steps can't skip an hour the run covers
+            while moment <= last_off:
+                run_days[key[0]][moment.astimezone(ET).hour].add(day)
+                moment += dt.timedelta(minutes=5)
+            run_days[key[0]][last_off.astimezone(ET).hour].add(day)
 
     for polled_at, route_id, bus_id, lat, lon, last_update in fixes:
         if route_id not in routes:
@@ -118,7 +131,7 @@ def record_usual_shapes():
             if run:
                 run[1] = polled_at
             else:
-                runs[key] = [polled_at, polled_at, hour, day]
+                runs[key] = [polled_at, polled_at, day]
         elif key in runs:
             close_run(key)
 

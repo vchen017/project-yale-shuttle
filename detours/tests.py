@@ -795,6 +795,52 @@ class UsualShapeJobTests(TestCase):
         self.assertFalse(UsualOffPath.objects.filter(route_id=3).exists())
 
     @mock.patch("transit.downtowner.urlopen", return_value=feed_answer(ROUTES))
+    def test_a_run_counts_in_every_hour_it_covers(self, urlopen):
+        """An off-run that starts late in one Eastern hour and stretches into
+        the next flags detection in the second hour — the flag lands once the
+        run is RUN_MIN_SPAN old — so the run rule marks both (Vivian, #55
+        review: a loop leaving the path at 8:50 PM was learned as hour 20
+        and then flagged at 9:00 PM)."""
+        now = timezone.now()
+        for index in (0, 1, 2):
+            evening = now.astimezone(ET).replace(
+                hour=21, minute=50, second=0, microsecond=0
+            ) - dt.timedelta(days=index)
+            for minute in (0, 10, 15, 20):  # 21:50 to 22:10, one run across both hours
+                self.poll_with_bus(evening + dt.timedelta(minutes=minute), 1, 41.31, OFF_LON, bus_id=8001)
+            self.poll_with_bus(evening + dt.timedelta(minutes=30), 1, 41.31, -72.94)  # ends on the path
+
+        jobs.record_usual_shapes()
+
+        self.assertEqual(UsualOffPath.objects.get(route_id=1).hours, [21, 22])
+
+    def test_the_service_day_runs_four_am_to_four_am_eastern(self):
+        evening = dt.datetime(2026, 11, 20, 23, 50, tzinfo=ET)
+        self.assertEqual(jobs.service_day(dt.datetime(2026, 11, 21, 0, 10, tzinfo=ET)), evening.date())
+        self.assertEqual(jobs.service_day(dt.datetime(2026, 11, 21, 3, 59, tzinfo=ET)), evening.date())
+        self.assertEqual(jobs.service_day(dt.datetime(2026, 11, 21, 4, 1, tzinfo=ET)), dt.date(2026, 11, 21))
+
+    @mock.patch("transit.downtowner.urlopen", return_value=feed_answer(ROUTES))
+    def test_a_route_running_through_midday_gets_its_walk_home_marked(self, urlopen):
+        """Purple runs 5 AM to midnight, so its service day has a late-morning
+        fix: on a noon-to-noon day that fix was the day's last, and the walk
+        home just after midnight never looked like the day's end. From 4 AM
+        to 4 AM the walk is the day's last fix again, so the end-of-service
+        hours get marked (Vivian, #55 review)."""
+        now = timezone.now()
+        for index in (1, 2, 3):
+            midnight = now.astimezone(ET).replace(
+                hour=0, minute=10, second=0, microsecond=0
+            ) - dt.timedelta(days=index)
+            self.poll_with_bus(midnight.replace(hour=11), 1, 41.31, -72.94)  # midday service, on the path
+            self.poll_with_bus(midnight - dt.timedelta(minutes=20), 1, 41.31, OFF_LON)  # 11:50 PM, off it
+            self.poll_with_bus(midnight, 1, 41.31, OFF_LON)  # and the walk home, just after midnight
+
+        jobs.record_usual_shapes()
+
+        self.assertEqual(UsualOffPath.objects.get(route_id=1).hours, [0, 23])
+
+    @mock.patch("transit.downtowner.urlopen", return_value=feed_answer(ROUTES))
     def test_the_walk_back_to_the_garage_marks_the_end_of_service_hours(self, urlopen):
         """A route whose recorded day ends off the path just after midnight
         Eastern, three days running, has its end-of-service hours marked:
