@@ -56,7 +56,7 @@
       <section class="card mb-4" aria-labelledby="share-link-heading">
         <div class="card-body">
           <h2 class="h6" id="share-link-heading">Send this link to a friend</h2>
-          <p class="small text-body-secondary">Anyone with it can follow this bus until {{ share.expires_at|date:"g:i A" }}, without logging in. They won't see your name or your places.</p>
+          <p class="small text-body-secondary">Anyone with it can follow this bus until {{ share.expires_at|date:"g:i A" }}, without logging in. They'll see the bus and the stop where you get off, but not your name or your places.</p>
           <div class="input-group mb-3">
             <input class="form-control" id="share-link" type="text" value="{{ share_url }}" readonly aria-label="The link to share">
             <button class="btn btn-outline-primary" type="button" data-copy-link="share-link"><i class="bi bi-clipboard" aria-hidden="true"></i> Copy</button>

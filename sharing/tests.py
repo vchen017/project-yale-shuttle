@@ -145,6 +145,8 @@ class SharedTripTests(TestCase):
         self.client.force_login(self.rider)
         response = self.client.get(self.url)
         self.assertContains(response, "Send this link to a friend")
+        # The friend sees where the rider gets off, so the page says so (Austin's review).
+        self.assertContains(response, "the stop where you get off, but not your name or your places")
         self.assertContains(response, f'value="http://testserver{self.url}"')
         self.assertContains(response, reverse("share-stop", args=[self.share.token]))
         self.assertNotContains(response, 'http-equiv="refresh"')  # their page holds still while they copy
