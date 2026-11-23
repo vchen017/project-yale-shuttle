@@ -146,9 +146,13 @@ Rolling back code doesn't undo migrations, so keep them safe for the previous
 version to run against: add tables and nullable columns freely, and remove or
 rename things in a later pull request, once nothing reads them.
 
-Before the graded A/B run, delete our own test visits on production with
-`python manage.py reset_abtest --yes`, run from a laptop with production's
-`DATABASE_URL` (Render's free plan has no shell). See #47.
+Before the graded A/B run, delete our own test visits on production: open
+**Actions → reset the A/B test → Run workflow**, pick `production` and type
+`production` to confirm. Left blank, it only counts them. It uses the
+production environment's `DATABASE_URL` secret, so nobody copies the
+connection string to a laptop, and then checks that production's
+`/ecc1032/stats` shows zero impressions. Run it after the last promotion: a
+promotion opens `/ecc1032` to check it, and that counts as a visit. See #47.
 
 ## Push notifications
 
