@@ -3,7 +3,7 @@ import datetime as dt
 
 from django.conf import settings
 from django.db import models
-from django.utils import dateformat, timezone
+from django.utils import timezone
 
 from crowding.models import CrowdReport
 
@@ -190,53 +190,86 @@ class AgentAnswer(models.Model):
         return bool(self.notify and self.notify_at and self.answered_at and self.notify_at <= self.answered_at)
 
     @property
-    def facts(self):
-        """What the agent looked up, as the page shows it: one Fact per tool
-        it called, none when it called none."""
+    def timeline(self):
+        """The answer as the page draws it, in order: when the rider asked,
+        when the alert would go out, when the bus comes (from what the agent
+        looked up) and when the event starts."""
+        if self.notify_now:
+            steps = [Step("alert", "Alert now", self.asked_at, tone="now")]
+        else:
+            steps = [Step("asked", "Asked", self.asked_at)]
+            if self.notify and self.notify_at:
+                steps.append(Step("alert", "Alert", self.notify_at))
+        bus = self._bus()
+        if bus:
+            steps.append(bus)
+        steps.append(Step("event", "Starts", self.event_start))
+        return steps
+
+    def _bus(self):
+        """The bus on the timeline: at our prediction's time if the agent had
+        one, else the Downtowner's, noting how the two compare. None when it
+        looked up neither."""
         seen = self.looked_up or {}
-        facts = []
-        official = seen.get("official")
-        if "official" in seen:
-            value = "Feed down" if official == "down" else "No bus listed" if official is None else _clock(official)
-            facts.append(Fact("broadcast", "Downtowner", value))
-        if "predicted" in seen:
-            predicted = seen["predicted"]
-            fact = Fact("graph-up", "Our prediction", "None" if predicted is None else _clock(predicted))
-            if predicted is not None and official not in (None, "down"):
-                later = _minutes_between(official, predicted)
-                if later:
-                    fact.note = f"{abs(later)} min {'later' if later > 0 else 'sooner'}"
-                    fact.late = later >= Fact.LATE
-            facts.append(fact)
-        if "crowding" in seen:
-            crowd = seen["crowding"] or {}
-            if crowd.get("current"):
-                facts.append(Fact("people", "Riders report", crowd["current"], crowd=_crowd_level(crowd["current"])))
-            elif crowd.get("typical_now"):
-                facts.append(Fact("people", "Usually", crowd["typical_now"], crowd=_crowd_level(crowd["typical_now"])))
-            else:
-                facts.append(Fact("people", "Crowding", "No reports"))
-        return facts
+        official, predicted = seen.get("official"), seen.get("predicted")
+        has_official = official not in (None, "down")
+        if predicted is None:
+            return Step("bus", "Bus", dt.datetime.fromisoformat(official)) if has_official else None
+        bus = Step("bus", "Bus", dt.datetime.fromisoformat(predicted))
+        if not has_official:
+            if "official" in seen:
+                bus.note = "Feed down" if official == "down" else "Not listed"
+            return bus
+        later = _minutes_between(official, predicted)
+        if later > 0:
+            bus.note, bus.tone = f"{later} min late", "late" if later >= Step.LATE else ""
+        elif later < 0:
+            bus.note, bus.tone = f"{-later} min early", "ok"
+        else:
+            bus.note, bus.tone = "On time", "ok"
+        if later:
+            bus.was = dt.datetime.fromisoformat(official)
+        return bus
+
+    @property
+    def crowd(self):
+        """How busy the bus is, if the agent asked, for the page's meter."""
+        seen = self.looked_up or {}
+        if "crowding" not in seen:
+            return None
+        reports = seen["crowding"] or {}
+        if reports.get("current"):
+            return Crowd(_crowd_level(reports["current"]), f"Riders report {reports['current'].lower()}")
+        if reports.get("typical_now"):
+            return Crowd(_crowd_level(reports["typical_now"]), f"Usually {reports['typical_now'].lower()}")
+        return Crowd(None, "No crowding reports")
 
 
 @dataclasses.dataclass
-class Fact:
-    """One thing the trip agent looked up, as the when-to-leave page shows it:
-    a small label over its value, as "Our prediction" over "7:30 PM, 8 min later"."""
+class Step:
+    """One point on the trip agent's timeline on the when-to-leave page."""
 
-    LATE = 5  # minutes: our prediction this far behind the Downtowner's time stands out
+    LATE = 5  # minutes: our prediction this far behind the Downtowner's time shows in amber
+    ICONS = {"asked": "clock", "alert": "bell-fill", "bus": "bus-front-fill", "event": "geo-alt-fill"}
 
-    icon: str  # a Bootstrap icon's name
+    kind: str  # asked, alert, bus or event
     label: str
-    value: str
-    note: str = ""
-    late: bool = False
-    crowd: int | None = None  # a crowding level, for its colour (app.css)
+    at: dt.datetime
+    tone: str = ""  # now, late or ok: its colour (app.css)
+    note: str = ""  # for the bus: how our prediction compares with the Downtowner's time
+    was: dt.datetime | None = None  # for the bus: the Downtowner's time, when our prediction moves it
+
+    @property
+    def icon(self):
+        return self.ICONS[self.kind]
 
 
-def _clock(iso):
-    """An ISO time from looked_up as the page writes times: 3:45 PM, Eastern."""
-    return dateformat.format(timezone.localtime(dt.datetime.fromisoformat(iso)), "g:i A")
+@dataclasses.dataclass
+class Crowd:
+    """How busy the bus is, for the trip agent's crowding meter."""
+
+    level: int | None  # a CrowdReport.Level, for the meter; None when no one has said
+    text: str
 
 
 def _minutes_between(start, end):
