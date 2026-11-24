@@ -43,6 +43,41 @@ class FeedTests(SimpleTestCase):
         url = urlopen.call_args.args[0].full_url
         self.assertEqual(url, "https://yale.downtownerapp.com/routes_routes.php?inactive=true")
 
+    def test_routes_and_stops_leave_unusable_entries_out(self, urlopen):
+        # The feed's answers carry junk sometimes; a route nobody can
+        # identify or name has nothing to tell a rider, so it is left out
+        # where etas() leaves broken entries out too.
+        def by_path(request, timeout):
+            path = request.full_url.split("yale.downtownerapp.com/")[1]
+            if path.startswith("routes_routes"):
+                return answer([
+                    {"id": 1, "name": "Blue"},  # kept
+                    {"id": 2},  # no name
+                    {"name": "No id"},
+                    "a route",  # not even a dict
+                ])
+            return answer([
+                {"id": 7, "name": "Grove", "lat": 41.3, "lon": -72.9},  # kept
+                {"id": 8, "lat": 41.3, "lon": -72.9},  # no name
+                {"id": "nine", "name": "Str id"},  # no usable id
+                42,  # not even a dict
+            ])
+
+        urlopen.side_effect = by_path
+        self.assertEqual(downtowner.routes(), [{"id": 1, "name": "Blue"}])
+        self.assertEqual(downtowner.stops(), [{"id": 7, "name": "Grove", "lat": 41.3, "lon": -72.9}])
+
+    def test_a_routes_or_stops_answer_that_isnt_a_list_raises_feed_unavailable(self, urlopen):
+        # Not []: an empty list would have pages say no shuttle is running,
+        # which a junk answer doesn't prove. This way riders see the same
+        # "the feed is unavailable" page a down feed gives them.
+        urlopen.return_value = answer({"routes": []})
+        with self.assertRaises(downtowner.FeedUnavailable):
+            downtowner.routes()
+        urlopen.return_value = answer({"stops": []})
+        with self.assertRaises(downtowner.FeedUnavailable):
+            downtowner.stops()
+
     def test_each_feed_reads_its_own_endpoint(self, urlopen):
         urlopen.side_effect = lambda *args, **kwargs: answer([])
         downtowner.stops()

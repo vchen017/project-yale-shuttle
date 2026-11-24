@@ -15,4 +15,5 @@ urlpatterns = [
     path("", include("history.urls")),
     path("", include("places.urls")),
     path("", include("calendars.urls")),
+    path("", include("sharing.urls")),
 ]
