@@ -1,5 +1,6 @@
 """The notifications page, the endpoints its JavaScript calls, and the two files
-a browser needs for push: the service worker and the app manifest (#27)."""
+a browser needs for push: the service worker and the app manifest (#27). Also
+the endpoints for asking the trip agent from the when-to-leave page (#148)."""
 
 import json
 
@@ -8,15 +9,17 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import render_to_string
 from django.templatetags.static import static
 from django.urls import reverse
+from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_POST, require_safe
 
-from calendars.models import Calendar
+from calendars.models import Calendar, Event
 from places.models import Place
 
-from . import push
-from .models import PushSubscription
+from . import ask, push
+from .models import AgentAnswer, PushSubscription
 
 BAD_SUBSCRIPTION = {"error": "That isn't a push subscription."}
 
@@ -133,6 +136,67 @@ def send_test(request):
         level, text = push.describe(*counts)
         messages.add_message(request, level, text)
     return redirect("notifications")
+
+
+@login_required
+@require_POST
+def ask_agent(request):
+    """Ask the trip agent about one of the rider's upcoming events (#148). The
+    answer comes from a thread of its own: the when-to-leave page's JavaScript
+    polls agent_answer for it, and without JavaScript the page shows it once
+    reloaded."""
+    event = _posted_event(request)
+    if event is None:
+        gone = "That event isn't on your calendar anymore."
+        if _wants_json(request):
+            return JsonResponse({"error": gone}, status=404)
+        messages.warning(request, gone)
+        return redirect("when-to-leave")
+    answer = ask.start(request.user, event)
+    if _wants_json(request):
+        return JsonResponse(_answer_json(request, answer))
+    return redirect(f"{reverse('when-to-leave')}#event-{event.pk}")
+
+
+@login_required
+@require_safe
+def agent_answer(request, pk):
+    """The agent's answer so far, which the when-to-leave page polls for (#148)."""
+    answer = get_object_or_404(AgentAnswer, pk=pk, user=request.user)
+    return JsonResponse(_answer_json(request, answer))
+
+
+def _posted_event(request):
+    """The rider's event the form names by its calendar, UID and start, the
+    way it outlasts the hourly calendar refresh; None when it's gone."""
+    calendar = request.POST.get("calendar", "")
+    try:
+        start = parse_datetime(request.POST.get("start", ""))
+    except ValueError:
+        start = None
+    if start is None or not calendar.isdigit():
+        return None
+    return (
+        Event.objects.filter(
+            calendar_id=int(calendar), calendar__user=request.user, uid=request.POST.get("uid", ""), start=start
+        )
+        .select_related("calendar")
+        .first()
+    )
+
+
+def _wants_json(request):
+    return "application/json" in request.headers.get("Accept", "")
+
+
+def _answer_json(request, answer):
+    """The answer as the page's JavaScript swaps it in: its state, and its
+    HTML, rendered and escaped here rather than built from the model's text
+    in the browser."""
+    event = {"calendar_id": answer.calendar_id, "uid": answer.event_uid, "start": answer.event_start}
+    html = render_to_string("notifications/_agent.html", {"event": event, "answer": answer}, request=request)
+    state = AgentAnswer.ASKING if answer.is_asking else AgentAnswer.FAILED if answer.is_failed else answer.status
+    return {"status": state, "html": html}
 
 
 @require_safe

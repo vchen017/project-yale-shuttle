@@ -1,7 +1,7 @@
 from django.contrib import admin, messages
 
 from . import push
-from .models import PushSubscription, TripNotification
+from .models import AgentAnswer, PushSubscription, TripNotification
 
 
 @admin.register(PushSubscription)
@@ -49,6 +49,23 @@ class TripNotificationAdmin(admin.ModelAdmin):
         "user", "event_title", "event_start", "sequence", "leave_by", "message", "devices", "sent_at",
     )
     fields = readonly_fields
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(AgentAnswer)
+class AgentAnswerAdmin(admin.ModelAdmin):
+    """What the trip agent told riders who asked it from the when-to-leave
+    page (#148). Read-only: riders ask from the page."""
+
+    list_display = ("user", "event_uid", "event_start", "status", "notify", "notify_at", "asked_at")
+    list_filter = ("status", "notify")
+    list_select_related = ("user",)
+    search_fields = ("user__username", "event_uid", "message")
 
     def has_add_permission(self, request):
         return False

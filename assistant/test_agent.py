@@ -14,7 +14,7 @@ from django.core.management.base import CommandError
 from django.test import SimpleTestCase, override_settings
 
 from assistant import agent, evals, openrouter
-from assistant.decide import DONT_NOTIFY
+from assistant.decide import DONT_NOTIFY, InvalidAnswer
 from assistant.tools import TOOLS, DataSource, LiveData, ToolBox, TripRequest
 from transit.downtowner import FeedUnavailable
 
@@ -497,3 +497,19 @@ class EvaluateAgentCommandTests(SimpleTestCase):
             with self.assertRaises(CommandError):
                 call_command("evaluate_assistant", "--agent", stdout=io.StringIO())
         urlopen.assert_not_called()
+
+
+class ReportInvalidTests(SimpleTestCase):
+    """Asked from the when-to-leave page (#148), a rider is told when the agent
+    couldn't answer, rather than shown a "no" it never gave."""
+
+    NOT_JSON = [LOOK_EVERYTHING_UP, answers("Leave soon!"), answers("Leave soon!")]
+
+    def test_an_answer_that_doesnt_fit_raises_with_report_invalid(self):
+        with self.assertLogs("assistant.agent", "WARNING"), self.assertRaises(InvalidAnswer):
+            decide(self.NOT_JSON, report_invalid=True)
+
+    def test_without_it_the_same_answer_still_counts_as_dont_notify(self):
+        with self.assertLogs("assistant.agent", "WARNING"):
+            decision, _ = decide(self.NOT_JSON)
+        self.assertEqual(decision, DONT_NOTIFY)

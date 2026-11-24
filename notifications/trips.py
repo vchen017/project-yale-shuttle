@@ -160,27 +160,39 @@ def load_trips(now, users=None):
     trips = []
     for event in events:
         user_id = event.calendar.user_id
-        plan = plans.plan_event(
+        trip = plan_trip(
             event, homes[user_id], now=now, stops=stops, routes_by_id=routes_by_id,
-            running_at=plans.routes_running_at,
+            subscriptions=by_user[user_id], sent=sent[(event.calendar_id, event.uid, event.start)],
         )
-        ride = plan.plan
-        if ride is None or ride.walking_is_quicker:
-            continue  # location unknown, no route links the two, or no bus to catch
-        routes = {
-            route_id: route["name"] for route_id, route in routes_by_id.items() if route["name"] in plan.route_names
-        }
-        if not routes:
-            continue
-        trips.append(
-            Trip(
-                user_id=user_id, calendar_id=event.calendar_id, uid=event.uid, start=event.start,
-                title=event.title, stop_id=ride.board_at["id"], stop_name=ride.board_at["name"],
-                routes=routes, walk_to_stop=ride.walk_to_stop, subscriptions=by_user[user_id],
-                sent=sent[(event.calendar_id, event.uid, event.start)],
-            )
-        )
+        if trip is not None:
+            trips.append(trip)
     return trips
+
+
+def plan_trip(event, home, *, now, stops, routes_by_id, subscriptions=None, sent=None):
+    """One event as a Trip, planned from Home the way the when-to-leave page
+    plans it (#26). None when there's no bus to catch: the location is
+    unknown, no route links the two, or walking is quicker. The trip watch
+    passes the rider's devices and what was sent; asking the agent from the
+    when-to-leave page (#148) passes neither."""
+    plan = plans.plan_event(
+        event, home, now=now, stops=stops, routes_by_id=routes_by_id, running_at=plans.routes_running_at,
+    )
+    ride = plan.plan
+    if ride is None or ride.walking_is_quicker:
+        return None
+    routes = {
+        route_id: route["name"] for route_id, route in routes_by_id.items() if route["name"] in plan.route_names
+    }
+    if not routes:
+        return None
+    return Trip(
+        user_id=event.calendar.user_id, calendar_id=event.calendar_id, uid=event.uid, start=event.start,
+        title=event.title, stop_id=ride.board_at["id"], stop_name=ride.board_at["name"],
+        routes=routes, walk_to_stop=ride.walk_to_stop,
+        subscriptions=subscriptions if subscriptions is not None else [],
+        sent=sent if sent is not None else [],
+    )
 
 
 def watch_data(trips, now):

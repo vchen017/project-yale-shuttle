@@ -1,5 +1,8 @@
+import datetime as dt
+
 from django.conf import settings
 from django.db import models
+from django.utils import dateformat, timezone
 
 
 class PushSubscription(models.Model):
@@ -106,3 +109,115 @@ class TripNotification(models.Model):
 
     def __str__(self):
         return f"{self.user} · {self.event_title} at {self.event_start:%Y-%m-%d %H:%M} UTC (#{self.sequence})"
+
+
+class AgentAnswer(models.Model):
+    """What the trip agent said when a rider asked it about one upcoming trip
+    on the when-to-leave page (#148), or why it couldn't say. One per event,
+    replaced when the rider asks again. Saved rather than kept in memory: the
+    agent answers from a thread of its own, and Render's free plan restarts
+    the server when it sleeps."""
+
+    ASKING, ANSWERED, FAILED = "asking", "answered", "failed"
+    STATUSES = [(ASKING, "Asking"), (ANSWERED, "Answered"), (FAILED, "Couldn't answer")]
+    REUSE = dt.timedelta(minutes=5)  # an answer this fresh is shown again rather than asked for again
+    GIVE_UP = dt.timedelta(minutes=3)  # still asking after this long: its thread is gone (a restart)
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="agent_answers")
+    # The event the way it survives the hourly calendar refresh, as in TripNotification.
+    calendar = models.ForeignKey("calendars.Calendar", on_delete=models.CASCADE, related_name="agent_answers")
+    event_uid = models.CharField(max_length=255)
+    event_start = models.DateTimeField()
+    status = models.CharField(max_length=8, choices=STATUSES, default=ASKING)
+    asked_at = models.DateTimeField()
+    answered_at = models.DateTimeField(null=True, blank=True)
+    notify = models.BooleanField(null=True, blank=True)
+    notify_at = models.DateTimeField(null=True, blank=True)
+    message = models.CharField(max_length=200, blank=True, default="")
+    looked_up = models.JSONField(
+        default=dict, blank=True, help_text="What the agent's tools read: the next bus's times and crowding."
+    )
+    reason = models.CharField(
+        max_length=200, blank=True, default="", help_text="Why the agent couldn't answer, as the rider reads it."
+    )
+
+    class Meta:
+        ordering = ["-asked_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["calendar", "event_uid", "event_start"], name="notifications_one_agent_answer_per_trip"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user} · {self.event_uid} at {self.event_start:%Y-%m-%d %H:%M} UTC ({self.status})"
+
+    def gave_up(self, now=None):
+        """Asked so long ago without an answer that its thread must be gone."""
+        return self.status == self.ASKING and (now or timezone.now()) - self.asked_at >= self.GIVE_UP
+
+    def still_current(self, now=None):
+        """Show this again rather than ask again: still on its way, or answered within REUSE."""
+        now = now or timezone.now()
+        if self.status == self.ASKING:
+            return not self.gave_up(now)
+        return self.status == self.ANSWERED and now - self.asked_at < self.REUSE
+
+    # What the when-to-leave page shows (templates/notifications/_agent.html).
+
+    @property
+    def is_asking(self):
+        return self.status == self.ASKING and not self.gave_up()
+
+    @property
+    def is_failed(self):
+        return self.status == self.FAILED or self.gave_up()
+
+    @property
+    def failure(self):
+        return "it took too long to answer" if self.gave_up() else self.reason
+
+    @property
+    def can_ask_again(self):
+        return not self.still_current()
+
+    @property
+    def notify_now(self):
+        """Its notification would go out right away, not at a later time."""
+        return bool(self.notify and self.notify_at and self.answered_at and self.notify_at <= self.answered_at)
+
+    @property
+    def looked_up_text(self):
+        """What the agent looked up, as one sentence; empty when it looked
+        nothing up."""
+        seen = self.looked_up or {}
+        route, stop = seen.get("route", ""), seen.get("stop", "")
+        parts = []
+        if "official" in seen:
+            official = seen["official"]
+            parts.append(
+                "the live feed was down" if official == "down"
+                else f"the Downtowner listed no {route} bus on the way to {stop}" if official is None
+                else f"the Downtowner says the next {route} bus reaches {stop} at {_clock(official)}"
+            )
+        if "predicted" in seen:
+            predicted = seen["predicted"]
+            if predicted is None:
+                parts.append("we had no prediction of our own")
+            elif parts and "official" in seen and seen["official"] not in (None, "down"):
+                parts.append(f"our prediction says {_clock(predicted)}")
+            else:
+                parts.append(f"our prediction says the next {route} bus reaches {stop} at {_clock(predicted)}")
+        if "crowding" in seen:
+            crowd = seen["crowding"] or {}
+            bits = []
+            if crowd.get("current"):
+                bits.append(f"riders report {crowd['current'].lower()}")
+            if crowd.get("typical_now"):
+                bits.append(f"it's usually {crowd['typical_now'].lower()} at this hour")
+            parts.extend(bits or ["no crowding reports"])
+        return f"What it looked up: {'; '.join(parts)}." if parts else ""
+
+def _clock(iso):
+    """An ISO time from looked_up as the page writes times: 3:45 PM, Eastern."""
+    return dateformat.format(timezone.localtime(dt.datetime.fromisoformat(iso)), "g:i A")

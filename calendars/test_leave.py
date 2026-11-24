@@ -305,12 +305,40 @@ class DemoSeedTests(TestCase):
         Event.objects.filter(calendar__user=self.user).update(
             start=now - dt.timedelta(hours=2), end=now - dt.timedelta(hours=1)
         )
-        self.assertEqual(demo.reanchor(now), 3)
+        self.assertEqual(demo.reanchor(now), 4)  # with the office hours (#148)
         starts = {event.title: event.start for event in Event.objects.filter(calendar__user=self.user)}
         self.assertEqual(timezone.localtime(starts["MGT 656 lecture"]).time(), dt.time(16, 0))
         for title, start in starts.items():
             self.assertGreater(start, now, title)
         self.assertEqual(demo.reanchor(now), 0)  # safe to run twice
+
+    def test_the_office_hours_are_always_25_to_45_minutes_away(self):
+        """The trip agent is only asked about the next two hours' trips, so
+        one demo event always sits close by (#148)."""
+        self.seed()
+        now = timezone.now()
+        office_hours = Event.objects.get(calendar__user=self.user, uid=demo.SOON[0])
+        self.assertTrue(now + dt.timedelta(minutes=40) <= office_hours.start <= now + dt.timedelta(minutes=45))
+        self.assertEqual(office_hours.start.minute % 5, 0)
+        later = office_hours.start - dt.timedelta(minutes=26)  # still more than 25 minutes out: it stays
+        self.assertEqual(demo.reanchor(later), 0)
+        later = office_hours.start - dt.timedelta(minutes=24)
+        self.assertEqual(demo.reanchor(later), 1)
+        office_hours.refresh_from_db()
+        self.assertGreaterEqual(office_hours.start - later, dt.timedelta(minutes=40))
+
+    def test_the_page_moves_started_events_forward_too(self):
+        """Staging has no hourly job to move them (the job clock runs on
+        production only), so the page does, and graders always find the
+        lecture coming up to ask the trip agent about (#148)."""
+        self.seed()
+        now = timezone.now()
+        Event.objects.filter(calendar__user=self.user).update(
+            start=now - dt.timedelta(hours=2), end=now - dt.timedelta(hours=1)
+        )
+        self.assertIn("MGT 656 lecture", self.go())
+        for event in Event.objects.filter(calendar__user=self.user):
+            self.assertGreater(event.start, now, event.title)
 
     def test_the_job_reports_the_refresh_and_the_reanchoring_together(self):
         self.seed()
@@ -318,14 +346,14 @@ class DemoSeedTests(TestCase):
         Event.objects.filter(calendar__user=self.user).update(start=now - dt.timedelta(hours=2))
         summary = refresh_calendars()
         self.assertIn("0 calendars", summary)  # the demo calendar is never fetched
-        self.assertIn("3 demo events re-anchored", summary)
+        self.assertIn("4 demo events re-anchored", summary)
         self.assertTrue(Event.objects.filter(calendar__user=self.user, start__gt=now).exists())
 
     def test_seeding_fills_the_page_and_is_safe_to_rerun(self):
         self.seed()
-        self.seed()  # twice: one calendar, three events, one Home
+        self.seed()  # twice: one calendar, four events, one Home
         self.assertEqual(Calendar.objects.filter(user=self.user, is_demo=True).count(), 1)
-        self.assertEqual(Event.objects.filter(calendar__user=self.user).count(), 3)
+        self.assertEqual(Event.objects.filter(calendar__user=self.user).count(), 4)
         self.assertEqual(Place.objects.filter(user=self.user, is_home=True).count(), 1)
         content = self.go()
         self.assertIn("MGT 656 lecture", content)
@@ -360,4 +388,4 @@ class DemoSeedTests(TestCase):
         self.seed()
         self.assertFalse(Place.objects.filter(user=self.user, is_home=True).exists())
         self.assertEqual(Place.objects.filter(user=self.user, name="Home").count(), 1)
-        self.assertEqual(Event.objects.filter(calendar__user=self.user).count(), 3)  # events still demo
+        self.assertEqual(Event.objects.filter(calendar__user=self.user).count(), 4)  # events still demo

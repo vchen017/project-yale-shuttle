@@ -61,6 +61,8 @@ Everything comes from environment variables; nothing secret goes in git.
 - `/places/`: riders' saved places, Home and favourites
 - `/notifications/`: riders turn push notifications on or off for each device,
   and send themselves a test
+- `/when-to-leave/`: when to leave for each calendar event in the next 24
+  hours; riders can ask the trip agent about a trip in the next 2 hours
 - `/ecc1032`: the A/B test page, and `/ecc1032/stats` for its live results
   (`ecc1032` is the start of the SHA-1 hash of our team nickname, cold-flower)
 
@@ -212,6 +214,14 @@ jobs in its own `jobs.py`, and `python manage.py run_job --list` shows them all.
   more. Each one is recorded before it goes out, under a unique constraint, so
   overlapping runs never send it twice: see `/admin/` → Trip notifications.
   Connecting a calendar checks its trips in the next 2 hours right away.
+- **Asking the trip agent (#148):** `notifications/ask.py`. On `/when-to-leave/`
+  a rider, with or without notifications on, asks the agent about one trip in
+  the next 2 hours, and sees whether it would notify them, when, what it would
+  say, and what it looked up. The request only saves the question; the agent
+  answers in a thread of its own (it can take up to 90 seconds), and the page
+  polls for the answer, which is saved for 5 minutes: see `/admin/` → Agent
+  answers. The demo office hours are always 25 to 45 minutes away, so graders
+  can try it at any hour the shuttles run.
 - **By hand:** **Actions → scheduled jobs → Run workflow** runs any job on
   production or staging. Locally, `python manage.py run_job import_history`.
 - **Setup:** the workflow reads a `DATABASE_URL` secret from each GitHub
