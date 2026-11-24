@@ -19,7 +19,7 @@ from places.models import Place
 from transit.downtowner import FeedUnavailable
 
 from . import ask, trips
-from .models import AgentAnswer, Crowd, PushSubscription
+from .models import AgentAnswer, PushSubscription
 from .test_trips import NETWORK, SET_UP, START, Agent, Bus, a_plan
 
 User = get_user_model()
@@ -101,59 +101,46 @@ class AskTests(Rider, TestCase):
         self.assertEqual(answer.notify_at, START + dt.timedelta(minutes=2))
         self.assertIn("Leave by", answer.message)
         self.assertEqual(answer.looked_up, {"route": "Blue", "stop": "Grove St", "official": BUS_AT.isoformat()})
-        self.assertEqual(
-            [(step.kind, step.at, step.note) for step in answer.timeline],
-            [("asked", ASKED, ""), ("alert", START + dt.timedelta(minutes=2), ""), ("bus", BUS_AT, ""),
-             ("event", self.event.start, "")],
-        )
+        self.assertEqual([(check.label, check.value) for check in answer.checks], [("Downtowner", "9:57 AM")])
         self.assertEqual(AgentAnswer.objects.get().pk, answer.pk)  # saved, where the page finds it
 
     def test_it_notes_everything_the_agent_looked_up(self, network, plan_event):
         answer = self.answer(self.ask()[0], decide=LooksEverythingUp())
         self.assertEqual((answer.status, answer.notify, answer.message), (AgentAnswer.ANSWERED, False, ""))
         self.assertEqual(
-            [(step.kind, step.at) for step in answer.timeline],
-            [("asked", ASKED), ("bus", BUS_AT), ("event", self.event.start)],  # no alert, and no prediction to compare
+            [(check.label, check.value, check.crowd) for check in answer.checks],
+            [("Downtowner", "9:57 AM", None), ("Our prediction", "None", None), ("Crowding", "No reports", None)],
         )
-        self.assertEqual(answer.crowd, Crowd(None, "No crowding reports"))
 
-    def test_the_timeline_shows_how_the_bus_times_compare(self, network, plan_event):
-        def bus(**seen):
-            answer = AgentAnswer(asked_at=ASKED, event_start=self.event.start, looked_up=seen)
-            buses = [step for step in answer.timeline if step.kind == "bus"]
-            return (buses[0].at, buses[0].note, buses[0].tone, buses[0].was) if buses else None
+    def test_it_says_how_late_our_prediction_has_the_bus(self, network, plan_event):
+        def compared(**seen):
+            answer = AgentAnswer(looked_up=seen)
+            ours = [check for check in answer.checks if check.label == "Our prediction"]
+            return answer.lateness, (ours[0].value, ours[0].note, ours[0].tone) if ours else None
 
-        at = {minutes: BUS_AT + dt.timedelta(minutes=minutes) for minutes in (-2, 0, 3, 8)}
-        iso = {minutes: time.isoformat() for minutes, time in at.items()}
-        self.assertEqual(bus(official=iso[0], predicted=iso[8]), (at[8], "8 min late", "late", at[0]))  # stands out
-        self.assertEqual(bus(official=iso[0], predicted=iso[3]), (at[3], "3 min late", "", at[0]))
-        self.assertEqual(bus(official=iso[0], predicted=iso[-2]), (at[-2], "2 min early", "ok", at[0]))
-        self.assertEqual(bus(official=iso[0], predicted=iso[0]), (at[0], "On time", "ok", None))
-        self.assertEqual(bus(official=iso[0], predicted=None), (at[0], "", "", None))  # nothing of ours to compare
-        self.assertEqual(bus(official=None, predicted=iso[0]), (at[0], "Not listed", "", None))
-        self.assertEqual(bus(official="down", predicted=iso[0]), (at[0], "Feed down", "", None))
-        self.assertEqual(bus(predicted=iso[0]), (at[0], "", "", None))  # it never read the feed
-        self.assertIsNone(bus(official="down"))
-        self.assertIsNone(bus())
-
-    def test_an_alert_now_starts_the_timeline(self, network, plan_event):
-        answer = AgentAnswer(
-            asked_at=ASKED, answered_at=ASKED, event_start=self.event.start, notify=True, notify_at=ASKED,
-        )
+        iso = {minutes: (BUS_AT + dt.timedelta(minutes=minutes)).isoformat() for minutes in (-2, 0, 3, 8)}
+        self.assertEqual(compared(official=iso[0], predicted=iso[8]), (("8 min late", "late"), ("10:05 AM", "8 min late", "late")))
+        self.assertEqual(compared(official=iso[0], predicted=iso[3])[0], ("3 min late", ""))  # too little to stand out
+        self.assertEqual(compared(official=iso[0], predicted=iso[-2])[0], ("2 min early", "ok"))
+        self.assertEqual(compared(official=iso[0], predicted=iso[0])[0], ("On time", "ok"))
+        self.assertEqual(compared(official=iso[0], predicted=None), (None, ("None", "", "")))  # nothing of ours to compare
+        self.assertEqual(compared(official="down", predicted=iso[0]), (None, ("9:57 AM", "", "")))
+        self.assertEqual(compared(official=None, predicted=iso[0])[0], None)  # the Downtowner listed no bus
         self.assertEqual(
-            [(step.kind, step.label, step.tone) for step in answer.timeline],
-            [("alert", "Alert now", "now"), ("event", "Starts", "")],
+            [(check.label, check.value) for check in AgentAnswer(looked_up={"official": "down"}).checks],
+            [("Downtowner", "Feed down")],
         )
+        self.assertEqual(AgentAnswer(looked_up={}).checks, [])
 
-    def test_the_crowding_meter_shows_what_riders_report_or_what_is_usual(self, network, plan_event):
-        def crowd(reports):
-            return AgentAnswer(looked_up={"crowding": reports}).crowd
+    def test_crowding_shows_what_riders_report_or_what_is_usual(self, network, plan_event):
+        def crowding(reports):
+            check = AgentAnswer(looked_up={"crowding": reports}).checks[0]
+            return check.value, check.crowd
 
         both = {"current": "Standing room", "typical_now": "Seats available"}
-        self.assertEqual(crowd(both), Crowd(2, "Riders report standing room"))
-        self.assertEqual(crowd({"current": None, "typical_now": "Seats available"}), Crowd(1, "Usually seats available"))
-        self.assertEqual(crowd(None), Crowd(None, "No crowding reports"))
-        self.assertIsNone(AgentAnswer(looked_up={}).crowd)  # it never asked
+        self.assertEqual(crowding(both), ("Riders report standing room", 2))
+        self.assertEqual(crowding({"current": None, "typical_now": "Seats available"}), ("Usually seats available", 1))
+        self.assertEqual(crowding(None), ("No reports", None))
 
     def test_the_real_agent_is_asked_strictly_and_its_tool_reads_are_noted(self, network, plan_event):
         official = {"id": "a", "type": "function", "function": {"name": "get_official_arrival", "arguments": "{}"}}
@@ -286,7 +273,7 @@ class AskPageTests(Rider, TestCase):
         return self.client.get(reverse("when-to-leave")).content.decode()
 
     def test_the_page_asks_then_polls_until_the_agent_answers(self, *mocks):
-        self.assertIn("Ask the trip agent", self.page())
+        self.assertIn("Ask the AI trip agent", self.page())
         response, threads = self.post(self.form())
         body = response.json()
         self.assertEqual((response.status_code, body["status"], threads), (200, "asking", 1))
@@ -326,7 +313,7 @@ class AskPageTests(Rider, TestCase):
             location="Watson Center",
         )
         page = self.page()
-        self.assertIn("Ask the trip agent from 10:45 AM", page)
+        self.assertIn("Ask the AI trip agent from 10:45 AM", page)
         self.assertEqual(page.count("data-agent-ask"), 1)  # the lecture's button, 40 minutes out
 
     def test_a_failed_answer_says_why_and_offers_another_try(self, *mocks):

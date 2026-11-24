@@ -69,7 +69,7 @@
         {% endif %}
         {% if plan.has_a_bus and plan.ask_from %}
           {# The button's shape, greyed: the agent reads the next buses, so it's asked about the next two hours' trips #}
-          <div class="mt-3"><span class="agent-later" title="The trip agent looks at the next buses, so it answers about trips in the next two hours."><i class="bi bi-clock" aria-hidden="true"></i>Ask the trip agent from {{ plan.ask_from|date:"g:i A" }}</span></div>
+          <div class="mt-3"><span class="agent-later" title="The AI trip agent looks at the next buses, so it answers about trips in the next two hours."><i class="bi bi-clock" aria-hidden="true"></i>Ask the AI trip agent from {{ plan.ask_from|date:"g:i A" }}</span></div>
         {% elif plan.has_a_bus %}
           {% include "notifications/_agent.html" with event=plan.event answer=plan.agent_answer %}
         {% endif %}

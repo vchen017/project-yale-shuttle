@@ -3,7 +3,7 @@ import datetime as dt
 
 from django.conf import settings
 from django.db import models
-from django.utils import timezone
+from django.utils import dateformat, timezone
 
 from crowding.models import CrowdReport
 
@@ -190,86 +190,67 @@ class AgentAnswer(models.Model):
         return bool(self.notify and self.notify_at and self.answered_at and self.notify_at <= self.answered_at)
 
     @property
-    def timeline(self):
-        """The answer as the page draws it, in order: when the rider asked,
-        when the alert would go out, when the bus comes (from what the agent
-        looked up) and when the event starts."""
-        if self.notify_now:
-            steps = [Step("alert", "Alert now", self.asked_at, tone="now")]
-        else:
-            steps = [Step("asked", "Asked", self.asked_at)]
-            if self.notify and self.notify_at:
-                steps.append(Step("alert", "Alert", self.notify_at))
-        bus = self._bus()
-        if bus:
-            steps.append(bus)
-        steps.append(Step("event", "Starts", self.event_start))
-        return steps
+    def checks(self):
+        """What the AI checked before it answered, as the page lists it: a
+        Check per tool it called, none when it called none."""
+        seen = self.looked_up or {}
+        checks = []
+        if "official" in seen:
+            official = seen["official"]
+            value = "Feed down" if official == "down" else "No bus listed" if official is None else _clock(official)
+            checks.append(Check("broadcast", "Downtowner", value))
+        if "predicted" in seen:
+            predicted = seen["predicted"]
+            check = Check("graph-up", "Our prediction", "None" if predicted is None else _clock(predicted))
+            if self.lateness:
+                check.note, check.tone = self.lateness
+            checks.append(check)
+        if "crowding" in seen:
+            reports = seen["crowding"] or {}
+            if reports.get("current"):
+                value, label = f"Riders report {reports['current'].lower()}", reports["current"]
+            elif reports.get("typical_now"):
+                value, label = f"Usually {reports['typical_now'].lower()}", reports["typical_now"]
+            else:
+                value, label = "No reports", None
+            checks.append(Check("people", "Crowding", value, crowd=_crowd_level(label)))
+        return checks
 
-    def _bus(self):
-        """The bus on the timeline: at our prediction's time if the agent had
-        one, else the Downtowner's, noting how the two compare. None when it
-        looked up neither."""
+    @property
+    def lateness(self):
+        """How our prediction for the bus compares with the Downtowner's time,
+        as (note, tone): ("8 min late", "late"), ("2 min early", "ok") or
+        ("On time", "ok"). None unless the AI had both."""
         seen = self.looked_up or {}
         official, predicted = seen.get("official"), seen.get("predicted")
-        has_official = official not in (None, "down")
-        if predicted is None:
-            return Step("bus", "Bus", dt.datetime.fromisoformat(official)) if has_official else None
-        bus = Step("bus", "Bus", dt.datetime.fromisoformat(predicted))
-        if not has_official:
-            if "official" in seen:
-                bus.note = "Feed down" if official == "down" else "Not listed"
-            return bus
+        if official in (None, "down") or predicted is None:
+            return None
         later = _minutes_between(official, predicted)
         if later > 0:
-            bus.note, bus.tone = f"{later} min late", "late" if later >= Step.LATE else ""
-        elif later < 0:
-            bus.note, bus.tone = f"{-later} min early", "ok"
-        else:
-            bus.note, bus.tone = "On time", "ok"
-        if later:
-            bus.was = dt.datetime.fromisoformat(official)
-        return bus
-
-    @property
-    def crowd(self):
-        """How busy the bus is, if the agent asked, for the page's meter."""
-        seen = self.looked_up or {}
-        if "crowding" not in seen:
-            return None
-        reports = seen["crowding"] or {}
-        if reports.get("current"):
-            return Crowd(_crowd_level(reports["current"]), f"Riders report {reports['current'].lower()}")
-        if reports.get("typical_now"):
-            return Crowd(_crowd_level(reports["typical_now"]), f"Usually {reports['typical_now'].lower()}")
-        return Crowd(None, "No crowding reports")
+            return f"{later} min late", "late" if later >= Check.LATE else ""
+        if later < 0:
+            return f"{-later} min early", "ok"
+        return "On time", "ok"
 
 
 @dataclasses.dataclass
-class Step:
-    """One point on the trip agent's timeline on the when-to-leave page."""
+class Check:
+    """One thing the AI checked before it answered, as the when-to-leave page
+    lists it: an icon, a label and what it found."""
 
     LATE = 5  # minutes: our prediction this far behind the Downtowner's time shows in amber
-    ICONS = {"asked": "clock", "alert": "bell-fill", "bus": "bus-front-fill", "event": "geo-alt-fill"}
 
-    kind: str  # asked, alert, bus or event
+    icon: str  # a Bootstrap icon's name
     label: str
-    at: dt.datetime
-    tone: str = ""  # now, late or ok: its colour (app.css)
-    note: str = ""  # for the bus: how our prediction compares with the Downtowner's time
-    was: dt.datetime | None = None  # for the bus: the Downtowner's time, when our prediction moves it
-
-    @property
-    def icon(self):
-        return self.ICONS[self.kind]
+    value: str
+    note: str = ""  # for our prediction: how it compares with the Downtowner's time
+    tone: str = ""  # late or ok: the note's colour (app.css)
+    crowd: int | None = None  # a CrowdReport.Level, for the crowding meter
 
 
-@dataclasses.dataclass
-class Crowd:
-    """How busy the bus is, for the trip agent's crowding meter."""
-
-    level: int | None  # a CrowdReport.Level, for the meter; None when no one has said
-    text: str
+def _clock(iso):
+    """An ISO time from looked_up as the page writes times: 3:45 PM, Eastern."""
+    return dateformat.format(timezone.localtime(dt.datetime.fromisoformat(iso)), "g:i A")
 
 
 def _minutes_between(start, end):

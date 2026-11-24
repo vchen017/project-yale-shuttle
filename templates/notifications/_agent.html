@@ -1,11 +1,11 @@
 {% load static %}
-{# The trip agent about one event on the when-to-leave page (#148): the button that asks it, then its answer: #}
-{# a verdict, the notification it would send, a timeline (asked, the alert, the bus, the event) and a crowding #}
-{# meter, drawn by app.css ("The trip agent"). notifications.views renders it too, for core/agent.js to swap in. #}
+{# The AI trip agent about one event on the when-to-leave page (#148): the button that asks it, then its answer: #}
+{# a verdict, the notification it would send and what it checked (the Downtowner's time, our prediction and #}
+{# crowding), drawn by app.css ("The trip agent"). notifications.views renders it too, for core/agent.js to swap in. #}
 <div class="mt-3" data-agent{% if answer.is_asking %} data-agent-poll="{% url 'agent-answer' answer.pk %}"{% endif %} aria-live="polite">
   {% if answer %}
     <div class="agent-panel{% if answer.is_failed %} agent-failed{% endif %}">
-      <div class="agent-head"><i class="bi bi-stars me-1" aria-hidden="true"></i>Trip agent</div>
+      <div class="agent-head"><span class="agent-ai"><i class="bi bi-stars" aria-hidden="true"></i>AI</span>Trip agent</div>
       {% if answer.is_asking %}
         <div class="agent-hero">
           <span class="agent-badge is-asking"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span></span>
@@ -14,9 +14,11 @@
             <div class="agent-hero-sub">This can take a minute.</div>
           </div>
         </div>
-        <ol class="agent-steps placeholder-glow" aria-hidden="true">
-          {% for step in "1234" %}<li class="agent-step"><span class="agent-step-icon"></span><span class="placeholder"></span></li>{% endfor %}
-        </ol>
+        <ul class="agent-checks placeholder-glow" aria-hidden="true">
+          <li class="agent-check"><i class="bi bi-broadcast agent-check-icon"></i><span class="agent-check-label">Downtowner</span><span class="placeholder"></span></li>
+          <li class="agent-check"><i class="bi bi-graph-up agent-check-icon"></i><span class="agent-check-label">Our prediction</span><span class="placeholder"></span></li>
+          <li class="agent-check"><i class="bi bi-people agent-check-icon"></i><span class="agent-check-label">Crowding</span><span class="placeholder"></span></li>
+        </ul>
         <noscript><p class="small text-body-secondary mb-0 mt-2">Reload the page in a minute to see its answer.</p></noscript>
       {% elif answer.is_failed %}
         <div class="agent-hero">
@@ -49,26 +51,21 @@
             </div>
           </div>
         {% endif %}
-        <ol class="agent-steps">
-          {% for step in answer.timeline %}
-            <li class="agent-step agent-step-{{ step.kind }}{% if step.tone %} is-{{ step.tone }}{% endif %}">
-              <span class="agent-step-icon"><i class="bi bi-{{ step.icon }}" aria-hidden="true"></i></span>
-              <span class="agent-step-time">{{ step.at|date:"g:i A" }}</span>
-              <span class="agent-step-label">{{ step.label }}</span>
-              {% if step.note %}<span class="agent-step-note">{{ step.note }}</span>{% endif %}
-              {% if step.was %}<s class="agent-step-was" title="The Downtowner's time"><span class="visually-hidden">The Downtowner says </span>{{ step.was|date:"g:i A" }}</s>{% endif %}
-            </li>
-          {% endfor %}
-        </ol>
-        {% with crowd=answer.crowd %}
-          {% if crowd %}
-            <div class="agent-crowd">
-              <i class="bi bi-people-fill" aria-hidden="true"></i>
-              <span class="agent-meter{% if crowd.level is not None %} crowd-{{ crowd.level }}{% endif %}" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
-              {{ crowd.text }}
-            </div>
-          {% endif %}
-        {% endwith %}
+        {% if answer.checks %}
+          <div class="agent-checked">
+            <div class="agent-checked-title">What it checked</div>
+            <ul class="agent-checks">
+              {% for check in answer.checks %}
+                <li class="agent-check">
+                  <i class="bi bi-{{ check.icon }} agent-check-icon" aria-hidden="true"></i>
+                  <span class="agent-check-label">{{ check.label }}</span>
+                  <span class="agent-check-value">{% if check.crowd is not None %}<span class="agent-meter crowd-{{ check.crowd }}" aria-hidden="true"><span></span><span></span><span></span><span></span></span>{% endif %}{{ check.value }}</span>
+                  {% if check.note %}<span class="agent-chip{% if check.tone %} is-{{ check.tone }}{% endif %}">{{ check.note }}</span>{% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
         {% if answer.notify and not alerts_on %}
           <a class="agent-link" href="{% url 'notifications' %}"><i class="bi bi-bell me-1" aria-hidden="true"></i>Get alerts on your phone</a>
         {% endif %}
@@ -84,7 +81,7 @@
       {% if answer %}
         <button class="btn btn-sm btn-link px-0" type="submit"><i class="bi bi-arrow-clockwise me-1" aria-hidden="true"></i>{% if answer.is_failed %}Try again{% else %}Ask again{% endif %}</button>
       {% else %}
-        <button class="btn btn-sm btn-agent" type="submit"><i class="bi bi-stars me-1" aria-hidden="true"></i>Ask the trip agent</button>
+        <button class="btn btn-sm btn-agent" type="submit"><i class="bi bi-stars me-1" aria-hidden="true"></i>Ask the AI trip agent</button>
       {% endif %}
     </form>
   {% endif %}
