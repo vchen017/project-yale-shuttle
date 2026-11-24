@@ -82,7 +82,8 @@ class NextBusesPageTests(TestCase):
         self.assertContains(response, "2 min")
         self.assertContains(response, "then 9, 17 min")
         self.assertContains(response, ">Our prediction</div>", count=2)
-        predict.assert_any_call(1, 10, use_live_feed=False)
+        # All the rows' served checks share one stop-list read (current_by_route).
+        predict.assert_any_call(1, 10, use_live_feed=False, current_by_route=mock.ANY)
 
     @mock.patch("transit.next_buses.predict_minutes", return_value=None)
     def test_without_a_prediction_only_the_official_time_shows_labelled_as_such(self, predict, urlopen):

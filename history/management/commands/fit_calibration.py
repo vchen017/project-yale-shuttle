@@ -11,6 +11,7 @@ database: a run replaces every row, and a thin fit simply corrects less.
 
 import datetime as dt
 
+from django.core.cache import cache
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
@@ -69,6 +70,12 @@ class Command(BaseCommand):
         with transaction.atomic():
             Calibration.objects.all().delete()
             Calibration.objects.bulk_create(rows)
+        # predict_minutes reads the corrections through a 10-minute cache:
+        # drop it so the new fit answers at once instead of up to ten
+        # minutes late (the nightly fit would otherwise go unnoticed until
+        # the cache expired — including the first-ever fit, which would
+        # leave raw countdowns serving that whole window).
+        cache.delete("history.calibration")
         self.stdout.write(
             f"Fitted {len(rows)} correction rows from {everything} residuals "
             f"over the last {predictions.HISTORY_DAYS} days "

@@ -193,7 +193,7 @@ def _stop_is_served(route_id, stop_id, current_by_route=None):
     return current is None or stop_id in current
 
 
-def predict_minutes(route_id, stop_id, now=None, use_live_feed=True):
+def predict_minutes(route_id, stop_id, now=None, use_live_feed=True, current_by_route=None):
     """Our predicted minutes until the route's next bus reaches the stop.
 
     None when nothing live is fresh and history has nothing to learn from,
@@ -207,8 +207,12 @@ def predict_minutes(route_id, stop_id, now=None, use_live_feed=True):
     only from our recorded polls and history. Pages that show the official
     time next to ours use it (the next-buses page, #83): with the feed, our
     number would just repeat the official one.
+
+    A caller asking about many routes at one stop (the next-buses board)
+    passes `current_by_route` from current_stops_by_route(), so the served
+    check reads one query instead of one per route.
     """
-    if not _stop_is_served(route_id, stop_id):
+    if not _stop_is_served(route_id, stop_id, current_by_route=current_by_route):
         return None
     asked_about_now = now is None
     now = now or timezone.now()
@@ -466,6 +470,11 @@ def evaluate(holdout_modulus=3, stride=2, days=HISTORY_DAYS, now=None):
         for pair, moments in arrivals_by_pair.items()
     }
     corrections = _fit_corrections(_shown_residuals(since, until=now, exclude_dates=test_days))
+    # One read of every walked route's newest stop list: scoring asks
+    # whether the route serves the stop for every query, and per-query
+    # lookups were minutes of extra latency against production Postgres —
+    # the same fix accuracy() already has (#17).
+    served_by_route = current_stops_by_route()
 
     queries = no_prediction = not_served = 0
     history_queries = official_answered = 0
@@ -500,7 +509,7 @@ def evaluate(holdout_modulus=3, stride=2, days=HISTORY_DAYS, now=None):
             for pair, etas in sorted(by_poll[polled_at].items()):
                 # Pairs at stops the route no longer serves are skipped, so
                 # the score describes what riders would actually be told (#57).
-                if not _stop_is_served(*pair):
+                if not _stop_is_served(*pair, current_by_route=served_by_route):
                     not_served += 1
                     continue
                 moments = arrivals_by_pair.get(pair, ())

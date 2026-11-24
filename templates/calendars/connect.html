@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Calendar · Yale Shuttle{% endblock %}
+{% block content %}
+<h1 class="h3 mb-1">Your calendar</h1>
+<p class="text-body-secondary mb-4">Connect your class or work calendar and Yale Shuttle will show when to leave for each event. We read the calendar on the server, once an hour — only you can see it.</p>
+
+{% for message in messages %}
+  <div class="alert {{ message.tags }} d-flex gap-2" role="status">
+    <i class="bi {% if message.level_tag == 'success' %}bi-check-circle-fill{% elif message.level_tag == 'warning' %}bi-exclamation-triangle-fill{% else %}bi-info-circle-fill{% endif %}" aria-hidden="true"></i><div>{{ message }}</div>
+  </div>
+{% endfor %}
+
+{% if calendar %}
+  <div class="card mb-4">
+    <div class="card-body d-flex flex-wrap align-items-center gap-3">
+      <i class="bi bi-calendar-check-fill text-primary fs-4" aria-hidden="true"></i>
+      <div class="me-auto text-break" style="min-width: 12rem;">
+        <div class="fw-semibold">Connected</div>
+        <div class="small text-body-secondary">{{ calendar.ics_url }}</div>
+        {% if calendar.last_imported_at %}
+          <div class="small text-body-secondary">Last read {{ calendar.last_imported_at|date:"M j, g:i A" }}</div>
+        {% endif %}
+        {% if calendar.last_error %}
+          <div class="small text-danger mt-1"><i class="bi bi-exclamation-triangle me-1" aria-hidden="true"></i>{{ calendar.last_error }}</div>
+        {% endif %}
+      </div>
+      <a class="btn btn-sm btn-primary" href="{% url 'when-to-leave' %}">
+        <i class="bi bi-alarm me-1" aria-hidden="true"></i>When to leave
+      </a>
+      <form method="post" action="{% url 'calendar-disconnect' %}">
+        {% csrf_token %}
+        <button class="btn btn-sm btn-outline-danger" type="submit">
+          <i class="bi bi-calendar-x me-1" aria-hidden="true"></i>Disconnect
+        </button>
+      </form>
+    </div>
+  </div>
+{% endif %}
+
+<div class="row g-4">
+  {% if events %}
+    <div class="col-lg-7 order-lg-2">
+      <h2 class="h6 text-body-secondary text-uppercase mb-2">Next 24 hours</h2>
+      <ul class="list-group">
+        {% for event in events %}
+          <li class="list-group-item py-3">
+            <div class="fw-semibold">{{ event.title }}</div>
+            <div class="small text-body-secondary">
+              <i class="bi bi-clock me-1" aria-hidden="true"></i>{{ event.start|date:"D, M j · g:i A" }}
+              {% if event.end %}– {{ event.end|date:"g:i A" }}{% endif %}
+            </div>
+            {% if event.location %}
+              <div class="small text-body-secondary text-break">
+                <i class="bi bi-geo-alt me-1" aria-hidden="true"></i>{{ event.location }}
+              </div>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <div class="col-lg-{% if events %}5 order-lg-1{% else %}12{% endif %}">
+    <h2 class="h6 text-body-secondary text-uppercase mb-2">{% if calendar %}Replace the address{% else %}Connect a calendar{% endif %}</h2>
+    <form method="post" action="{% url 'calendar' %}" class="card">
+      <div class="card-body">
+        {% csrf_token %}
+        {% include "registration/_fields.html" %}
+        <button class="btn btn-primary w-100" type="submit">
+          <i class="bi bi-calendar-plus me-1" aria-hidden="true"></i>{% if calendar %}Save and re-read{% else %}Connect{% endif %}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

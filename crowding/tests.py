@@ -278,3 +278,17 @@ class DemoTests(ReportsMixin, TestCase):
         newest = CrowdReport.objects.filter(is_sample=True).order_by("-created_at").first()
         self.assertEqual(newest.created_at.astimezone(ET).date(), dt.date(2026, 11, 25))
         self.assertTrue(CrowdReport.objects.filter(pk=real.pk).exists())
+
+    def test_the_refresh_never_undoes_an_admin_who_removed_a_sample(self, now):
+        self.seed()
+        removed = CrowdReport.objects.filter(is_sample=True).first()
+        removed.removed_at = NOW
+        removed.removed_by = self.rider
+        removed.save(update_fields=["removed_at", "removed_by"])
+        now.return_value = NOW + dt.timedelta(days=8)
+
+        self.seed()
+
+        still_removed = CrowdReport.objects.get(pk=removed.pk)
+        self.assertEqual(still_removed.removed_by, self.rider)  # the record survives
+        self.assertTrue(CrowdReport.objects.filter(is_sample=True, removed_at__isnull=True).exists())

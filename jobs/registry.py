@@ -11,15 +11,16 @@
         return "a short summary for the run log"
 
 `schedule` is a cron line in UTC. The same line must be in
-.github/workflows/jobs.yml, which is what starts the jobs; a test checks that
-every job's line is there. The docstring's first line describes the job in
-`run_job --list`.
+.github/workflows/jobs.yml; a test checks that every job's line is there. The
+job clock (jobs/clock.py) reads those lines and starts each one's run on time.
+The docstring's first line describes the job in `run_job --list`.
 
-A job must be safe to run late, twice, or after a skipped run: GitHub can start
-a scheduled run late, or drop one when it's busy. And mind the database: Neon
-stays awake for 5 minutes after each use, and its free plan has 100 compute
-hours a month for staging and production together, so a job that touches the
-database more often than hourly needs a plan for that first (see AGENTS.md).
+A job must be safe to run late, twice, or after a skipped run: GitHub's own
+schedule, the backup, runs hours late or drops runs, and the clock can miss a
+run if GitHub won't take it. And mind the database: Neon stays awake for 5
+minutes after each use, and its free plan has 100 compute hours a month for
+staging and production together, so a job that touches the database more
+often than hourly needs a plan for that first (see AGENTS.md).
 """
 
 import datetime as dt

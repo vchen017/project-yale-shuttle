@@ -9,8 +9,9 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
 from abtest.models import Visit
+from accounts.models import RESERVED_USERNAMES
 from alerts.models import Alert
-from core.management.commands.seed import demo_modules
+from core.management.commands.seed import ACCOUNTS, demo_modules
 
 PASSWORDS = {"SEED_ADMIN_PASSWORD": "test-admin-pass-1", "SEED_RIDER_PASSWORD": "test-rider-pass-2"}
 
@@ -29,6 +30,9 @@ class SeedTests(TestCase):
         self.assertFalse(User.objects.get(username="rider@example.com").is_staff)
         self.assertTrue(self.client.login(username="admin@example.com", password="test-admin-pass-1"))
         self.assertTrue(self.client.login(username="rider@example.com", password="test-rider-pass-2"))
+
+    def test_every_grader_username_is_reserved_at_sign_up(self):
+        self.assertLessEqual({email for _, email, _, _ in ACCOUNTS}, set(RESERVED_USERNAMES))
 
     def test_a_rerun_picks_up_a_changed_password(self):
         self.seed()

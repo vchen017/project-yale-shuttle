@@ -14,6 +14,15 @@ class AccountTests(TestCase):
         self.assertRedirects(response, "/")
         self.assertContains(response, "newrider")
 
+    def test_the_grader_usernames_are_reserved_at_sign_up(self):
+        for username in ("admin@example.com", "rider@example.com", "ADMIN@example.com"):
+            response = self.client.post(
+                "/signup/",
+                {"username": username, "email": "new@example.com", "password1": PASSWORD, "password2": PASSWORD},
+            )
+            self.assertContains(response, "That username is reserved.")
+            self.assertFalse(get_user_model().objects.filter(username__iexact=username).exists())
+
     def test_sign_up_form_shows_one_short_line_of_password_rules(self):
         response = self.client.get("/signup/")
         self.assertContains(response, "At least 8 characters, not too common, and not only numbers.")
