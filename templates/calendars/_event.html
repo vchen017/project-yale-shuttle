@@ -1,0 +1,82 @@
+{# One event on the when-to-leave page's calendar: its start time, then a block. A trip gets when to leave, #}
+{# its steps from Home beside a map (core/trip-map.js) and the trip agent; an event we can't plan a ride to #}
+{# gets a dashed block saying why. The styles are app.css's "The when-to-leave page as a calendar". #}
+<div class="cal-event" id="event-{{ plan.event.pk }}">
+  <div class="cal-when{% if not plan.leave_by %} is-faded{% endif %}">
+    <span class="cal-when-time">{{ plan.event.start|date:"g:i" }}</span>
+    <span class="cal-when-ampm">{{ plan.event.start|date:"A" }}</span>
+  </div>
+  {% if plan.leave_by %}
+    <div class="cal-block">
+      <div class="cal-title">{{ plan.event.title }}</div>
+      {% if plan.event.location %}<div class="cal-place"><i class="bi bi-geo-alt me-1" aria-hidden="true"></i>{{ plan.event.location }}</div>{% endif %}
+      <div class="cal-leave">
+        <span class="cal-leave-time">Leave {% if plan.estimate %}around{% else %}by{% endif %} {{ plan.leave_by|date:"g:i A" }}</span>
+        {% if not plan.estimate %}
+          {% if plan.leave_in <= 0 %}<span class="cal-chip is-now">now</span>{% elif plan.leave_in <= 90 %}<span class="cal-chip is-soon">in {{ plan.leave_in }} min</span>{% endif %}
+        {% endif %}
+      </div>
+      <div class="cal-trip">
+        <ol class="cal-rail">
+          <li class="cal-step">
+            <span class="cal-step-time">{{ plan.leave_by|date:"g:i A" }}</span>
+            <span class="cal-step-what"><i class="bi bi-house-door me-1" aria-hidden="true"></i>Leave Home{% if plan.walking_is_quicker %} · {{ plan.plan.walk_all_the_way }} min walk{% elif plan.plan.walk_to_stop %} · {{ plan.plan.walk_to_stop }} min walk{% endif %}</span>
+          </li>
+          {% if plan.board_time %}
+            <li class="cal-step is-bus">
+              <span class="cal-step-time">{% if not plan.estimate %}{{ plan.board_time|date:"g:i A" }}{% endif %}</span>
+              <span class="cal-step-what">
+                {% if plan.row %}
+                  <span class="badge" style="background-color: #{{ plan.row.color }}; color: #{{ plan.row.text_color }};">{{ plan.row.name }}</span>
+                {% else %}
+                  {% for name in plan.route_names %}<span class="badge text-bg-secondary me-1">{{ name }}</span>{% endfor %}
+                {% endif %}
+                Board at <a href="{% url 'stop' plan.plan.board_at.id %}">{{ plan.plan.board_at.name }}</a>
+                {% if plan.row %}<span class="cal-live">bus in {{ plan.bus_minutes }} min · {% if plan.bus_minutes == plan.row.ours %}our guess{% else %}the feed{% endif %}</span>{% endif %}
+              </span>
+            </li>
+            <li class="cal-step">
+              <span class="cal-step-time"></span>
+              <span class="cal-step-what text-body-secondary">Get off at {{ plan.plan.get_off_at.name }}{% if plan.plan.walk_from_stop %} · {{ plan.plan.walk_from_stop }} min walk{% endif %}</span>
+            </li>
+          {% endif %}
+          <li class="cal-step is-event">
+            <span class="cal-step-time">{{ plan.event.start|date:"g:i A" }}</span>
+            <span class="cal-step-what"><i class="bi bi-geo-alt-fill me-1" aria-hidden="true"></i>{{ plan.building.name }}</span>
+          </li>
+        </ol>
+        {% if plan.map %}
+          {{ plan.map|json_script:plan.map_id }}
+          <div class="cal-map" data-trip-map data-map-data="{{ plan.map_id }}" data-map-compact role="region" aria-label="Map of the trip to {{ plan.event.title }}"></div>
+        {% endif %}
+      </div>
+      {% if plan.estimate %}
+        <p class="cal-note"><i class="bi bi-info-circle me-1" aria-hidden="true"></i>An estimate, allowing about 15 minutes' wait at the stop. The live bus shows from 45 minutes before.</p>
+      {% endif %}
+      {% if plan.has_a_bus and plan.ask_from %}
+        {# The button's shape, greyed: the agent reads the next buses, so it's asked about the next two hours' trips #}
+        <div class="mt-3"><span class="agent-later" title="The trip agent looks at the next buses, so it answers about trips in the next two hours."><i class="bi bi-clock" aria-hidden="true"></i>Ask the trip agent from {{ plan.ask_from|date:"g:i A" }}</span></div>
+      {% elif plan.has_a_bus %}
+        {% include "notifications/_agent.html" with event=plan.event answer=plan.agent_answer %}
+      {% endif %}
+    </div>
+  {% else %}
+    <div class="cal-block is-faded">
+      <div class="cal-title">{{ plan.event.title }}</div>
+      {% if plan.location_unknown %}
+        <div class="cal-place"><span class="badge text-bg-light border me-1">Location unknown</span>{% if plan.event.location %}“{{ plan.event.location }}” isn't one of the Yale buildings we know.{% else %}The event has no location.{% endif %}</div>
+      {% else %}
+        <div class="cal-place"><i class="bi bi-geo-alt me-1" aria-hidden="true"></i>{{ plan.building.name }}</div>
+        <div class="cal-note">
+          {% if not has_home %}
+            Set your Home in <a href="{% url 'my-places' %}">My places</a> and we'll plan the ride here.
+          {% elif feed_down %}
+            Live shuttle times are unavailable, so check back once they return.
+          {% else %}
+            No shuttle route running now links it to Home: walking takes about {{ plan.walk_all }} minutes.
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>

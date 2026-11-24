@@ -61,8 +61,9 @@ Everything comes from environment variables; nothing secret goes in git.
 - `/places/`: riders' saved places, Home and favourites
 - `/notifications/`: riders turn push notifications on or off for each device,
   and send themselves a test
-- `/when-to-leave/`: when to leave for each calendar event in the next 24
-  hours; riders can ask the trip agent about a trip in the next 2 hours
+- `/when-to-leave/`: the next 24 hours as a calendar, with when to leave for
+  each event, its steps from Home and a map of the trip; riders can ask the
+  trip agent about a trip in the next 2 hours
 - `/ecc1032`: the A/B test page, and `/ecc1032/stats` for its live results
   (`ecc1032` is the start of the SHA-1 hash of our team nickname, cold-flower)
 

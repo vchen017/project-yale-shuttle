@@ -28,7 +28,7 @@ User = get_user_model()
 
 START = dt.datetime(2026, 11, 20, 14, 45, tzinfo=dt.timezone.utc)  # a run at 9:45 AM Eastern
 WALK = 5  # minutes from Home to the stop
-BLUE = {"id": 1, "name": "Blue"}
+BLUE = {"id": 1, "name": "Blue", "label": "Blue", "color": "00356b", "path": []}  # as network() gives routes
 NETWORK = {"stops": [], "routes": [BLUE]}
 SET_UP = {**KEYS, "OPENROUTER_API_KEY": "test-openrouter-key"}
 
@@ -52,11 +52,12 @@ def a_plan(event, home, **kwargs):
     """What plan_event gives for every event here: board the Blue route at
     Grove St, a 5-minute walk from Home."""
     ride = transit_trips.Plan(
-        board_at={"id": 10, "name": "Grove St", "routes": [1]},
-        get_off_at={"id": 20, "name": "Science Hill", "routes": [1]},
+        board_at={"id": 10, "name": "Grove St", "lat": 41.3127, "lon": -72.9279, "routes": [1]},
+        get_off_at={"id": 20, "name": "Science Hill", "lat": 41.3160, "lon": -72.9220, "routes": [1]},
         walk_to_stop=WALK, walk_from_stop=3, walk_all_the_way=30,
     )
-    return plans.EventPlan(event=event, building={"name": "Watson Center"}, plan=ride, route_names=["Blue"])
+    building = {"name": "Watson Center", "lat": 41.3156, "lon": -72.9238}
+    return plans.EventPlan(event=event, building=building, plan=ride, route_names=["Blue"])
 
 
 class Bus:

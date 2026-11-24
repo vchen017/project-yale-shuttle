@@ -1,10 +1,17 @@
 {% extends "base.html" %}
 {% load static %}
 {% block title %}When to leave · Yale Shuttle{% endblock %}
-{% block extra_head %}<script src="{% static 'core/agent.js' %}" defer></script>{% endblock %}
+{% block extra_head %}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.1/dist/maplibre-gl.css"
+        integrity="sha384-uTttxo/aOKbdE5RlD/SPzSDoDmNvGlUYPjONi2MN/b7c9HPSvW07OIuyP7uL6jxK" crossorigin="anonymous">
+  <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.1/dist/maplibre-gl.js"
+          integrity="sha384-nXMl9YiLoSG5KBPTFgvxVuIqQQcqIvo0bFrvoEaGJC6r7IibIzF1S36Zbf/sKBtL" crossorigin="anonymous" defer></script>
+  <script src="{% static 'core/trip-map.js' %}" defer></script>
+  <script src="{% static 'core/agent.js' %}" defer></script>
+{% endblock %}
 {% block content %}
 <h1 class="h3 mb-1">When to leave</h1>
-<p class="text-body-secondary mb-4">Your events for the next 24 hours, with the shuttle to catch and when to head out the door. Connect your calendar on the <a href="{% url 'calendar' %}">Calendar page</a>.</p>
+<p class="text-body-secondary mb-3">Your next 24 hours, with the shuttle to catch for each event. Connect your calendar on the <a href="{% url 'calendar' %}">Calendar page</a>.</p>
 
 {% for message in messages %}
   <div class="alert {{ message.tags }} d-flex gap-2" role="status">
@@ -25,93 +32,29 @@
   </div>
 {% endif %}
 
-{% if not rideable and not stranded and not unknown %}
+{% if days %}
+  {# A calendar of the next 24 hours: a chip per day, then each day's events by their start time #}
+  <nav class="cal-days" aria-label="Days">
+    {% for day in days %}
+      <a class="cal-day{% if forloop.first %} is-first{% endif %}" href="#day-{{ day.date|date:'Y-m-d' }}">
+        <span class="cal-day-name">{{ day.date|date:"D" }}</span>
+        <span class="cal-day-number">{{ day.date|date:"j" }}</span>
+        <span class="cal-day-count">{{ day.plans|length }} event{{ day.plans|length|pluralize }}</span>
+      </a>
+    {% endfor %}
+  </nav>
+  {% for day in days %}
+    <section id="day-{{ day.date|date:'Y-m-d' }}" aria-labelledby="day-{{ day.date|date:'Y-m-d' }}-heading">
+      <h2 class="cal-heading" id="day-{{ day.date|date:'Y-m-d' }}-heading">{% if day.label %}{{ day.label }} · {% endif %}{{ day.date|date:"l, M j" }}</h2>
+      {% for plan in day.plans %}
+        {% include "calendars/_event.html" %}
+      {% endfor %}
+    </section>
+  {% endfor %}
+{% else %}
   <div class="card"><div class="card-body text-body-secondary">
     <i class="bi bi-calendar-x me-1" aria-hidden="true"></i>
     Nothing on your calendar in the next 24 hours. Connect one on the <a href="{% url 'calendar' %}">Calendar page</a>.
   </div></div>
-{% endif %}
-
-{% if rideable %}
-  <ul class="list-group mb-4">
-    {% for plan in rideable %}
-      <li class="list-group-item py-3" id="event-{{ plan.event.pk }}">
-        <div class="d-flex flex-wrap gap-2 align-items-baseline">
-          <span class="fw-semibold fs-5">{{ plan.event.title }}</span>
-          <span class="text-body-secondary">{{ plan.event.start|date:"D, M j · g:i A" }}</span>
-        </div>
-        {% if plan.event.location %}<div class="small text-body-secondary text-break"><i class="bi bi-geo-alt me-1" aria-hidden="true"></i>{{ plan.event.location }}</div>{% endif %}
-
-        {% if plan.walking_is_quicker %}
-          <div class="mt-2">
-            <i class="bi bi-person-walking text-primary me-1" aria-hidden="true"></i>
-            It's a {{ plan.plan.walk_all_the_way }}-minute walk from Home — leave by <strong>{{ plan.leave_by|date:"g:i A" }}</strong>{% if plan.leave_by < now %} <span class="badge text-bg-danger">now</span>{% endif %}.
-          </div>
-        {% else %}
-          <div class="mt-2">
-            {% if plan.row %}
-              <span class="badge" style="background-color: #{{ plan.row.color }}; color: #{{ plan.row.text_color }};">{{ plan.row.label }}</span>
-              <span class="text-body-secondary">{{ plan.row.name }}</span>
-            {% else %}
-              {% for name in plan.route_names %}<span class="badge text-bg-secondary">{{ name }}</span>{% endfor %}
-            {% endif %}
-            Board at the
-            <a href="{% url 'stop' plan.plan.board_at.id %}">{{ plan.plan.board_at.name }}</a>
-            stop{% if plan.plan.walk_to_stop %}, a {{ plan.plan.walk_to_stop }}-minute walk from Home{% endif %},
-            and get off at {{ plan.plan.get_off_at.name }}{% if plan.plan.walk_from_stop %}, a {{ plan.plan.walk_from_stop }}-minute walk to the event{% endif %}.
-            {% if plan.row %}
-              {% if plan.bus_minutes == plan.row.ours %}Our guess: the bus is about {{ plan.bus_minutes }} min away.{% else %}The feed says the bus is {{ plan.bus_minutes }} min away.{% endif %}
-              Leave by <strong>{{ plan.leave_by|date:"g:i A" }}</strong>{% if plan.leave_by < now %} <span class="badge text-bg-danger">now</span>{% endif %}.
-            {% else %}
-              Leave around <strong>{{ plan.leave_by|date:"g:i A" }}</strong> — an estimate that assumes about 15 minutes' wait at the stop. Check back within 45 minutes of the event for a live bus.
-            {% endif %}
-          </div>
-        {% endif %}
-        {% if plan.has_a_bus and plan.ask_from %}
-          {# The button's shape, greyed: the agent reads the next buses, so it's asked about the next two hours' trips #}
-          <div class="mt-3"><span class="agent-later" title="The trip agent looks at the next buses, so it answers about trips in the next two hours."><i class="bi bi-clock" aria-hidden="true"></i>Ask the trip agent from {{ plan.ask_from|date:"g:i A" }}</span></div>
-        {% elif plan.has_a_bus %}
-          {% include "notifications/_agent.html" with event=plan.event answer=plan.agent_answer %}
-        {% endif %}
-      </li>
-    {% endfor %}
-  </ul>
-{% endif %}
-
-{% if stranded %}
-  <h2 class="h6 text-body-secondary text-uppercase mb-2">Can't plan these yet</h2>
-  <ul class="list-group mb-4">
-    {% for plan in stranded %}
-      <li class="list-group-item py-3">
-        <span class="fw-semibold">{{ plan.event.title }}</span>
-        <span class="text-body-secondary">{{ plan.event.start|date:"D, M j · g:i A" }}</span>
-        <div class="small text-body-secondary mt-1 text-break"><i class="bi bi-geo-alt me-1" aria-hidden="true"></i>{{ plan.building.name }}</div>
-        <div class="small mt-1">
-          {% if not has_home %}
-            Set your Home in <a href="{% url 'my-places' %}">My places</a> and we'll plan the ride here.
-          {% elif feed_down %}
-            Live shuttle times are unavailable, so check back once they return.
-          {% else %}
-            No shuttle route running now links it to Home — walking takes about {{ plan.walk_all }} minutes.
-          {% endif %}
-        </div>
-      </li>
-    {% endfor %}
-  </ul>
-{% endif %}
-
-{% if unknown %}
-  <h2 class="h6 text-body-secondary text-uppercase mb-2">Location unknown</h2>
-  <ul class="list-group">
-    {% for plan in unknown %}
-      <li class="list-group-item py-3">
-        <span class="fw-semibold">{{ plan.event.title }}</span>
-        <span class="text-body-secondary">{{ plan.event.start|date:"D, M j · g:i A" }}</span>
-        <div class="mt-1"><span class="badge text-bg-light border">Location unknown</span>
-          <span class="small text-body-secondary">{% if plan.event.location %}“{{ plan.event.location }}” isn't one of the Yale buildings we know.{% else %}The event has no location.{% endif %}</span>
-        </div>
-      </li>
-    {% endfor %}
-  </ul>
 {% endif %}
 {% endblock %}

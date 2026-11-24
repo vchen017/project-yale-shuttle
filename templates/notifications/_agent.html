@@ -27,18 +27,24 @@
           </div>
         </div>
       {% else %}
-        <div class="agent-hero">
+        {# One line until it's opened: the verdict, and how late the bus is. Open right after the rider asks. #}
+        <details class="agent-answer"{% if expanded %} open{% endif %}>
+        <summary class="agent-summary">
           {% if not answer.notify %}
-            <span class="agent-badge is-quiet"><i class="bi bi-check-lg" aria-hidden="true"></i></span>
-            <div class="agent-hero-title is-quiet">No alert right now</div>
+            <span class="agent-badge is-small is-quiet"><i class="bi bi-check-lg" aria-hidden="true"></i></span>
+            <span class="agent-hero-title is-quiet">No alert right now</span>
           {% elif answer.notify_now %}
-            <span class="agent-badge is-now"><i class="bi bi-bell-fill" aria-hidden="true"></i></span>
-            <div class="agent-hero-title is-now">Alert now</div>
+            <span class="agent-badge is-small is-now"><i class="bi bi-bell-fill" aria-hidden="true"></i></span>
+            <span class="agent-hero-title is-now">Alert now</span>
           {% else %}
-            <span class="agent-badge"><i class="bi bi-bell-fill" aria-hidden="true"></i></span>
-            <div class="agent-hero-title">Alert at {{ answer.notify_at|date:"g:i A" }}</div>
+            <span class="agent-badge is-small"><i class="bi bi-bell-fill" aria-hidden="true"></i></span>
+            <span class="agent-hero-title">Alert at {{ answer.notify_at|date:"g:i A" }}</span>
           {% endif %}
-        </div>
+          {% with bus=answer.bus %}
+            {% if bus.was or bus.tone == "ok" %}<span class="agent-chip{% if bus.tone %} is-{{ bus.tone }}{% endif %}">bus {{ bus.note|lower }}</span>{% endif %}
+          {% endwith %}
+          <i class="bi bi-chevron-down agent-chevron" aria-hidden="true"></i>
+        </summary>
         {% if answer.notify %}
           {# The notification it would send, the way a phone shows one #}
           <div class="agent-notice">
@@ -72,6 +78,7 @@
         {% if answer.notify and not alerts_on %}
           <a class="agent-link" href="{% url 'notifications' %}"><i class="bi bi-bell me-1" aria-hidden="true"></i>Get alerts on your phone</a>
         {% endif %}
+        </details>
       {% endif %}
     </div>
   {% endif %}

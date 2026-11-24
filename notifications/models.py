@@ -200,16 +200,16 @@ class AgentAnswer(models.Model):
             steps = [Step("asked", "Asked", self.asked_at)]
             if self.notify and self.notify_at:
                 steps.append(Step("alert", "Alert", self.notify_at))
-        bus = self._bus()
-        if bus:
-            steps.append(bus)
+        if self.bus:
+            steps.append(self.bus)
         steps.append(Step("event", "Starts", self.event_start))
         return steps
 
-    def _bus(self):
-        """The bus on the timeline: at our prediction's time if the agent had
-        one, else the Downtowner's, noting how the two compare. None when it
-        looked up neither."""
+    @property
+    def bus(self):
+        """The bus as the agent saw it, for the timeline and the summary's tag:
+        at our prediction's time if it had one, else the Downtowner's, noting
+        how the two compare. None when it looked up neither."""
         seen = self.looked_up or {}
         official, predicted = seen.get("official"), seen.get("predicted")
         has_official = official not in (None, "down")
