@@ -9,7 +9,11 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.templatetags.static import static
+from django.urls import reverse
 from django.views.decorators.http import require_POST, require_safe
+
+from calendars.models import Calendar
+from places.models import Place
 
 from . import push
 from .models import PushSubscription
@@ -17,13 +21,51 @@ from .models import PushSubscription
 BAD_SUBSCRIPTION = {"error": "That isn't a push subscription."}
 
 
+def setup_steps(user, devices):
+    """What a rider needs before we can tell them when to leave for a trip
+    (#11): a device with notifications on, a calendar with their events, and a
+    Home to start from. Each step says whether it's done and, when it isn't,
+    where to do it; the page shows them in order so a rider who turned
+    notifications on but connected nothing sees why nothing arrives."""
+    has_device = bool(devices)
+    has_calendar = Calendar.objects.filter(user=user).exists()
+    has_home = Place.objects.filter(user=user, is_home=True).exists()
+    return [
+        {
+            "done": has_device,
+            "title": "Notifications on",
+            "detail": "On for the devices below." if has_device else "Turn them on for this device above.",
+            "url": "",
+            "action": "",
+        },
+        {
+            "done": has_calendar,
+            "title": "Calendar connected",
+            "detail": "We plan a trip for each class and event on it." if has_calendar
+            else "We plan a trip for each of your classes and events.",
+            "url": reverse("calendar"),
+            "action": "Connect a calendar",
+        },
+        {
+            "done": has_home,
+            "title": "Home saved",
+            "detail": "Your trips start from there." if has_home else "We need to know where your trips start.",
+            "url": reverse("my-places"),
+            "action": "Set your Home",
+        },
+    ]
+
+
 @login_required
 def notifications(request):
     devices = request.user.push_subscriptions.all()
+    steps = setup_steps(request.user, devices)
     return render(
         request,
         "notifications/settings.html",
         {
+            "steps": steps,
+            "all_set": all(step["done"] for step in steps),
             "devices": devices,
             "endpoints": [device.endpoint for device in devices],
             "public_key": settings.VAPID_PUBLIC_KEY if push.is_configured() else "",

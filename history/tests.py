@@ -1071,6 +1071,35 @@ class PredictMinutesTests(TestCase):
         self.assertGreaterEqual(early, 120)
 
 
+
+class HistoryPredictorTests(TestCase):
+    """The trip watch's predictions (#29): the history layer, loaded once."""
+
+    def test_it_answers_as_predict_minutes_does_when_nothing_live_is_fresh(self):
+        seed_history()
+        # Tuesday Nov 10 has no polls of its own, so nothing live is fresh
+        # and predict_minutes answers from history, as the predictor does.
+        tuesday = dt.date(2026, 11, 10)
+        predictor = predictions.HistoryPredictor({(1, 100)}, now=eastern(tuesday, 7))
+        for hour, minute in ((7, 0), (9, 7), (12, 7), (18, 30), (21, 0)):
+            moment = eastern(tuesday, hour, minute)
+            with self.subTest(at=f"{hour}:{minute:02}"):
+                self.assertEqual(
+                    predictor.minutes(1, 100, moment),
+                    predictions.predict_minutes(1, 100, now=moment, use_live_feed=False),
+                )
+
+    def test_two_queries_to_load_and_none_to_answer(self):
+        seed_history()
+        tuesday_noon = eastern(dt.date(2026, 11, 10), 12, 7)
+        with self.assertNumQueries(2):
+            predictor = predictions.HistoryPredictor({(1, 100), (1, 999)}, now=eastern(dt.date(2026, 11, 10), 7))
+        with self.assertNumQueries(0):
+            self.assertIsNotNone(predictor.minutes(1, 100, tuesday_noon))
+            self.assertIsNone(predictor.minutes(1, 999, tuesday_noon))  # no history there
+            self.assertIsNone(predictor.minutes(2, 100, tuesday_noon))  # never loaded
+
+
 class ArrivalEventTests(TestCase):
     def test_a_dwelling_bus_is_one_arrival(self):
         t = eastern(dt.date(2026, 11, 5), 10)
