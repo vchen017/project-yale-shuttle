@@ -36,13 +36,38 @@ class FeedUnavailable(Exception):
 
 
 def routes():
-    """Every route, running or not: id, name, short_name, color, active, stops, path."""
-    return _get("routes_routes.php", {"inactive": "true"})
+    """Every route, running or not: id, name, short_name, color, active,
+    stops, path. Entries without a usable id and name are left out — the
+    feed's answers carry junk sometimes, and a route nobody can identify or
+    name has nothing to tell a rider. An answer that isn't a list at all
+    raises FeedUnavailable, the same as a down feed: showing no routes
+    would tell a rider no shuttle is running, and it might be a lie."""
+    data = _get("routes_routes.php", {"inactive": "true"})
+    if not isinstance(data, list):
+        raise FeedUnavailable("The Downtowner feed's routes answer isn't a list")
+    return [
+        route
+        for route in data
+        if isinstance(route, dict)
+        and isinstance(route.get("id"), int)
+        and isinstance(route.get("name"), str)
+    ]
 
 
 def stops():
-    """Every stop: id, name, lat, lon, description."""
-    return _get("routes_stops.php")
+    """Every stop: id, name, lat, lon, description. Entries without a usable
+    id and name are left out, for the same reason as routes(); an answer that
+    isn't a list raises FeedUnavailable, the same as a down feed."""
+    data = _get("routes_stops.php")
+    if not isinstance(data, list):
+        raise FeedUnavailable("The Downtowner feed's stops answer isn't a list")
+    return [
+        stop
+        for stop in data
+        if isinstance(stop, dict)
+        and isinstance(stop.get("id"), int)
+        and isinstance(stop.get("name"), str)
+    ]
 
 
 def buses():
