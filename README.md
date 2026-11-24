@@ -182,6 +182,7 @@ jobs in its own `jobs.py`, and `python manage.py run_job --list` shows them all.
 | `fit_calibration` | daily, 10:29 UTC (5:29 AM Eastern) | refits the countdown corrections from the last four weeks of recorded history (#117); until the first fit lands, predictions answer with the raw countdown |
 | `score_accuracy` | daily, 10:53 UTC (5:53 AM Eastern) | scores our predictions over the last seven days for the accuracy dashboard (#17), and over the last 31 days on Mondays; the dashboard only shows these saved scores |
 | `refresh_calendars` | hourly, at :41 | re-reads each rider's connected calendar address and replaces its events (#25) |
+| `notify_trips` | hourly, at :45 | watches riders' trips in the next 2 hours and sends the notifications the AI agent decides on (#29); each run watches until the next one takes over |
 
 - **On time, by the job clock:** GitHub starts scheduled runs hours late, or
   not at all: 8 to 9 hours late in November 2026, when the hourly line went 7
@@ -197,10 +198,20 @@ jobs in its own `jobs.py`, and `python manage.py run_job --list` shows them all.
   person's name), and its summary or error. A failed run also fails its
   workflow run in the Actions tab.
 - **Safe to repeat:** runs of the same job never overlap, and every job can run
-  late, twice, or after a skipped day without harm.
+  late, twice, or after a skipped day without harm. The trip watch is the one
+  job meant to outlast its hour: its next run cancels it and takes over.
 - **Code and schema stay in step:** the jobs run `main`'s code, and refuse to
   start while the database is missing one of its migrations, as production's is
   until the next promotion.
+- **Trip notifications (#29):** `notifications/trips.py`. Each hourly run
+  loads the trips starting in the next 2 hours, for riders with notifications
+  on and a Home: one visit to the database. Then it checks them every 5
+  minutes against the live feed, in memory. Once the time to leave is within
+  30 minutes, the agent decides whether and when to notify. A trip gets one
+  notification, and another only when its time to leave moves by 5 minutes or
+  more. Each one is recorded before it goes out, under a unique constraint, so
+  overlapping runs never send it twice: see `/admin/` → Trip notifications.
+  Connecting a calendar checks its trips in the next 2 hours right away.
 - **By hand:** **Actions → scheduled jobs → Run workflow** runs any job on
   production or staging. Locally, `python manage.py run_job import_history`.
 - **Setup:** the workflow reads a `DATABASE_URL` secret from each GitHub
@@ -208,7 +219,11 @@ jobs in its own `jobs.py`, and `python manage.py run_job --list` shows them all.
   string for that site's database. It also passes its own token as
   `GITHUB_TOKEN`, so the history import's GitHub API calls aren't held to the
   60 an hour GitHub allows without one. Set `GITHUB_TOKEN` locally only if you
-  hit that limit.
+  hit that limit. The trip watch also needs `OPENROUTER_API_KEY`,
+  `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` there, with the same values as the
+  site's Render environment: devices subscribed with its public key, so only
+  its key pair reaches them. Without them, a run with trips coming up fails
+  and says what's missing.
 
 Mind Neon's free plan, which staging and production share:
 

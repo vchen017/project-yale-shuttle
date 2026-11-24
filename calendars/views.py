@@ -8,6 +8,7 @@ from django.views.decorators.http import (
     require_safe,
 )
 
+from notifications import trips
 from places.models import Place
 from transit.downtowner import FeedUnavailable
 from transit.network import network
@@ -35,6 +36,9 @@ def connect(request):
         saved = services.save_url(request.user, form.cleaned_data["ics_url"])
         imported = services.try_refresh(saved)
         if imported:
+            # The hourly trip watch loaded its trips before these existed: a trip
+            # in the next 2 hours gets its first check now, beside this request (#29).
+            trips.first_check_soon(request.user)
             messages.success(request, f"Connected. Imported {imported} upcoming events.")
         elif saved.last_error:
             messages.warning(request, f"Connected, but we couldn't read events yet: {saved.last_error}")

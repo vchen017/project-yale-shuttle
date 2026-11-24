@@ -13,14 +13,17 @@ logger = logging.getLogger(__name__)
 
 OUTPUT_LIMIT = 10_000  # characters of summary or traceback kept per run
 ABANDONED = "Never finished: its process stopped before it could record a result."
+HANDED_OVER = "Handed over to the next run, which took over while this one was still going."
 
 
 def run(job, trigger=""):
     """Run `job` now and return its JobRun.
 
     Returns None, and runs nothing, while another run of the same job is still
-    going: the job is never run twice at once. A job that raises becomes a
-    failed run with the traceback in its output, and doesn't stop the caller.
+    going: the job is never run twice at once. A job registered with
+    takes_over=True instead closes the older run and starts. A job that raises
+    becomes a failed run with the traceback in its output, and doesn't stop
+    the caller.
     """
     record = _start(job, trigger)
     if record is None:
@@ -52,6 +55,12 @@ def _start(job, trigger):
     JobRun.objects.filter(
         job=job.name, status=JobRun.Status.RUNNING, started_at__lt=now - job.timeout
     ).update(status=JobRun.Status.FAILED, finished_at=now, output=ABANDONED)
+    if job.takes_over:
+        # The older run hands over: its watch ends where this one's starts. If
+        # its process is still alive, its own result overwrites this note.
+        JobRun.objects.filter(job=job.name, status=JobRun.Status.RUNNING).update(
+            status=JobRun.Status.SUCCEEDED, finished_at=now, output=HANDED_OVER
+        )
     try:
         with transaction.atomic():
             return JobRun.objects.create(job=job.name, trigger=trigger[:64], started_at=now)
