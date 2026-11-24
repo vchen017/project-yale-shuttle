@@ -19,7 +19,7 @@ from places.models import Place
 from transit.downtowner import FeedUnavailable
 
 from . import ask, trips
-from .models import AgentAnswer
+from .models import AgentAnswer, PushSubscription
 from .test_trips import NETWORK, SET_UP, START, Agent, Bus, a_plan
 
 User = get_user_model()
@@ -101,19 +101,45 @@ class AskTests(Rider, TestCase):
         self.assertEqual(answer.notify_at, START + dt.timedelta(minutes=2))
         self.assertIn("Leave by", answer.message)
         self.assertEqual(answer.looked_up, {"route": "Blue", "stop": "Grove St", "official": BUS_AT.isoformat()})
-        self.assertEqual(
-            answer.looked_up_text, "What it looked up: the Downtowner says the next Blue bus reaches Grove St at 9:57 AM."
-        )
+        self.assertEqual([(fact.label, fact.value) for fact in answer.facts], [("Downtowner", "9:57 AM")])
         self.assertEqual(AgentAnswer.objects.get().pk, answer.pk)  # saved, where the page finds it
 
     def test_it_notes_everything_the_agent_looked_up(self, network, plan_event):
         answer = self.answer(self.ask()[0], decide=LooksEverythingUp())
         self.assertEqual((answer.status, answer.notify, answer.message), (AgentAnswer.ANSWERED, False, ""))
         self.assertEqual(
-            answer.looked_up_text,
-            "What it looked up: the Downtowner says the next Blue bus reaches Grove St at 9:57 AM; "
-            "we had no prediction of our own; no crowding reports.",
+            [(fact.label, fact.value) for fact in answer.facts],
+            [("Downtowner", "9:57 AM"), ("Our prediction", "None"), ("Crowding", "No reports")],
         )
+
+    def test_what_it_looked_up_reads_at_a_glance(self, network, plan_event):
+        def facts(**seen):
+            answer = AgentAnswer(looked_up={"route": "Blue", "stop": "Grove St", **seen})
+            return [(fact.label, fact.value, fact.note, fact.late, fact.crowd) for fact in answer.facts]
+
+        at = {minutes: (BUS_AT + dt.timedelta(minutes=minutes)).isoformat() for minutes in (-2, 0, 3, 8)}
+        reports = {"current": "Standing room", "typical_now": "Seats available"}
+        self.assertEqual(
+            facts(official=at[0], predicted=at[8], crowding=reports),
+            [
+                ("Downtowner", "9:57 AM", "", False, None),
+                ("Our prediction", "10:05 AM", "8 min later", True, None),  # late enough to stand out
+                ("Riders report", "Standing room", "", False, 2),
+            ],
+        )
+        self.assertEqual(facts(official=at[0], predicted=at[3])[1][2:4], ("3 min later", False))
+        self.assertEqual(facts(official=at[0], predicted=at[-2])[1][2:4], ("2 min sooner", False))
+        self.assertEqual(facts(official=at[0], predicted=at[0])[1][2], "")
+        self.assertEqual(
+            facts(official=None, predicted=at[0], crowding={"current": None, "typical_now": "Seats available"}),
+            [
+                ("Downtowner", "No bus listed", "", False, None),
+                ("Our prediction", "9:57 AM", "", False, None),
+                ("Usually", "Seats available", "", False, 1),
+            ],
+        )
+        self.assertEqual(facts(official="down"), [("Downtowner", "Feed down", "", False, None)])
+        self.assertEqual(AgentAnswer(looked_up={}).facts, [])
 
     def test_the_real_agent_is_asked_strictly_and_its_tool_reads_are_noted(self, network, plan_event):
         official = {"id": "a", "type": "function", "function": {"name": "get_official_arrival", "arguments": "{}"}}
@@ -250,7 +276,7 @@ class AskPageTests(Rider, TestCase):
         response, threads = self.post(self.form())
         body = response.json()
         self.assertEqual((response.status_code, body["status"], threads), (200, "asking", 1))
-        self.assertIn("Asking the trip agent", body["html"])
+        self.assertIn("Checking live bus times", body["html"])
         answer = AgentAnswer.objects.get()
         poll = reverse("agent-answer", args=[answer.pk])
         self.assertIn(f'data-agent-poll="{poll}"', body["html"])
@@ -258,7 +284,7 @@ class AskPageTests(Rider, TestCase):
         self.answer(answer, decide=self.agent)
         body = self.client.get(poll, HTTP_ACCEPT="application/json").json()
         self.assertEqual(body["status"], "answered")
-        self.assertIn("It would notify you at <strong>9:47 AM</strong>", body["html"])
+        self.assertIn("Alert at 9:47 AM", body["html"])
         self.assertIn("reaches Grove St in 12 minutes", body["html"])
         self.assertNotIn("data-agent-poll", body["html"])
         self.assertNotIn("Ask again", body["html"])  # for five minutes the answer stands
@@ -278,7 +304,7 @@ class AskPageTests(Rider, TestCase):
         )
         page = self.page()
         self.assertIn("Pick-up basketball", page)
-        self.assertEqual(page.count("Ask the trip agent"), 1)  # the lecture's, not the game's
+        self.assertEqual(page.count("data-agent-ask"), 1)  # the lecture's button, not the game's
 
     def test_a_trip_more_than_two_hours_out_says_when_it_can_be_asked(self, *mocks):
         Event.objects.create(
@@ -286,8 +312,8 @@ class AskPageTests(Rider, TestCase):
             location="Watson Center",
         )
         page = self.page()
-        self.assertIn("You can ask the trip agent about this trip from 10:45 AM, two hours before it starts.", page)
-        self.assertEqual(page.count("Ask the trip agent"), 1)  # the lecture's, 40 minutes out
+        self.assertIn("Ask the trip agent from 10:45 AM", page)
+        self.assertEqual(page.count("data-agent-ask"), 1)  # the lecture's button, 40 minutes out
 
     def test_a_failed_answer_says_why_and_offers_another_try(self, *mocks):
         reason = "the AI service didn't answer"
@@ -296,8 +322,29 @@ class AskPageTests(Rider, TestCase):
             asked_at=ASKED, status=AgentAnswer.FAILED, reason=reason,
         )
         page = self.page()
-        self.assertIn(f"The trip agent couldn't answer: {escape(reason)}.", page)
+        self.assertIn(f"Couldn't answer: {escape(reason)}.", page)
         self.assertIn("Try again", page)
+
+    def test_an_answer_shows_its_alert_and_offers_alerts_to_a_rider_without_them(self, *mocks):
+        answer = AgentAnswer.objects.create(
+            user=self.rider, calendar=self.calendar, event_uid=self.event.uid, event_start=self.event.start,
+            asked_at=ASKED, answered_at=ASKED, status=AgentAnswer.ANSWERED, notify=True,
+            notify_at=ASKED + dt.timedelta(minutes=2), message="Leave by 9:52 AM for the Blue at Grove St.",
+            looked_up={"route": "Blue", "stop": "Grove St", "official": BUS_AT.isoformat()},
+        )
+        page = self.page()
+        self.assertIn("Alert at 9:47 AM", page)
+        self.assertIn("Leave by 9:52 AM for the Blue at Grove St.", page)  # as the notification would say it
+        self.assertIn("Get alerts on your phone", page)
+        PushSubscription.objects.create(
+            user=self.rider, endpoint="https://push.example.com/rider-one", p256dh="key", auth="secret"
+        )
+        self.assertNotIn("Get alerts on your phone", self.page())  # they'd get it
+
+        AgentAnswer.objects.filter(pk=answer.pk).update(notify=False, notify_at=None, message="")
+        page = self.page()
+        self.assertIn("No alert right now", page)
+        self.assertNotIn("agent-notice", page)
 
     def test_an_event_gone_since_the_page_loaded_says_so(self, *mocks):
         form = self.form()

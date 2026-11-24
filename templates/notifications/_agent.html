@@ -1,34 +1,65 @@
-{# The trip agent's answer about one event on the when-to-leave page, and the button that asks it (#148). #}
+{% load static %}
+{# The trip agent about one event on the when-to-leave page (#148): the button that asks it, then its answer: #}
+{# a verdict, the notification it would send, and what it looked up (app.css, "The trip agent"). #}
 {# notifications.views renders it too, for core/agent.js to swap in while the agent answers. #}
 <div class="mt-3" data-agent{% if answer.is_asking %} data-agent-poll="{% url 'agent-answer' answer.pk %}"{% endif %} aria-live="polite">
-  {% if answer.is_asking %}
-    <div class="d-flex align-items-center gap-2 small text-body-secondary">
-      <span class="spinner-border spinner-border-sm text-primary flex-shrink-0" aria-hidden="true"></span>
-      <span>Asking the trip agent. It checks the live bus times first, so this can take a minute or two.</span>
-    </div>
-    <noscript><p class="small text-body-secondary mb-0 mt-1">Reload the page in a minute to see its answer.</p></noscript>
-  {% elif answer.is_failed %}
-    <p class="small mb-0"><i class="bi bi-exclamation-circle text-warning me-1" aria-hidden="true"></i>The trip agent couldn't answer: {{ answer.failure }}.</p>
-  {% elif answer %}
-    <div class="border-start border-3 border-primary ps-3">
-      <div class="small text-body-secondary mb-1"><i class="bi bi-stars me-1" aria-hidden="true"></i>The trip agent, asked at {{ answer.asked_at|date:"g:i A" }}</div>
-      {% if answer.notify %}
-        <p class="mb-1">It would notify you {% if answer.notify_now %}<strong>now</strong>{% else %}at <strong>{{ answer.notify_at|date:"g:i A" }}</strong>{% endif %}:</p>
-        <p class="mb-1">“{{ answer.message }}”</p>
+  {% if answer %}
+    <div class="agent-panel{% if answer.is_failed %} agent-failed{% endif %}">
+      <div class="agent-head">
+        <span><i class="bi bi-stars me-1" aria-hidden="true"></i>Trip agent</span>
+        {% if not answer.is_asking %}<span>Asked {{ answer.asked_at|date:"g:i A" }}</span>{% endif %}
+      </div>
+      {% if answer.is_asking %}
+        <p class="agent-verdict"><span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Checking live bus times…</p>
+        <dl class="agent-facts placeholder-glow" aria-hidden="true">
+          <div><dt><i class="bi bi-broadcast me-1"></i>Downtowner</dt><dd><span class="placeholder"></span></dd></div>
+          <div><dt><i class="bi bi-graph-up me-1"></i>Our prediction</dt><dd><span class="placeholder"></span></dd></div>
+          <div><dt><i class="bi bi-people me-1"></i>Crowding</dt><dd><span class="placeholder"></span></dd></div>
+        </dl>
+        <p class="small text-body-secondary mt-2 mb-0">This can take a minute.</p>
+        <noscript><p class="small text-body-secondary mb-0">Reload the page in a minute to see its answer.</p></noscript>
+      {% elif answer.is_failed %}
+        <p class="mb-0"><i class="bi bi-exclamation-triangle-fill agent-warning me-2" aria-hidden="true"></i>Couldn't answer: {{ answer.failure }}.</p>
       {% else %}
-        <p class="mb-1">It wouldn't send you a notification right now.</p>
+        {% if answer.notify %}
+          <p class="agent-verdict{% if answer.notify_now %} agent-now{% endif %}"><i class="bi bi-bell-fill me-2" aria-hidden="true"></i>Alert {% if answer.notify_now %}now{% else %}at {{ answer.notify_at|date:"g:i A" }}{% endif %}</p>
+          <div class="agent-notice">
+            <img src="{% static 'notifications/icon-192.png' %}" alt="" width="36" height="36">
+            <div>
+              <div class="agent-notice-app">Yale Shuttle</div>
+              {{ answer.message }}
+            </div>
+          </div>
+        {% else %}
+          <p class="agent-verdict agent-quiet"><i class="bi bi-check-circle-fill me-2" aria-hidden="true"></i>No alert right now</p>
+        {% endif %}
+        {% if answer.facts %}
+          <dl class="agent-facts">
+            {% for fact in answer.facts %}
+              <div>
+                <dt><i class="bi bi-{{ fact.icon }} me-1" aria-hidden="true"></i>{{ fact.label }}</dt>
+                <dd>{% if fact.crowd is not None %}<span class="crowd-dot crowd-{{ fact.crowd }}" aria-hidden="true"></span>{% endif %}{{ fact.value }}{% if fact.note %} <span class="agent-note{% if fact.late %} agent-late{% endif %}">{{ fact.note }}</span>{% endif %}</dd>
+              </div>
+            {% endfor %}
+          </dl>
+        {% endif %}
+        {% if answer.notify and not alerts_on %}
+          <a class="d-inline-block small mt-2" href="{% url 'notifications' %}"><i class="bi bi-bell me-1" aria-hidden="true"></i>Get alerts on your phone</a>
+        {% endif %}
       {% endif %}
-      {% if answer.looked_up_text %}<p class="small text-body-secondary mb-1">{{ answer.looked_up_text }}</p>{% endif %}
-      <p class="small text-body-secondary mb-0">It decides again in the half hour before you leave, and tells you then if you've turned on <a href="{% url 'notifications' %}">notifications</a>.</p>
     </div>
   {% endif %}
   {% if not answer or answer.can_ask_again %}
-    <form method="post" action="{% url 'agent-ask' %}" class="mt-2" data-agent-ask>
+    <form method="post" action="{% url 'agent-ask' %}"{% if answer %} class="mt-1"{% endif %} data-agent-ask>
       {% csrf_token %}
       <input type="hidden" name="calendar" value="{{ event.calendar_id }}">
       <input type="hidden" name="uid" value="{{ event.uid }}">
       <input type="hidden" name="start" value="{{ event.start|date:'c' }}">
-      <button class="btn btn-sm btn-outline-primary" type="submit"><i class="bi bi-stars me-1" aria-hidden="true"></i>{% if answer.is_failed %}Try again{% elif answer %}Ask again{% else %}Ask the trip agent{% endif %}</button>
+      {% if answer %}
+        <button class="btn btn-sm btn-link px-0" type="submit"><i class="bi bi-arrow-clockwise me-1" aria-hidden="true"></i>{% if answer.is_failed %}Try again{% else %}Ask again{% endif %}</button>
+      {% else %}
+        <button class="btn btn-sm btn-agent" type="submit"><i class="bi bi-stars me-1" aria-hidden="true"></i>Ask the trip agent</button>
+      {% endif %}
     </form>
   {% endif %}
 </div>

@@ -99,6 +99,8 @@ def leave(request):
         plan.has_a_bus = ask.has_a_bus(plan)
         plan.ask_from = ask.ask_from(plan.event, now)
         plan.agent_answer = answers.get(ask.key(plan.event))
+    # An answer that would notify offers to turn notifications on, to a rider who hasn't.
+    alerts_on = any(answer.notify for answer in answers.values()) and request.user.push_subscriptions.exists()
     return render(
         request,
         "calendars/leave.html",
@@ -109,5 +111,6 @@ def leave(request):
             "has_home": home is not None,
             "feed_down": stops is None,
             "now": now,
+            "alerts_on": alerts_on,
         },
     )

@@ -256,3 +256,44 @@
 .trip-details > :not(summary) { margin-left: 1rem; margin-right: 1rem; }
 .trip-details[open] > summary + * { margin-top: 0.9rem; }
 .trip-details[open] { padding-bottom: 0.9rem; }
+
+/* The trip agent on the when-to-leave page (#148): its verdict, the notification it would send, and what it looked up */
+.btn-agent {
+  --bs-btn-color: var(--ys-blue);
+  --bs-btn-bg: rgba(0, 53, 107, 0.05);
+  --bs-btn-border-color: rgba(0, 53, 107, 0.25);
+  --bs-btn-hover-color: #fff;
+  --bs-btn-hover-bg: var(--ys-blue);
+  --bs-btn-hover-border-color: var(--ys-blue);
+  --bs-btn-active-color: #fff;
+  --bs-btn-active-bg: var(--ys-blue-dark);
+  --bs-btn-active-border-color: var(--ys-blue-dark);
+  --bs-btn-disabled-color: var(--ys-blue);
+  --bs-btn-disabled-bg: rgba(0, 53, 107, 0.05);
+  --bs-btn-disabled-border-color: rgba(0, 53, 107, 0.25);
+  border-radius: 999px;
+}
+/* Before it can be asked: the button's shape, greyed */
+.agent-later { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.25rem 0.75rem; border: 1px dashed var(--bs-border-color); border-radius: 999px; font-size: 0.875rem; color: var(--bs-secondary-color); }
+.agent-panel { padding: 0.75rem 1rem 0.9rem; border-radius: 1rem; background: rgba(0, 53, 107, 0.04); border: 1px solid rgba(0, 53, 107, 0.12); }
+.agent-panel.agent-failed { background: #fff8e6; border-color: #f1d58a; }
+.agent-warning { color: #b07d00; }
+.agent-head { display: flex; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.35rem; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--bs-secondary-color); }
+.agent-head .bi { color: var(--ys-blue-medium); }
+.agent-verdict { display: flex; align-items: center; margin: 0 0 0.6rem; font-size: 1.25rem; font-weight: 700; line-height: 1.25; color: var(--ys-blue); }
+.agent-verdict.agent-now { color: var(--bs-danger-text-emphasis); }
+.agent-verdict.agent-quiet { margin-bottom: 0; color: var(--bs-success-text-emphasis); }
+.agent-verdict.agent-quiet .bi { color: var(--bs-success); }
+.agent-verdict .spinner-border { color: var(--ys-blue-medium); }
+/* The notification it would send, the way a phone shows one */
+.agent-notice { display: flex; gap: 0.7rem; max-width: 30rem; padding: 0.7rem 0.85rem; border-radius: 1rem; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 4px 14px rgba(0, 53, 107, 0.1); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 0.9rem; line-height: 1.35; overflow-wrap: anywhere; }
+.agent-notice img { width: 2.25rem; height: 2.25rem; border-radius: 0.55rem; flex-shrink: 0; }
+.agent-notice-app { margin-bottom: 0.1rem; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: var(--bs-secondary-color); }
+/* What it looked up: small labels over their values, as on the trip page */
+.agent-facts { display: flex; flex-wrap: wrap; gap: 0.5rem 1.75rem; margin: 0.8rem 0 0; }
+.agent-facts dt { font-size: 0.8rem; font-weight: 400; color: var(--bs-secondary-color); }
+.agent-facts dt .bi { color: var(--ys-blue-medium); }
+.agent-facts dd { margin: 0; font-weight: 600; }
+.agent-facts .placeholder { width: 4.5rem; border-radius: 0.25rem; }
+.agent-note { font-size: 0.85rem; font-weight: 400; color: var(--bs-secondary-color); }
+.agent-note.agent-late { font-weight: 600; color: #b26b00; }

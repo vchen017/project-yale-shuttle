@@ -1,8 +1,11 @@
+import dataclasses
 import datetime as dt
 
 from django.conf import settings
 from django.db import models
 from django.utils import dateformat, timezone
+
+from crowding.models import CrowdReport
 
 
 class PushSubscription(models.Model):
@@ -187,37 +190,60 @@ class AgentAnswer(models.Model):
         return bool(self.notify and self.notify_at and self.answered_at and self.notify_at <= self.answered_at)
 
     @property
-    def looked_up_text(self):
-        """What the agent looked up, as one sentence; empty when it looked
-        nothing up."""
+    def facts(self):
+        """What the agent looked up, as the page shows it: one Fact per tool
+        it called, none when it called none."""
         seen = self.looked_up or {}
-        route, stop = seen.get("route", ""), seen.get("stop", "")
-        parts = []
+        facts = []
+        official = seen.get("official")
         if "official" in seen:
-            official = seen["official"]
-            parts.append(
-                "the live feed was down" if official == "down"
-                else f"the Downtowner listed no {route} bus on the way to {stop}" if official is None
-                else f"the Downtowner says the next {route} bus reaches {stop} at {_clock(official)}"
-            )
+            value = "Feed down" if official == "down" else "No bus listed" if official is None else _clock(official)
+            facts.append(Fact("broadcast", "Downtowner", value))
         if "predicted" in seen:
             predicted = seen["predicted"]
-            if predicted is None:
-                parts.append("we had no prediction of our own")
-            elif parts and "official" in seen and seen["official"] not in (None, "down"):
-                parts.append(f"our prediction says {_clock(predicted)}")
-            else:
-                parts.append(f"our prediction says the next {route} bus reaches {stop} at {_clock(predicted)}")
+            fact = Fact("graph-up", "Our prediction", "None" if predicted is None else _clock(predicted))
+            if predicted is not None and official not in (None, "down"):
+                later = _minutes_between(official, predicted)
+                if later:
+                    fact.note = f"{abs(later)} min {'later' if later > 0 else 'sooner'}"
+                    fact.late = later >= Fact.LATE
+            facts.append(fact)
         if "crowding" in seen:
             crowd = seen["crowding"] or {}
-            bits = []
             if crowd.get("current"):
-                bits.append(f"riders report {crowd['current'].lower()}")
-            if crowd.get("typical_now"):
-                bits.append(f"it's usually {crowd['typical_now'].lower()} at this hour")
-            parts.extend(bits or ["no crowding reports"])
-        return f"What it looked up: {'; '.join(parts)}." if parts else ""
+                facts.append(Fact("people", "Riders report", crowd["current"], crowd=_crowd_level(crowd["current"])))
+            elif crowd.get("typical_now"):
+                facts.append(Fact("people", "Usually", crowd["typical_now"], crowd=_crowd_level(crowd["typical_now"])))
+            else:
+                facts.append(Fact("people", "Crowding", "No reports"))
+        return facts
+
+
+@dataclasses.dataclass
+class Fact:
+    """One thing the trip agent looked up, as the when-to-leave page shows it:
+    a small label over its value, as "Our prediction" over "7:30 PM, 8 min later"."""
+
+    LATE = 5  # minutes: our prediction this far behind the Downtowner's time stands out
+
+    icon: str  # a Bootstrap icon's name
+    label: str
+    value: str
+    note: str = ""
+    late: bool = False
+    crowd: int | None = None  # a crowding level, for its colour (app.css)
+
 
 def _clock(iso):
     """An ISO time from looked_up as the page writes times: 3:45 PM, Eastern."""
     return dateformat.format(timezone.localtime(dt.datetime.fromisoformat(iso)), "g:i A")
+
+
+def _minutes_between(start, end):
+    """Whole minutes from one ISO time in looked_up to another."""
+    return round((dt.datetime.fromisoformat(end) - dt.datetime.fromisoformat(start)).total_seconds() / 60)
+
+
+def _crowd_level(label):
+    """The crowding level a rider-facing label names, or None for one it doesn't."""
+    return {name: level for level, name in CrowdReport.Level.choices}.get(label)

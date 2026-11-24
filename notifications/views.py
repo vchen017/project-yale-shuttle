@@ -194,7 +194,10 @@ def _answer_json(request, answer):
     HTML, rendered and escaped here rather than built from the model's text
     in the browser."""
     event = {"calendar_id": answer.calendar_id, "uid": answer.event_uid, "start": answer.event_start}
-    html = render_to_string("notifications/_agent.html", {"event": event, "answer": answer}, request=request)
+    alerts_on = bool(answer.notify) and request.user.push_subscriptions.exists()
+    html = render_to_string(
+        "notifications/_agent.html", {"event": event, "answer": answer, "alerts_on": alerts_on}, request=request
+    )
     state = AgentAnswer.ASKING if answer.is_asking else AgentAnswer.FAILED if answer.is_failed else answer.status
     return {"status": state, "html": html}
 
