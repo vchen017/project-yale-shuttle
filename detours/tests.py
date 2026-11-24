@@ -230,10 +230,14 @@ class FlagsFromSamplesTests(TestCase):
         )
 
     def test_a_route_outside_its_usual_hours_still_flags(self):
+        # Its usual hour is twelve hours from now, so this holds whenever the
+        # tests run (fixed hours 3 and 4 failed between 3 and 5 AM Eastern).
+        now = timezone.now()
+        other_hour = (now.astimezone(ET).hour + 12) % 24
         samples, _ = samples_of({812: [(14, False), (10, True), (5, True), (0, True)]})
 
         self.assertEqual(
-            [flag["route_id"] for flag in detect.flags_from_samples(samples, ACTIVE, timezone.now(), usual={1: [3, 4]})],
+            [flag["route_id"] for flag in detect.flags_from_samples(samples, ACTIVE, now, usual={1: [other_hour]})],
             [1],
         )
 
