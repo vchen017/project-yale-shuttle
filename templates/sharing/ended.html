@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block extra_head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block title %}This trip isn't shared anymore · Yale Shuttle{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <h1 class="h3 mb-3">This trip isn't being shared anymore</h1>
+    {% if is_owner %}
+      <p>{% if share.stopped_at %}You stopped sharing it, so the link shows nothing now.{% else %}Shared trips end after 3 hours, so the link shows nothing now.{% endif %}</p>
+    {% else %}
+      <p>The person who shared it stopped sharing, or it was shared more than 3 hours ago.</p>
+    {% endif %}
+    <a class="btn btn-primary" href="{% url 'stops' %}">See the shuttle map</a>
+  </div>
+</div>
+{% endblock %}
