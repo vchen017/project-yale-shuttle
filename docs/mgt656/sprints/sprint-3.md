@@ -35,7 +35,9 @@ the rest of the AI notification flow
   accuracy dashboard tracks how often riders make their bus
   ([#167](https://github.com/vchen017/project-yale-shuttle/pull/167)); and the
   when-to-leave page opens with the next trip, live
-  ([#169](https://github.com/vchen017/project-yale-shuttle/pull/169)). On
+  ([#169](https://github.com/vchen017/project-yale-shuttle/pull/169)); and the
+  board's footnote now says the same in one line
+  ([#170](https://github.com/vchen017/project-yale-shuttle/pull/170)). On
   recorded buses, riders who leave when we say now make their bus 92% of the
   time, up from 49%.
 - **Also:** help choosing where to get off during a detour
@@ -52,8 +54,9 @@ the rest of the AI notification flow
 
 ## What works on staging and production
 
-As of Nov 25, both sites serve `688908a`, promoted through the promote
-workflow ([run](https://github.com/vchen017/project-yale-shuttle/actions/runs/45653483491)):
+As of Nov 25, production serves `688908a`, promoted through the promote
+workflow ([run](https://github.com/vchen017/project-yale-shuttle/actions/runs/45653483491)),
+and staging tracks `main`, one footnote ahead:
 everything from Sprint 2, plus connecting a calendar, the when-to-leave
 calendar with each trip's map and the live next trip, asking the trip agent
 about a trip, detour badges and shared live trips. The rider grader account
