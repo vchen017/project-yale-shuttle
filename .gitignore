@@ -6,3 +6,4 @@ staticfiles/
 .env
 .neon
 .env.local
+.e2e-assets/
