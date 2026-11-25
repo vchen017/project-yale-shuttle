@@ -14,7 +14,7 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from history import accuracy, predictions, snapshots
-from history.models import Eta, Poll, RiderReport, RouteStopList
+from history.models import AccuracySnapshot, Eta, Poll, RiderReport, RouteStopList
 
 ET = ZoneInfo("America/New_York")
 UTC = dt.UTC
@@ -152,6 +152,21 @@ class AccuracyTests(TestCase):
         self.assertEqual(self.result["no_prediction"], 0)
         self.assertEqual(self.result["not_served"], 0)
 
+    def test_on_time_counts_the_answers_that_would_have_caught_the_bus(self):
+        """#156. Of the five queries per stop above, ours errs +2, +4,
+        -11.5, -2 and 0: only at +4 did the bus come more than 2 minutes
+        before the time we gave, so 4 in 5 are on time. The official ETA's
+        +4, +4, -28, 0 and 0 catch 3 in 5. Every group carries the rate."""
+        overall = self.result["overall"]
+        self.assertEqual((overall["ours"]["on_time"], overall["ours"]["on_time_percent"]), (0.8, 80))
+        self.assertEqual((overall["official"]["on_time"], overall["official"]["on_time_percent"]), (0.6, 60))
+        route = next(data for data in self.result["by_route"] if data["key"] == 1)
+        hour = next(data for data in self.result["by_hour"] if data["key"] == 10)
+        stop = next(data for data in self.result["by_stop"] if data["key"] == (1, 100))
+        self.assertEqual(
+            [data["ours"]["on_time_percent"] for data in (route, hour, stop)], [80, 80, 80]
+        )
+
     def test_by_route_groups_the_errors_and_the_reports(self):
         routes = {data["key"]: data for data in self.result["by_route"]}
         self.assertEqual(set(routes), {1, 99})
@@ -223,6 +238,36 @@ class DashboardPageTests(TestCase):
         self.assertContains(response, "10 AM")
         self.assertContains(response, "Science Park")
         self.assertContains(response, "scoring took")
+
+    def test_the_on_time_rate_shows_against_the_official_eta_the_baseline_and_the_goal(self):
+        # #156: ours 80% and the official ETA 60% in this fixture (AccuracyTests).
+        self.client.force_login(self.staff)
+
+        response = self.client.get(reverse("accuracy-dashboard"), {"from": "2026-11-02", "to": "2026-11-07"})
+
+        self.assertContains(response, 'class="ontime-meter"')
+        self.assertContains(response, '<span class="ontime-fill" style="width: 80%">', html=False)
+        self.assertContains(response, "Ours 80%")
+        self.assertContains(response, "Official ETA 60%")
+        self.assertContains(response, f"Baseline {accuracy.ON_TIME_BASELINE}% (Nov 25)")
+        self.assertContains(response, f"Goal {accuracy.ON_TIME_GOAL}%")
+        self.assertContains(response, "· official 60%")  # in the tables, per route, stop and hour
+
+    def test_a_score_saved_before_the_on_time_rate_still_shows(self):
+        snapshot = AccuracySnapshot.objects.get()
+        for group in [snapshot.payload["overall"], *snapshot.payload["by_route"], *snapshot.payload["by_stop"],
+                      *snapshot.payload["by_hour"], *snapshot.payload["overall_list"]]:
+            for side in accuracy.SIDES:
+                if group[side]:
+                    del group[side]["on_time"], group[side]["on_time_percent"]
+        snapshot.save()
+        self.client.force_login(self.staff)
+
+        response = self.client.get(reverse("accuracy-dashboard"), {"from": "2026-11-02", "to": "2026-11-07"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'class="ontime-meter"')
+        self.assertContains(response, "-4.0 / 7.2")  # the errors as before
 
     def test_the_page_only_reads_the_saved_score_it_never_computes(self):
         with mock.patch.object(

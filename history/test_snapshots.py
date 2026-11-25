@@ -51,6 +51,11 @@ class SnapshotTests(TestCase):
         self.assertEqual(second.payload, first.payload)
         self.assertGreaterEqual(second.computed_at, first.computed_at)
         self.assertIn("queries scored", snapshots.describe(second))
+        # The run log says how often ours and the official ETA were on time (#156).
+        self.assertRegex(snapshots.describe(second), r"; on time: ours \d+%, the Downtowner \d+%$")
+        second.payload["overall"]["ours"].pop("on_time_percent")  # a score saved before #156
+        second.payload["overall"]["official"].pop("on_time_percent")
+        self.assertTrue(snapshots.describe(second).endswith("s"))  # just the time it took
 
 
 class WindowsTests(SimpleTestCase):
