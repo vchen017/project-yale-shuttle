@@ -76,8 +76,8 @@ the rest of the AI notification flow
   in. The service day now runs 4 AM to 4 AM Eastern — the recorded
   history has no fixes at all between 3 and 5 AM — and a run counts in
   every hour it covers: the replay is down to 16 episodes, Green still
-  flags, and the job's tests pass whatever the date. In review, fourth
-  round addressed.
+  flags, and the job's tests pass whatever the date. Merged on Nov 24,
+  closing #55.
 - **Scheduled jobs start on time**
   ([#130](https://github.com/vchen017/project-yale-shuttle/pull/130)): a
   job clock fires each job in its due minute even when GitHub's runner
@@ -103,8 +103,8 @@ the rest of the AI notification flow
   `admin@example.com` or `rider@example.com`);
   [#135](https://github.com/vchen017/project-yale-shuttle/pull/135) (parse
   guards for malformed feed answers — per review, a junk answer now 503s
-  like a down feed instead of showing empty pages) is approved and
-  awaiting merge. Two more
+  like a down feed instead of showing empty pages) merged on Nov 24. Two
+  more
   of Austin's merged the same night: the notification evaluation set grew
   to 22 trips, each tested against 15 kinds of malformed answer and 5
   kinds of outage with the model mocked
@@ -132,8 +132,10 @@ its stats. All three calendar pull requests are merged
 calendar MVP — verified at the merge commit, and again at `3c2a3bb` on
 Nov 19 with the evening's audit fixes aboard (home, login, signup and a
 stop page all answering). Production was promoted on Nov 20 (serving
-`3c2a3bb`) and has the calendar MVP too — the whole sprint is on both
-sites, checked via `/healthz` and page answers on each. Before
+`3c2a3bb`) and again on Nov 24 (serving `0bc254a`) — the detour feature,
+the trip-notification job, shareable live trips and the audit fixes
+aboard — so the whole sprint is on both sites, checked via `/healthz`
+and page answers on each. Before
 submitting (#44) we check both grader accounts on both
 sites, the AI feature on staging, and every page in phone-sized and
 desktop-sized windows.
@@ -214,18 +216,25 @@ Making the long waits better
 measured in this sprint's last days: on held-out days nothing beat the
 shipped predictor, so it closed as measured, no code change. Choosing
 where to get off during a detour
-(#55) moved up into this sprint — its pull request is in review above.
-Merged as the sprint closes: the notifications setup checklist
+(#55) moved up into this sprint — its pull request is the one above,
+merged Nov 24. Merged as the sprint closes: the notifications setup
+checklist
 ([#145](https://github.com/vchen017/project-yale-shuttle/pull/145), for
-[#11](https://github.com/vchen017/project-yale-shuttle/issues/11)) and
-the A/B reset button for the graded run
+[#11](https://github.com/vchen017/project-yale-shuttle/issues/11)), the
+A/B reset button for the graded run
 ([#147](https://github.com/vchen017/project-yale-shuttle/pull/147), for
-[#47](https://github.com/vchen017/project-yale-shuttle/issues/47)).
-Approved and waiting on a final review and a merge: the job that
-watches riders' trips and sends the agent's notifications
+[#47](https://github.com/vchen017/project-yale-shuttle/issues/47)), the
+job that watches riders' trips and sends the agent's notifications
 ([#142](https://github.com/vchen017/project-yale-shuttle/pull/142), for
-[#29](https://github.com/vchen017/project-yale-shuttle/issues/29)) and
-the shareable live-trip link
+[#29](https://github.com/vchen017/project-yale-shuttle/issues/29)), the
+shareable live-trip link
 ([#146](https://github.com/vchen017/project-yale-shuttle/pull/146), for
 [#10](https://github.com/vchen017/project-yale-shuttle/issues/10) — its
-new sharing app's first migration rides the next production promote).
+new sharing app's first migration rode the Nov 24 promote), and #135's
+parse guards. Up as sprint 4 opens, awaiting review: asking the trip
+agent about an upcoming trip on the when-to-leave page
+([#150](https://github.com/vchen017/project-yale-shuttle/pull/150), for
+[#148](https://github.com/vchen017/project-yale-shuttle/issues/148)) and
+the when-to-leave page as a calendar, each trip on a map
+([#151](https://github.com/vchen017/project-yale-shuttle/pull/151), for
+[#149](https://github.com/vchen017/project-yale-shuttle/issues/149)).
