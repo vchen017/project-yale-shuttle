@@ -62,6 +62,7 @@ class EventPlan:
     # (it may be a later bus than the row's soonest, when the walk needs more time)
     leave_by: dt.datetime | None = None  # when to leave Home
     spare_minutes: int = 0  # minutes at the stop before the bus that leave_by builds in (#155)
+    bus_countdown: int | None = None  # the feed's countdown for that bus; None when ours came from history
     estimate: bool = False  # leave_by assumes a typical wait, not a live bus
     # Minutes' walk straight from Home, for events we can't ride: with the feed
     # down or no route linking the two, the page can still say how far it is.
@@ -156,6 +157,7 @@ def plan_event(event, home, *, now, stops, routes_by_id, running_at=None):
             return EventPlan(
                 row=row,
                 bus_minutes=minutes,
+                bus_countdown=countdown,
                 spare_minutes=spare,
                 leave_by=now + dt.timedelta(minutes=minutes - plan.walk_to_stop - spare),
                 **plan_info,

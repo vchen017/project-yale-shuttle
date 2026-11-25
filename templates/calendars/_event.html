@@ -28,7 +28,7 @@
               <span class="cal-step-time">{% if not plan.estimate %}{{ plan.board_time|date:"g:i A" }}{% endif %}</span>
               <span class="cal-step-what">
                 {% if plan.row %}
-                  <span class="badge" style="background-color: #{{ plan.row.color }}; color: #{{ plan.row.text_color }};">{{ plan.row.name }}</span>
+                  <span class="badge" style="background-color: #{{ plan.row.color }}; color: {{ plan.row.text_color }};">{{ plan.row.name }}</span>
                 {% else %}
                   {% for name in plan.route_names %}<span class="badge text-bg-secondary me-1">{{ name }}</span>{% endfor %}
                 {% endif %}
