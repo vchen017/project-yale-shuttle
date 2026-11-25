@@ -14,6 +14,7 @@ from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.dateformat import format as date_format
 from django.utils.html import escape
 
 from crowding.services import RouteCrowding
@@ -28,6 +29,13 @@ from .plans import EventPlan
 from .test_leave import feed
 
 User = get_user_model()
+
+
+def shown_time(moment):
+    """A time as the card shows it, "4:05 PM" Eastern: Django's own format,
+    as the templates use it, since strftime's %-I is a glibc extension that
+    Windows rejects (as in history's data_quality, #87)."""
+    return date_format(timezone.localtime(moment), "g:i A")
 
 
 def board(ours=14, official=(12, 31), cushions=None):
@@ -91,7 +99,7 @@ class NextTripTests(TestCase):
         card = content[content.index("data-next-trip"):content.index('id="day-')]
         leave_by = timezone.localtime(timezone.now() + dt.timedelta(minutes=11))  # bus in 14, 3 to spare
         self.assertIn("MGT 656 lecture", card)
-        self.assertIn(f"Leave by {leave_by:%-I:%M %p}", card)
+        self.assertIn(f"Leave by {shown_time(leave_by)}", card)
         self.assertIn("3 min to spare", card)
         self.assertIn("Bus in 12–14 min", card)  # the feed's countdown to ours (#153)
         self.assertIn("at Union Station", card)
@@ -149,7 +157,7 @@ class NextTripTests(TestCase):
         card = self.page()
         live_from = timezone.localtime(self.lecture.start - dt.timedelta(minutes=45))
         self.assertIn("Leave around", card)
-        self.assertIn(f"Live bus times from {live_from:%-I:%M %p}", card)
+        self.assertIn(f"Live bus times from {shown_time(live_from)}", card)
         self.assertNotIn("Bus in", card)
         # Nothing live to refresh yet: the page asks once, when the live window opens.
         self.assertIn('data-watching="false"', card)
@@ -253,7 +261,7 @@ class FollowingTests(TestCase):
         return self.client.session.get(next_trip.SESSION_KEY)
 
     def clock(self, later):
-        return f"{timezone.localtime(self.start + dt.timedelta(minutes=later)):%-I:%M %p}"
+        return shown_time(self.start + dt.timedelta(minutes=later))
 
     def test_it_follows_the_bus_from_the_stop_to_the_event(self):
         # Before "Leave by" (in 11 minutes), the card remembers the bus it says to catch.
