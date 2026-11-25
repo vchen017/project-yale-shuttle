@@ -192,12 +192,11 @@ def _wants_json(request):
 def _answer_json(request, answer):
     """The answer as the page's JavaScript swaps it in: its state, and its
     HTML, rendered and escaped here rather than built from the model's text
-    in the browser."""
+    in the browser. The rider just asked, so the answer comes opened."""
     event = {"calendar_id": answer.calendar_id, "uid": answer.event_uid, "start": answer.event_start}
     alerts_on = bool(answer.notify) and request.user.push_subscriptions.exists()
-    html = render_to_string(
-        "notifications/_agent.html", {"event": event, "answer": answer, "alerts_on": alerts_on}, request=request
-    )
+    context = {"event": event, "answer": answer, "alerts_on": alerts_on, "expanded": True}
+    html = render_to_string("notifications/_agent.html", context, request=request)
     state = AgentAnswer.ASKING if answer.is_asking else AgentAnswer.FAILED if answer.is_failed else answer.status
     return {"status": state, "html": html}
 
