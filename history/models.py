@@ -317,6 +317,14 @@ class Calibration(models.Model):
     bucket = models.SmallIntegerField()
     delta_minutes = models.FloatField()
     samples = models.IntegerField(help_text="How many residuals the median was taken over.")
+    cushion_minutes = models.FloatField(
+        null=True,
+        blank=True,
+        help_text=(
+            "How much earlier than the corrected time riders should leave, so that 'Leave by' "
+            "gets them to the stop before the bus 90% of the time (#155). Empty: fitted before cushions."
+        ),
+    )
     fitted_at = models.DateTimeField(default=timezone.now)
 
     class Meta:

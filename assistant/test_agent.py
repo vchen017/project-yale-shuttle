@@ -34,8 +34,9 @@ QUIET = {"notify": False, "notify_at": None, "message": ""}
 
 
 class FakeData(DataSource):
-    def __init__(self, official=45, predicted=50, crowding=None, down=False):
+    def __init__(self, official=45, predicted=50, crowding=None, down=False, spare=0):
         self.official, self.predicted, self._crowding, self.down = official, predicted, crowding, down
+        self.spare = spare
 
     def official_minutes(self, trip):
         if self.down:
@@ -44,6 +45,9 @@ class FakeData(DataSource):
 
     def predicted_minutes(self, trip):
         return self.predicted
+
+    def spare_minutes(self, trip):
+        return self.spare
 
     def crowding(self, trip):
         return self._crowding
@@ -118,6 +122,16 @@ class ToolTests(SimpleTestCase):
         self.assertEqual(box.leave_by, datetime(2026, 11, 16, 8, 35, tzinfo=EST))
         box.call("get_our_prediction", "{}")
         self.assertEqual(box.leave_by, datetime(2026, 11, 16, 8, 40, tzinfo=EST))
+
+    def test_our_time_to_leave_keeps_the_minutes_to_spare(self):
+        # #155: the 8:50 bus, a 10-minute walk and 3 minutes to spare at the stop.
+        box = ToolBox(TRIP, FakeData(spare=3), NOW)
+        ours = json.loads(box.call("get_our_prediction", "{}"))
+        self.assertEqual((ours["leave_for_the_stop_by"], ours["minutes_to_spare"]), ("2026-11-16T08:37-05:00", 3))
+        self.assertEqual(ours["arrival"], "2026-11-16T08:50-05:00")  # the bus's own time doesn't move
+        self.assertEqual(box.leave_by, datetime(2026, 11, 16, 8, 37, tzinfo=EST))
+        official = json.loads(box.call("get_official_arrival", "{}"))
+        self.assertNotIn("minutes_to_spare", official)  # only our prediction's time keeps it
 
     def test_no_prediction_and_no_bus_are_said_so(self):
         box = self.box(official=None, predicted=None)

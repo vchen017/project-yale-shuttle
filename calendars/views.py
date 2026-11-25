@@ -98,7 +98,8 @@ def leave(request):
         plan.agent_answer = answers.get(ask.key(plan.event))
         plan.leave_in = round((plan.leave_by - now).total_seconds() / 60)
         ride = plan.plan is not None and not plan.walking_is_quicker
-        plan.board_time = plan.leave_by + dt.timedelta(minutes=plan.plan.walk_to_stop) if ride else None
+        # The bus's time: the walk, then the minutes to spare at the stop (#155).
+        plan.board_time = plan.leave_by + dt.timedelta(minutes=plan.plan.walk_to_stop + plan.spare_minutes) if ride else None
         plan.map, plan.map_id = _trip_map(plan, home, routes_by_id), f"trip-map-{plan.event.pk}"
     # An answer that would notify offers to turn notifications on, to a rider who hasn't.
     alerts_on = any(answer.notify for answer in answers.values()) and request.user.push_subscriptions.exists()

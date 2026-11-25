@@ -951,6 +951,38 @@ class CalibrationTests(TestCase):
             )
         self.assertEqual(corrections.correct(1, 8.0), 11.0)
 
+    def test_cushions_keep_the_target_share_of_riders_on_time(self):
+        # #155. Twenty residuals of -10 to +9 minutes for route 1's 10-15
+        # minute countdowns: their median, -0.5, corrects them, which leaves
+        # errors of -9.5 to +9.5. Leaving 6.5 minutes earlier keeps 18 of 20
+        # within the 2-minute slack, 90%; in whole minutes that's 7, and 95%.
+        residuals = {(1, 2): [float(value) for value in range(-10, 10)]}
+        corrections = predictions._fit_corrections(residuals)
+        self.assertEqual(corrections.by_route[(1, 2)], -0.5)
+        self.assertEqual(corrections.cushion_by_route[(1, 2)], 6.5)
+        self.assertEqual(corrections.cushion(1, 12), 7)
+        errors = [-0.5 - value for value in residuals[(1, 2)]]
+        self.assertEqual(sum(error - 7 <= predictions.ON_TIME_SLACK for error in errors) / len(errors), 0.95)
+
+    def test_a_raw_countdowns_cushion_ignores_the_delta_and_a_thin_route_takes_the_buckets(self):
+        # Below 5 minutes the countdown answers raw: a bus 3 minutes early
+        # needs 1 minute to spare, beyond the slack. Route 2 is too thin for
+        # its own rung and takes the bucket's: 8 minutes early at its 90th
+        # percentile, over both routes, less the slack.
+        corrections = predictions._fit_corrections({(1, 0): [-3.0] * 25, (2, 0): [-8.0] * 5})
+        self.assertEqual(corrections.cushion(1, 3), 1)
+        self.assertNotIn((2, 0), corrections.cushion_by_route)
+        self.assertEqual(corrections.cushion(2, 3), 6)
+
+    def test_no_fit_and_rows_from_before_the_cushions_leave_nothing_or_fall_back(self):
+        self.assertEqual(predictions.Corrections(by_route={}, by_bucket={}, overall=0.0).cushion(1, 12), 0)
+        cache.clear()
+        Calibration.objects.create(route_id=1, bucket=2, delta_minutes=1.0, samples=25)  # fitted before #155
+        Calibration.objects.create(route_id=None, bucket=2, delta_minutes=1.0, samples=40, cushion_minutes=2.2)
+        corrections = predictions.stored_corrections()
+        self.assertEqual(corrections.delta(1, 12), 1.0)
+        self.assertEqual(corrections.cushion(1, 12), 3)  # route 1's row has none: the bucket's, rounded up
+
     def test_the_stored_fit_corrects_predict_minutes_until_nothing_is_stored(self):
         add_eta_poll(eastern(DAY, 12), bus_id=9, eta_minutes=8)
         Calibration.objects.create(route_id=None, bucket=1, delta_minutes=3.0, samples=25)
@@ -980,6 +1012,8 @@ class CalibrationTests(TestCase):
             },
         )
         self.assertIn("42 residuals", stdout.getvalue())
+        # Every bus came when its corrected countdown said: nothing to spare (#155).
+        self.assertEqual({row.cushion_minutes for row in Calibration.objects.all()}, {0.0})
         call_command("fit_calibration", stdout=StringIO())
         self.assertEqual(Calibration.objects.count(), 5)  # a rerun replaces, never duplicates
 

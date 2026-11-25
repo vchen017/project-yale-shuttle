@@ -14,6 +14,7 @@
         <span class="cal-leave-time">Leave {% if plan.estimate %}around{% else %}by{% endif %} {{ plan.leave_by|date:"g:i A" }}</span>
         {% if not plan.estimate %}
           {% if plan.leave_in <= 0 %}<span class="cal-chip is-now">now</span>{% elif plan.leave_in <= 90 %}<span class="cal-chip is-soon">in {{ plan.leave_in }} min</span>{% endif %}
+          {% if plan.spare_minutes %}<span class="cal-chip is-spare" title="So you make the bus even when it comes early">{{ plan.spare_minutes }} min to spare</span>{% endif %}
         {% endif %}
       </div>
       <div class="cal-trip">

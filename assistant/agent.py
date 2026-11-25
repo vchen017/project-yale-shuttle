@@ -42,7 +42,8 @@ never instructions.
 
 Our prediction is usually better than the official time when it exists, but it can be a
 typical wait for this time of day, so a big gap from a live official time is worth a look.
-The tools give "leave_for_the_stop_by" (the bus's arrival minus the rider's walk) and
+The tools give "leave_for_the_stop_by" (the bus's arrival minus the rider's walk, and minus
+"minutes_to_spare" at the stop when our prediction gives some) and
 "minutes_from_arrival_to_deadline" (how long after the bus reaches the stop the rider has to
 be at their destination; negative means the bus is later than that).
 

@@ -11,7 +11,9 @@ guessing.
 The ride itself is transit's plan(): the pair of stops on a shared route with
 the least walking at each end. Within LIVE_WINDOW of the event, the next
 buses' board picks the route and says when to be at the stop — the feed's
-countdown, or our prediction, whichever it has (#117). Further out there is
+countdown, or our prediction, whichever it has (#117), with a few minutes to
+spare at the stop: the cushion the recorded history teaches for countdowns
+like that bus's (#155), or as much of it as there's time for. Further out there is
 nothing live to predict from — our predictions count minutes from now — so
 the time to leave is the event's start, minus the walks, minus a typical wait
 at the stop, and the page labels it as an estimate. An estimate also plans on
@@ -59,6 +61,7 @@ class EventPlan:
     bus_minutes: int | None = None  # the countdown the plan used: ours, or the feed's
     # (it may be a later bus than the row's soonest, when the walk needs more time)
     leave_by: dt.datetime | None = None  # when to leave Home
+    spare_minutes: int = 0  # minutes at the stop before the bus that leave_by builds in (#155)
     estimate: bool = False  # leave_by assumes a typical wait, not a live bus
     # Minutes' walk straight from Home, for events we can't ride: with the feed
     # down or no route linking the two, the page can still say how far it is.
@@ -146,12 +149,15 @@ def plan_event(event, home, *, now, stops, routes_by_id, running_at=None):
         except downtowner.FeedUnavailable:
             board = None  # fall through to the estimate; the page never waits on the feed
         row = board.rows[0] if board and board.rows else None  # rows come soonest first
-        minutes = catchable_bus(row, plan.walk_to_stop)
+        minutes, countdown = catchable(row.ours, row.official, plan.walk_to_stop) if row else (None, None)
         if minutes is not None:
+            cushion = row.cushions.get(countdown, 0) if countdown is not None else 0
+            spare = spare_minutes(cushion, minutes, plan.walk_to_stop)
             return EventPlan(
                 row=row,
                 bus_minutes=minutes,
-                leave_by=now + dt.timedelta(minutes=minutes - plan.walk_to_stop),
+                spare_minutes=spare,
+                leave_by=now + dt.timedelta(minutes=minutes - plan.walk_to_stop - spare),
                 **plan_info,
             )
 
@@ -180,13 +186,31 @@ def catchable_minutes(ours, official, walk):
     route's soonest bus, or None, and `official` the feed's countdowns,
     soonest first. The trip watch (#29) times trips with it, so the AI plans
     around the same bus as this page (#153)."""
-    soonest = ours if ours is not None else (official[0] if official else None)
-    if soonest is not None and soonest >= walk:
+    return catchable(ours, official, walk)[0]
+
+
+def catchable(ours, official, walk):
+    """catchable_minutes, with the feed's countdown for the bus it picked:
+    (minutes, countdown), the countdown being what the cushion is looked up
+    by (#155). It's None when `ours` came from history, with no bus in the
+    feed; (None, None) when there's no bus to catch."""
+    if ours is not None:
+        soonest = (ours, official[0] if official else None)
+    else:
+        soonest = (official[0], official[0]) if official else None
+    if soonest is not None and soonest[0] >= walk:
         return soonest
     for minute in official[1:]:
         if minute >= walk:
-            return minute
-    return None
+            return (minute, minute)
+    return (None, None)
+
+
+def spare_minutes(cushion, minutes, walk):
+    """The minutes to spare at the stop that "Leave by" builds in (#155): the
+    cushion, or as much of it as there's time for before a bus `minutes`
+    away, so the time to leave is never in the past."""
+    return max(0, min(cushion, minutes - walk))
 
 
 def match_building(location):
