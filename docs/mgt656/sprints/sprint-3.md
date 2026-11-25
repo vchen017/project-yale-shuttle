@@ -237,4 +237,6 @@ agent about an upcoming trip on the when-to-leave page
 [#148](https://github.com/vchen017/project-yale-shuttle/issues/148)) and
 the when-to-leave page as a calendar, each trip on a map
 ([#151](https://github.com/vchen017/project-yale-shuttle/pull/151), for
-[#149](https://github.com/vchen017/project-yale-shuttle/issues/149)).
+[#149](https://github.com/vchen017/project-yale-shuttle/issues/149)), and
+a technical.md top-up documenting the usual-shapes job and the jobs
+table ([#152](https://github.com/vchen017/project-yale-shuttle/pull/152)).
