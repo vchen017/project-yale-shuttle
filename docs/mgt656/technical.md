@@ -80,10 +80,11 @@ recorded and safe to repeat ([#40](https://github.com/vchen017/project-yale-shut
 | Job | When (Eastern) | What it does |
 |---|---|---|
 | `import_history` | daily, 4:17 AM | loads the recorder's latest shuttle history ([#22](https://github.com/vchen017/project-yale-shuttle/issues/22)) |
+| `record_usual_shapes` | daily, 4:41 AM | learns the hours when each route's buses usually leave their drawn path, like evening loops and the walk to the garage, so the detour warning skips those hours ([#55](https://github.com/vchen017/project-yale-shuttle/issues/55)) |
 | `fit_calibration` | daily, 5:29 AM | refits how far off the feed's countdowns run, which our predictions correct for |
 | `score_accuracy` | daily, 5:53 AM | scores our predictions for the accuracy dashboard ([#17](https://github.com/vchen017/project-yale-shuttle/issues/17)) |
 | `refresh_calendars` | hourly, at :41 | re-reads riders' connected calendars ([#25](https://github.com/vchen017/project-yale-shuttle/issues/25)) |
-| `notify_trips` | hourly, at :45 | watches trips in the next 2 hours and sends the AI agent's notifications ([#29](https://github.com/vchen017/project-yale-shuttle/issues/29), in review in [#142](https://github.com/vchen017/project-yale-shuttle/pull/142)) |
+| `notify_trips` | hourly, at :45 | watches trips in the next 2 hours and sends the AI agent's notifications ([#29](https://github.com/vchen017/project-yale-shuttle/issues/29)) |
 
 - **Where they run:** on GitHub's machines, against production's database:
   `.github/workflows/jobs.yml`, free for a public repo. GitHub starts
@@ -111,8 +112,9 @@ recorded and safe to repeat ([#40](https://github.com/vchen017/project-yale-shut
   - [#69](https://github.com/vchen017/project-yale-shuttle/pull/69): the runner, run log and daily import
   - [#124](https://github.com/vchen017/project-yale-shuttle/pull/124): scoring in a few bulk reads
   - [#125](https://github.com/vchen017/project-yale-shuttle/pull/125): the calendar refresh
+  - [#129](https://github.com/vchen017/project-yale-shuttle/pull/129): the usual-shapes job for detours
   - [#130](https://github.com/vchen017/project-yale-shuttle/pull/130): the job clock
-  - [#142](https://github.com/vchen017/project-yale-shuttle/pull/142): trip notifications, in review
+  - [#142](https://github.com/vchen017/project-yale-shuttle/pull/142): trip notifications
 - **See it working:** `/admin/` → Scheduled jobs lists every run, and "job
   clock" under what started it marks an on-time run. Also the Actions tab's
   "scheduled jobs" and "job clock" runs, and `python manage.py run_job --list`.

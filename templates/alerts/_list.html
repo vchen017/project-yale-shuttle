@@ -24,11 +24,14 @@
       </summary>
       <div class="service-alert-body">
         {% if alert.message %}<p class="mb-1">{{ alert.message|linebreaksbr }}</p>{% endif %}
+        {% if alert.skipped_stops %}
+          <p class="mb-1"><i class="bi bi-cone-striped me-1" aria-hidden="true"></i><strong>Skips:</strong> {{ alert.skipped_stops|linebreaksbr }}</p>
+        {% endif %}
         {% if alert.link_url %}
           <p class="mb-1"><a class="alert-link" href="{{ alert.link_url }}" rel="noopener" target="_blank">{{ alert.link_text|default:"More details" }}</a></p>
         {% endif %}
         <p class="small mb-0 text-body-secondary">
-          {% if alert.source == "admin" %}Posted by Yale Shuttle{% else %}From the Downtowner, first seen{% endif %}
+          {% if alert.source == "admin" %}Posted by Yale Shuttle{% elif alert.source == "detour" %}Detected from the live bus positions{% else %}From the Downtowner, first seen{% endif %}
           <time datetime="{{ alert.posted_at|date:'c' }}">{{ alert.posted_at|date:"D, M j, g:i A" }}</time>
         </p>
       </div>
