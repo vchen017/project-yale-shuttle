@@ -70,8 +70,9 @@ class LiveData(DataSource):
     def predicted_minutes(self, trip):
         from history.predictions import predict_minutes
 
-        # Not the feed's own countdown (the official tool has that): ours comes from recorded data.
-        return predict_minutes(trip.route_id, trip.stop_id, use_live_feed=False)
+        # The number the pages show (#153): the feed's countdown corrected by what the recorded
+        # history says about countdowns that size (#117), or history's guess when the feed has none.
+        return predict_minutes(trip.route_id, trip.stop_id)
 
     def crowding(self, trip):
         from crowding.services import crowding
@@ -104,10 +105,10 @@ TOOLS = [
     ),
     _definition(
         "get_our_prediction",
-        "When our own prediction (learned from recorded history) says the next bus reaches the "
-        "stop, the time the rider must leave to meet it, and the minutes from its arrival to the "
-        "rider's deadline. Says so when we have no prediction. "
-        "It can be a typical wait for this time of day, not a live countdown.",
+        "When our own prediction says the next bus reaches the stop, the time the rider must leave "
+        "to meet it, and the minutes from its arrival to the rider's deadline. It's the live "
+        "countdown corrected by what our recorded history says about countdowns like it, or, when "
+        "the feed lists no bus, a typical wait for this time of day. Says so when we have no prediction.",
     ),
     _definition(
         "get_crowding",

@@ -16,7 +16,7 @@ from transit.next_buses import Board, Row
 from transit.test_trips import PAYNE_WHITNEY, SCIENCE_HILL, SERVED, UNION
 
 from .models import Event
-from .plans import EventPlan, match_building
+from .plans import EventPlan, catchable_minutes, match_building
 from .plans import plan_event as plan_one
 
 ET = ZoneInfo("America/New_York")
@@ -163,6 +163,23 @@ class PlanEventTests(SimpleTestCase):
         self.assertIsNone(plan.plan)
         self.assertIsNone(plan.leave_by)
         self.assertEqual(plan.walk_all, 26)  # the walk is computable without the feed
+
+
+class CatchableMinutesTests(SimpleTestCase):
+    """The bus the page plans around, chosen without a board row, as the trip
+    watch chooses it for the AI (#153)."""
+
+    def test_our_prediction_for_the_soonest_bus_when_the_walk_allows_it(self):
+        self.assertEqual(catchable_minutes(8, [7, 20], walk=5), 8)
+
+    def test_otherwise_the_first_later_bus_the_walk_allows(self):
+        self.assertEqual(catchable_minutes(3, [3, 4, 15], walk=8), 15)
+        self.assertIsNone(catchable_minutes(3, [3], walk=8))
+
+    def test_the_feeds_countdown_without_our_prediction_and_ours_without_a_bus_in_the_feed(self):
+        self.assertEqual(catchable_minutes(None, [9], walk=5), 9)
+        self.assertEqual(catchable_minutes(12, [], walk=5), 12)
+        self.assertIsNone(catchable_minutes(None, [], walk=5))
 
 
 class AtTheEventsHourTests(SimpleTestCase):

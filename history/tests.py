@@ -942,6 +942,15 @@ class CalibrationTests(TestCase):
         self.assertEqual(predictions._fused_countdown(1, 8.0, spent), 0.0)
         self.assertIsNone(predictions._fused_countdown(1, None, corrections))
 
+    def test_loaded_corrections_correct_a_countdown_as_predict_minutes_does(self):
+        # The trip watch loads them once and corrects the feed's countdown itself (#153).
+        corrections = predictions.Corrections(by_route={(1, 1): 3.0}, by_bucket={1: 1.0}, overall=0.5)
+        for countdown in (4.0, 8.0, 40.0, None):
+            self.assertEqual(
+                corrections.correct(1, countdown), predictions._fused_countdown(1, countdown, corrections)
+            )
+        self.assertEqual(corrections.correct(1, 8.0), 11.0)
+
     def test_the_stored_fit_corrects_predict_minutes_until_nothing_is_stored(self):
         add_eta_poll(eastern(DAY, 12), bus_id=9, eta_minutes=8)
         Calibration.objects.create(route_id=None, bucket=1, delta_minutes=3.0, samples=25)

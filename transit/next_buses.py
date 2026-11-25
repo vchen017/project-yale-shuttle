@@ -149,9 +149,13 @@ def next_buses(stop_id, destination_id=None):
     for route in net["routes"]:
         if route["id"] not in serving:
             continue
-        # Ours comes from our own data, not the feed: the official column
-        # already shows the feed's countdown.
-        ours = predict_minutes(route["id"], stop_id, use_live_feed=False, current_by_route=current_by_route)
+        # Ours is the feed's countdown corrected by what the recorded history
+        # says about countdowns that size (#117), or our history's guess when
+        # the feed lists no bus for the route. Not history alone (#153): the
+        # servers import the recorded polls once a night, and that guess got
+        # riders to the stop before the bus 49% of the time when replayed,
+        # against 78% for this one. Trip plans and the trip page plan around it.
+        ours = predict_minutes(route["id"], stop_id, current_by_route=current_by_route)
         age = ages.get(soonest_bus.get(route["id"]))
         too_old = age is not None and age > HIDE_PREDICTION_AFTER_MINUTES * 60
         rows.append(

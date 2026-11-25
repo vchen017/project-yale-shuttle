@@ -134,6 +134,13 @@ class Corrections:
             return self.by_bucket[bucket]
         return self.overall
 
+    def correct(self, route_id, countdown):
+        """A live countdown as predict_minutes answers it: untouched at or
+        below RAW_MAX, corrected by delta() above it, never below zero; None
+        passes through. For a caller that loaded the corrections once and
+        mustn't read them again, like the trip watch (#29, #153)."""
+        return _fused_countdown(route_id, countdown, self)
+
 
 def countdown_bucket(countdown):
     """Which slice of COUNTDOWN_BUCKETS a countdown falls in."""
@@ -204,9 +211,14 @@ def predict_minutes(route_id, stop_id, now=None, use_live_feed=True, current_by_
     present, not a simulated moment.
 
     `use_live_feed=False` skips the feed's own countdown, so the answer comes
-    only from our recorded polls and history. Pages that show the official
-    time next to ours use it (the next-buses page, #83): with the feed, our
-    number would just repeat the official one.
+    only from our recorded polls and history. Riders shouldn't get that
+    answer (#153): the servers import the recorded polls once a night, so
+    during the day no poll is fresh and it's the history layer's guess,
+    which replayed over a month of recorded buses got riders to the stop
+    before the bus only 49% of the time, against 78% for the corrected
+    countdown. The next-buses page used it until then (#83), from before the
+    countdown was corrected (#117), when ours would only have repeated the
+    official time.
 
     A caller asking about many routes at one stop (the next-buses board)
     passes `current_by_route` from current_stops_by_route(), so the served

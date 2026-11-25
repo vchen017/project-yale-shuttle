@@ -7,6 +7,7 @@ import json
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils.html import escape
@@ -60,6 +61,7 @@ class Rider:
     and no device: asking needs no push notifications."""
 
     def make_rider(self):
+        cache.clear()  # no countdown corrections another test left cached (history.stored_corrections)
         self.rider = User.objects.create_user("rider-one", password="not-a-real-one")
         Place.objects.create(user=self.rider, name="Home", lat=41.31, lon=-72.93, is_home=True)
         self.calendar = Calendar.objects.create(user=self.rider, ics_url="https://calendar.example.com/a.ics")
@@ -107,9 +109,11 @@ class AskTests(Rider, TestCase):
     def test_it_notes_everything_the_agent_looked_up(self, network, plan_event):
         answer = self.answer(self.ask()[0], decide=LooksEverythingUp())
         self.assertEqual((answer.status, answer.notify, answer.message), (AgentAnswer.ANSWERED, False, ""))
+        # Our prediction is the feed's countdown, corrected as on the page
+        # (#153); with no corrections fitted yet it's the same 9:57 AM.
         self.assertEqual(
             [(check.label, check.value, check.crowd) for check in answer.checks],
-            [("Downtowner", "9:57 AM", None), ("Our prediction", "None", None), ("Crowding", "No reports", None)],
+            [("Downtowner", "9:57 AM", None), ("Our prediction", "9:57 AM", None), ("Crowding", "No reports", None)],
         )
 
     def test_it_says_how_late_our_prediction_has_the_bus(self, network, plan_event):

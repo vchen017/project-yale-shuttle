@@ -12,6 +12,9 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from history.models import Calibration
+from history.predictions import countdown_bucket
+
 ROUTES = [
     {"id": 1, "name": "Blue - Weekday Daytime", "short_name": "BD", "color": "4472C4", "active": True,
      "stops": [10, 20, 30]},
@@ -83,7 +86,7 @@ class NextBusesPageTests(TestCase):
         self.assertContains(response, "then 9, 17 min")
         self.assertContains(response, ">Our prediction</div>", count=2)
         # All the rows' served checks share one stop-list read (current_by_route).
-        predict.assert_any_call(1, 10, use_live_feed=False, current_by_route=mock.ANY)
+        predict.assert_any_call(1, 10, current_by_route=mock.ANY)
 
     @mock.patch("transit.next_buses.predict_minutes", return_value=None)
     def test_without_a_prediction_only_the_official_time_shows_labelled_as_such(self, predict, urlopen):
@@ -154,17 +157,29 @@ class NextBusesPageTests(TestCase):
         self.assertEqual(urlopen.call_count, calls)
         self.assertEqual({call.kwargs["timeout"] for call in urlopen.call_args_list}, {5})
 
-    def test_our_prediction_never_just_repeats_the_official_time(self, urlopen):
-        # Unmocked predict_minutes, empty database: the feed has Blue's next
-        # bus in 2 minutes, but our column comes from our own recorded data,
-        # which has nothing yet, so neither route gets a prediction.
+    def test_our_prediction_is_the_feeds_countdown_corrected_by_our_history(self, urlopen):
+        # Unmocked predict_minutes (#153). Blue's soonest bus is 9 minutes
+        # out, and the recorded history says Blue's countdowns of 5 to 10
+        # minutes run 2 minutes short. Orange has no bus in the feed, and
+        # the database has no history for it, so it gets no prediction.
+        Calibration.objects.create(route_id=1, bucket=countdown_bucket(9), delta_minutes=2.0, samples=40)
+        etas = {"etas": {"10": {"etas": [{"route": 1, "bus_id": 812, "bus_name": "812", "avg": 9}]}}}
+        urlopen.side_effect = feed(etas=etas)
+
+        rows = {row.route_id: row for row in self.get(10).context["board"].rows}
+
+        self.assertEqual((rows[1].official, rows[1].ours), ([9], 11))
+        self.assertIsNone(rows[2].ours)
+
+    def test_a_bus_about_to_come_keeps_the_feeds_countdown(self, urlopen):
+        # At 5 minutes or less a countdown is near-perfect and a correction
+        # only hurt (#117), so ours is the feed's number.
+        Calibration.objects.create(route_id=1, bucket=countdown_bucket(2), delta_minutes=-3.0, samples=40)
         urlopen.side_effect = feed()
 
         rows = {row.route_id: row for row in self.get(10).context["board"].rows}
 
-        self.assertEqual(rows[1].official[0], 2)
-        self.assertIsNone(rows[1].ours)
-        self.assertIsNone(rows[2].ours)
+        self.assertEqual((rows[1].official[0], rows[1].ours), (2, 2))
 
 
 NOW = timezone.now()  # the clock these tests run at, so ages are exact
