@@ -385,6 +385,21 @@
   .cal-step { font-size: 0.9rem; }
 }
 
+/* The accuracy dashboard's on-time meter (#156): ours filled in Yale blue, with ticks for the
+   official ETA's rate, the baseline we started from (dashed) and the goal. The legend's keys
+   are the same ticks, so the colour rules come after both. */
+.ontime-meter { position: relative; height: 0.9rem; margin: 0.45rem 0; border-radius: 999px; background: rgba(0, 53, 107, 0.12); }
+.ontime-meter .ontime-fill { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 999px; background: var(--ys-blue); }
+.ontime-mark { position: absolute; top: -0.35rem; bottom: -0.35rem; margin-left: -1px; border-left: 2px solid; }
+.ontime-legend { display: flex; flex-wrap: wrap; gap: 0.25rem 1.1rem; color: var(--bs-secondary-color); }
+.ontime-key { display: inline-block; height: 0.85rem; margin-right: 0.4rem; vertical-align: -0.1rem; border-left: 2px solid; }
+.ontime-key.ontime-fill { width: 0.85rem; border: 0; border-radius: 2px; background: var(--ys-blue); }
+.ontime-official { border-left-color: #212529; }
+.ontime-baseline { border-left-color: #6c757d; border-left-style: dashed; }
+.ontime-goal { border-left-color: var(--bs-success); }
+.ontime-mini { display: inline-block; width: 3rem; height: 0.45rem; margin-right: 0.4rem; border-radius: 999px; background: rgba(0, 53, 107, 0.12); vertical-align: middle; overflow: hidden; }
+.ontime-mini span { display: block; height: 100%; border-radius: 999px; background: var(--ys-blue); }
+
 /* The next trip card (#157): the rider's next trip, live, on top of the when-to-leave page. When to
    leave and the time it leaves to spare, the bus as a range, crowding and detour chips, and its map with
    the live bus; or, when no shuttle runs, Yale's other ways there with tap-to-call buttons. */

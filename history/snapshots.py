@@ -38,9 +38,17 @@ def score(start, end):
 
 
 def describe(snapshot):
-    """One run-log line: the range, what it scored, how long it took."""
-    return (
+    """One run-log line: the range, what it scored, how long it took, and
+    how often ours and the Downtowner's answers were on time (#156)."""
+    overall = snapshot.payload["overall"]
+    line = (
         f"{snapshot.range_start} to {snapshot.range_end}: "
-        f"{snapshot.payload['overall']['queries']} queries scored "
+        f"{overall['queries']} queries scored "
         f"in {snapshot.duration_seconds:.1f}s"
     )
+    rates = [
+        f"{name} {overall[side]['on_time_percent']}%"
+        for side, name in (("ours", "ours"), ("official", "the Downtowner"))
+        if (overall.get(side) or {}).get("on_time_percent") is not None
+    ]
+    return line + (f"; on time: {', '.join(rates)}" if rates else "")
