@@ -64,10 +64,11 @@ production actually runs.
 """
 
 import datetime as dt
+import math
 import statistics
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from zoneinfo import ZoneInfo
 
 from django.core.cache import cache
@@ -100,6 +101,8 @@ MIN_CALIBRATION_SAMPLES = 20  # a (route, bucket) with fewer residuals defers
 # to the all-routes row for its bucket
 OVERALL_BUCKET = -1  # the Corrections row that covers every countdown
 CALIBRATION_CACHE_SECONDS = 600  # the stored corrections, re-read this often
+ON_TIME_SLACK = 2  # minutes the bus may beat the time we gave and still be caught (#155)
+ON_TIME_TARGET = 0.9  # the share of riders "Leave by" should get to the stop in time (#155)
 
 
 @dataclass
@@ -119,20 +122,43 @@ class Corrections:
     countdown bucket), with the all-routes medians beneath and the overall
     median beneath those. `delta` walks that ladder; an empty fit — a new
     database, no history yet — corrects nothing, so the raw countdown
-    answers and a fresh deploy degrades safely."""
+    answers and a fresh deploy degrades safely.
+
+    The cushions (#155) walk the same ladder: how much earlier than the
+    corrected time a rider should leave, so that "Leave by" gets them to the
+    stop before the bus ON_TIME_TARGET of the time. Without a fit there's no
+    cushion, and "Leave by" is the corrected time, as before."""
 
     by_route: dict  # (route id, bucket) -> median residual
     by_bucket: dict  # bucket -> median residual
     overall: float  # median residual over everything fitted
+    cushion_by_route: dict = field(default_factory=dict)  # (route id, bucket) -> minutes
+    cushion_by_bucket: dict = field(default_factory=dict)  # bucket -> minutes
+    cushion_overall: float = 0.0
 
     def delta(self, route_id, countdown):
         """The minutes to add to a countdown of this size for this route."""
-        bucket = countdown_bucket(countdown)
+        return self._delta_in(route_id, countdown_bucket(countdown))
+
+    def _delta_in(self, route_id, bucket):
         if (route_id, bucket) in self.by_route:
             return self.by_route[(route_id, bucket)]
         if bucket in self.by_bucket:
             return self.by_bucket[bucket]
         return self.overall
+
+    def cushion(self, route_id, countdown):
+        """Whole minutes to leave earlier than the corrected time, for a
+        countdown of this size on this route (#155): rounded up, so the
+        target holds. 0 without a fit."""
+        bucket = countdown_bucket(countdown)
+        if (route_id, bucket) in self.cushion_by_route:
+            minutes = self.cushion_by_route[(route_id, bucket)]
+        elif bucket in self.cushion_by_bucket:
+            minutes = self.cushion_by_bucket[bucket]
+        else:
+            minutes = self.cushion_overall
+        return max(0, math.ceil(round(minutes, 1)))
 
     def correct(self, route_id, countdown):
         """A live countdown as predict_minutes answers it: untouched at or
@@ -319,32 +345,37 @@ def stored_corrections():
     """The fitted Corrections, from the table the nightly fit_calibration
     job rewrites (#117), held in the cache between reads. Nothing stored —
     a fresh database, or the job yet to run — is an empty fit: the raw
-    countdown answers uncorrected."""
+    countdown answers uncorrected, with no cushion. A row fitted before the
+    cushions (#155) has none, so the cushion skips that rung of the ladder."""
     rows = cache.get("history.calibration")
     if rows is None:
-        rows = list(Calibration.objects.values_list("route_id", "bucket", "delta_minutes"))
+        rows = list(
+            Calibration.objects.values_list("route_id", "bucket", "delta_minutes", "cushion_minutes")
+        )
         cache.set("history.calibration", rows, CALIBRATION_CACHE_SECONDS)
-    by_route = {
-        (route_id, bucket): delta
-        for route_id, bucket, delta in rows
-        if route_id is not None and bucket != OVERALL_BUCKET
-    }
-    by_bucket = {
-        bucket: delta
-        for route_id, bucket, delta in rows
-        if route_id is None and bucket != OVERALL_BUCKET
-    }
-    overall = next(
-        (delta for route_id, bucket, delta in rows if route_id is None and bucket == OVERALL_BUCKET),
-        0.0,
-    )
-    return Corrections(by_route=by_route, by_bucket=by_bucket, overall=overall)
+    corrections = Corrections(by_route={}, by_bucket={}, overall=0.0)
+    for route_id, bucket, delta, *cushion in rows:
+        cushion = cushion[0] if cushion else None  # a row cached before #155 has no cushion
+        if route_id is not None and bucket != OVERALL_BUCKET:
+            corrections.by_route[(route_id, bucket)] = delta
+            if cushion is not None:
+                corrections.cushion_by_route[(route_id, bucket)] = cushion
+        elif route_id is None and bucket != OVERALL_BUCKET:
+            corrections.by_bucket[bucket] = delta
+            if cushion is not None:
+                corrections.cushion_by_bucket[bucket] = cushion
+        elif route_id is None:
+            corrections.overall = delta
+            if cushion is not None:
+                corrections.cushion_overall = cushion
+    return corrections
 
 
 def _fit_corrections(residuals):
     """The Corrections for residuals keyed (route id, countdown bucket): the
     median per key where at least MIN_CALIBRATION_SAMPLES taught it, the
-    all-routes median per bucket beneath, the overall median beneath that."""
+    all-routes median per bucket beneath, the overall median beneath that,
+    and the cushions fitted on the same residuals (_fit_cushions)."""
     by_route = {
         key: statistics.median(values)
         for key, values in residuals.items()
@@ -356,7 +387,44 @@ def _fit_corrections(residuals):
     by_bucket = {bucket: statistics.median(values) for bucket, values in pooled.items()}
     everything = [value for values in residuals.values() for value in values]
     overall = statistics.median(everything) if everything else 0.0
-    return Corrections(by_route=by_route, by_bucket=by_bucket, overall=overall)
+    corrections = Corrections(by_route=by_route, by_bucket=by_bucket, overall=overall)
+    _fit_cushions(residuals, corrections)
+    return corrections
+
+
+def _fit_cushions(residuals, corrections):
+    """Fill in the corrections' cushions (#155): per (route id, countdown
+    bucket), how many minutes earlier than the corrected time a rider has to
+    leave so that the bus beats them by more than ON_TIME_SLACK no more than
+    1 - ON_TIME_TARGET of the time. That's the ON_TIME_TARGET quantile of
+    (corrected - actual), less the slack, never below zero, on the deltas'
+    ladder: per route where MIN_CALIBRATION_SAMPLES taught it, all routes per
+    bucket beneath, everything beneath that.
+
+    A residual is actual - countdown, so corrected - actual is delta -
+    residual where the countdown gets corrected, and -residual in bucket 0,
+    below RAW_MAX, where it answers raw. (A countdown of exactly RAW_MAX
+    answers raw too but sits in bucket 1, which counts it as corrected; the
+    residuals don't keep the countdown to tell.)"""
+    pooled = defaultdict(list)
+    for (route_id, bucket), values in residuals.items():
+        delta = 0.0 if bucket == 0 else corrections._delta_in(route_id, bucket)
+        errors = [delta - value for value in values]
+        pooled[bucket].extend(errors)
+        if len(values) >= MIN_CALIBRATION_SAMPLES:
+            corrections.cushion_by_route[(route_id, bucket)] = _cushion(errors)
+    for bucket, errors in pooled.items():
+        corrections.cushion_by_bucket[bucket] = _cushion(errors)
+    everything = [error for errors in pooled.values() for error in errors]
+    corrections.cushion_overall = _cushion(everything) if everything else 0.0
+
+
+def _cushion(errors):
+    """The minutes to leave early so ON_TIME_TARGET of these (corrected -
+    actual) errors land within ON_TIME_SLACK."""
+    ordered = sorted(errors)
+    quantile = ordered[min(len(ordered) - 1, int(ON_TIME_TARGET * len(ordered)))]
+    return max(0.0, quantile - ON_TIME_SLACK)
 
 
 def _shown_residuals(since, until=None, exclude_dates=frozenset(), arrivals_by_pair=None):

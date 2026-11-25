@@ -18,7 +18,11 @@ from dataclasses import dataclass, field
 from django.utils import timezone
 
 from detours.detect import detoured_routes
-from history.predictions import current_stops_by_route, predict_minutes
+from history.predictions import (
+    current_stops_by_route,
+    predict_minutes,
+    stored_corrections,
+)
 
 from . import downtowner
 from .network import network, text_color
@@ -44,6 +48,10 @@ class Row:
     # older than STALE_AFTER_MINUTES; None when it's fresh or we can't tell.
     last_seen: int | None = None
     ours_hidden: bool = False  # we had a prediction but the bus's position is too old
+    # Feed countdown -> whole minutes that "Leave by" should leave to spare for
+    # that bus, as the recorded history teaches for this route (#155). Empty
+    # without a fit; trip plans read it, the board doesn't show it.
+    cushions: dict = field(default_factory=dict)
 
     @property
     def text_color(self):
@@ -144,6 +152,7 @@ def next_buses(stop_id, destination_id=None):
     # served checks, instead of one query per route (the same batch the
     # accuracy scoring takes, #17).
     current_by_route = current_stops_by_route()
+    corrections = stored_corrections()  # the same cached fit predict_minutes reads, for the cushions (#155)
 
     rows = []
     for route in net["routes"]:
@@ -169,6 +178,7 @@ def next_buses(stop_id, destination_id=None):
                 ours=None if ours is None or too_old else round(ours),
                 last_seen=int(age // 60) if age is not None and age > STALE_AFTER_MINUTES * 60 else None,
                 ours_hidden=too_old and ours is not None,
+                cushions={minute: corrections.cushion(route["id"], minute) for minute in minutes[route["id"]]},
             )
         )
     rows.sort(key=lambda row: (row.soonest, row.name))

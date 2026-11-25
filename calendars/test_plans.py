@@ -16,7 +16,13 @@ from transit.next_buses import Board, Row
 from transit.test_trips import PAYNE_WHITNEY, SCIENCE_HILL, SERVED, UNION
 
 from .models import Event
-from .plans import EventPlan, catchable_minutes, match_building
+from .plans import (
+    EventPlan,
+    catchable,
+    catchable_minutes,
+    match_building,
+    spare_minutes,
+)
 from .plans import plan_event as plan_one
 
 ET = ZoneInfo("America/New_York")
@@ -30,9 +36,11 @@ def event(location="Watson Center, 60 Sachem Street", start=START):
     return Event(uid="e@yale", title="Lecture", start=start, location=location)
 
 
-def row(ours=8, official=(9,)):
-    """A live board row: the Blue, ours 8 minutes out, the feed saying 9."""
-    return Row(route_id=1, name="Blue - Weekday Daytime", label="Blue", color="00356b", official=list(official), ours=ours)
+def row(ours=8, official=(9,), cushions=None):
+    """A live board row: the Blue, ours 8 minutes out, the feed saying 9.
+    `cushions` maps the feed's countdowns to minutes to spare (#155)."""
+    return Row(route_id=1, name="Blue - Weekday Daytime", label="Blue", color="00356b", official=list(official), ours=ours,
+               cushions=cushions or {})
 
 
 def plan_event(event, home=HOME, now=NOW, stops=SERVED, routes=ROUTES, **more):
@@ -163,6 +171,52 @@ class PlanEventTests(SimpleTestCase):
         self.assertIsNone(plan.plan)
         self.assertIsNone(plan.leave_by)
         self.assertEqual(plan.walk_all, 26)  # the walk is computable without the feed
+
+
+class CushionTests(SimpleTestCase):
+    """"Leave by" keeps a few minutes to spare at the stop (#155): the cushion
+    the board's row carries for the bus's countdown, as much as there's time for."""
+
+    def test_leave_by_keeps_the_cushion_for_that_buss_countdown(self):
+        soon = NOW + dt.timedelta(minutes=30)
+        rows = [row(ours=14, official=(12,), cushions={12: 3})]  # ours corrects the feed's 12 to 14
+        with mock.patch("calendars.plans.next_buses", return_value=Board(running=True, rows=rows)):
+            plan = plan_event(event(start=soon))
+        self.assertEqual((plan.bus_minutes, plan.spare_minutes), (14, 3))
+        self.assertEqual(plan.leave_by, NOW + dt.timedelta(minutes=14 - 3))  # the stop is at Home's door
+
+    def test_a_bus_too_close_for_the_whole_cushion_keeps_what_there_is(self):
+        away = SimpleNamespace(lat=41.3072, lon=-72.9298)  # an 8-minute walk from Payne Whitney
+        soon = NOW + dt.timedelta(minutes=30)
+        rows = [row(ours=10, official=(10,), cushions={10: 4})]
+        with mock.patch("calendars.plans.next_buses", return_value=Board(running=True, rows=rows)):
+            plan = plan_event(event(start=soon), home=away)
+        self.assertEqual(plan.spare_minutes, 2)
+        self.assertEqual(plan.leave_by, NOW)  # leave now, never in the past
+
+    def test_a_later_bus_keeps_its_own_cushion(self):
+        away = SimpleNamespace(lat=41.3072, lon=-72.9298)
+        soon = NOW + dt.timedelta(minutes=40)
+        rows = [row(ours=3, official=(3, 25), cushions={3: 0, 25: 6})]
+        with mock.patch("calendars.plans.next_buses", return_value=Board(running=True, rows=rows)):
+            plan = plan_event(event(start=soon), home=away)
+        self.assertEqual((plan.bus_minutes, plan.spare_minutes), (25, 6))
+        self.assertEqual(plan.leave_by, NOW + dt.timedelta(minutes=25 - 8 - 6))
+
+    def test_without_a_fit_or_a_countdown_there_is_nothing_to_spare(self):
+        soon = NOW + dt.timedelta(minutes=30)
+        for rows in ([row(ours=12, official=(12,))], [row(ours=12, official=(), cushions={12: 5})]):
+            with mock.patch("calendars.plans.next_buses", return_value=Board(running=True, rows=rows)):
+                plan = plan_event(event(start=soon))
+            self.assertEqual((plan.spare_minutes, plan.leave_by), (0, NOW + dt.timedelta(minutes=12)))
+
+    def test_catchable_says_which_countdown_the_bus_came_from(self):
+        self.assertEqual(catchable(14, [12, 30], walk=5), (14, 12))
+        self.assertEqual(catchable(3, [3, 30], walk=5), (30, 30))
+        self.assertEqual(catchable(12, [], walk=5), (12, None))  # history's guess: no countdown
+        self.assertEqual(catchable(None, [], walk=5), (None, None))
+        self.assertEqual(spare_minutes(4, minutes=10, walk=8), 2)
+        self.assertEqual(spare_minutes(4, minutes=7, walk=8), 0)
 
 
 class CatchableMinutesTests(SimpleTestCase):

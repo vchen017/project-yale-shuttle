@@ -282,6 +282,21 @@ class WatchTests(TestCase):
             self.assertEqual(data.predicted_minutes(request), 15)
         self.assertEqual(leave_by, START + dt.timedelta(minutes=10))  # the bus in 15, then a 5-minute walk
 
+    def test_the_time_to_leave_keeps_the_minutes_to_spare_the_page_keeps(self, network, plan_event, webpush):
+        """#155: Blue's 10-15 minute countdowns need 3 minutes to spare, so
+        with the bus 12 minutes out and a 5-minute walk, leave in 4, not 7."""
+        Calibration.objects.create(
+            route_id=1, bucket=countdown_bucket(12), delta_minutes=0.0, samples=40, cushion_minutes=3.0
+        )
+        self.lecture(minutes_away=60)
+        loaded = trips.load_trips(START)
+        data = trips.watch_data(loaded, START)
+        bus = Bus(self.clock, arrives=START + dt.timedelta(minutes=12))
+        with mock.patch.object(trips.downtowner, "etas", side_effect=bus.etas):
+            request, leave_by = trips._request(loaded[0], data)
+            self.assertEqual((data.predicted_minutes(request), data.spare_minutes(request)), (12, 3))
+        self.assertEqual(leave_by, START + dt.timedelta(minutes=4))
+
     def test_with_no_bus_in_the_feed_our_prediction_is_historys(self, network, plan_event, webpush):
         self.lecture(minutes_away=60)
         loaded = trips.load_trips(START)

@@ -74,6 +74,9 @@ class Looked(DataSource):
         self.seen["predicted"] = minutes = self.source.predicted_minutes(trip)
         return minutes
 
+    def spare_minutes(self, trip):
+        return self.source.spare_minutes(trip)
+
     def crowding(self, trip):
         self.seen["crowding"] = answer = self.source.crowding(trip)
         return answer
