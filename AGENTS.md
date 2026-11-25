@@ -33,7 +33,11 @@ SEED_ADMIN_PASSWORD=pick-one SEED_RIDER_PASSWORD=pick-another .venv/bin/python m
 .venv/bin/python manage.py runserver
 ```
 
-Tests: `DJANGO_DEBUG=1 .venv/bin/python manage.py test`. Lint:
+Tests: `DJANGO_DEBUG=1 .venv/bin/python manage.py test`. The browser test
+(`e2e/`) is skipped until you install `requirements-dev.txt`, then run
+`.venv/bin/python -m playwright install chromium-headless-shell` and
+`.venv/bin/python -m e2e.assets` once (on macOS 13, add `E2E_CHANNEL=chrome`
+to use your installed Chrome instead). Lint:
 `uvx ruff check --fix .` (the rules are in `ruff.toml`). CI runs the linter and
 the tests against PostgreSQL on every pull request, and checks that the
 migrations match the models. GitHub won't merge until all of them pass.

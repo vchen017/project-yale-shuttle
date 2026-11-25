@@ -2,7 +2,9 @@ name: ci
 
 # Lints the code and runs the tests against PostgreSQL on every pull request
 # and push to main. Branch protection requires this job, so a lint error or a
-# failing test blocks the merge.
+# failing test blocks the merge. The tests include the browser test (e2e/,
+# #160), in headless Chromium: E2E=1 makes it fail, rather than skip, without
+# its browser or the CDN files it serves the page.
 on:
   pull_request:
   push:
@@ -32,6 +34,10 @@ jobs:
           python-version-file: .python-version
           cache: pip
       - run: pip install -r requirements-dev.txt
+      - name: Install headless Chromium for the browser test
+        run: python -m playwright install --with-deps chromium-headless-shell
+      - name: Fetch the CDN files the browser test serves, checked against the hashes the templates pin
+        run: python -m e2e.assets
       - name: Lint (run `ruff check --fix .` to fix most of these)
         run: ruff check --output-format github .
       - name: Check that every model change has a migration
@@ -39,3 +45,5 @@ jobs:
       - name: Apply every migration to an empty PostgreSQL database
         run: python manage.py migrate --no-input && python manage.py migrate --check
       - run: python manage.py test
+        env:
+          E2E: "1"

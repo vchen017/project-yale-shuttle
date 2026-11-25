@@ -137,6 +137,17 @@ recorded and safe to repeat ([#40](https://github.com/vchen017/project-yale-shut
   (`core/test_rider_workflows.py`): signing up and landing on the stops map,
   turning notifications on and sending a test, logging out, logging back in,
   and a wrong password.
+- One journey runs in a real browser (`e2e/`, #160): headless Chromium,
+  driven by Playwright, against Django's live test server, so the page's
+  JavaScript runs. A rider logs in, opens When to leave, sees the next trip
+  with its map drawn by MapLibre, asks the AI trip agent, and sees its answer
+  arrive through the page's own polling. The model and the feed are mocked
+  on the server; in the browser, Bootstrap and MapLibre come from copies
+  checked against the hashes the templates pin (`python -m e2e.assets`), the
+  map's style is a stand-in without tiles, and any other outside request is
+  refused: anything but the icon font fails the test. Breaking the page's
+  polling makes it fail. CI installs the browser and runs it with every pull
+  request.
 - When the shuttle feed is slow, down or answers garbage, every page still
   loads, because none waits on the feed; the map's data answers 503 and the
   map says live data is unavailable. Requests time out after 5 seconds.
@@ -163,9 +174,9 @@ recorded and safe to repeat ([#40](https://github.com/vchen017/project-yale-shut
   history. For example, the accuracy scoring was measured on 20,145 real
   queries before and after #124.
 - Not tested automatically:
-  - The browser JavaScript (the map, the notification switch) and real push
-    delivery. We check those by hand, in a phone-sized and a desktop-sized
-    window, before each submission.
+  - The rest of the browser JavaScript (the notification switch, the trip
+    search, the shared trip's page) and real push delivery. We check those by
+    hand, in a phone-sized and a desktop-sized window, before each submission.
   - The real model's answers. They cost money and vary from run to run, so
     `evaluate_assistant` runs them by hand.
   - The workflows themselves (CI, promotion, the jobs, the clock, and the A/B
