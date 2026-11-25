@@ -219,7 +219,8 @@ class LeavePageTests(TestCase):
         self.assertIn("Location unknown", content)
         self.assertIn("one of the Yale buildings we know", content)
         self.assertIn("The event has no location", content)
-        self.assertEqual(content.count("data-trip-map"), 1)  # only the lecture has a trip to map
+        # Only the lecture has a trip to map (the next trip card on top maps it too, #157).
+        self.assertEqual(content.count('data-map-data="trip-map-'), 1)
 
     def test_without_a_home_the_events_wait_with_a_hint(self):
         Place.objects.filter(user=self.user).delete()
