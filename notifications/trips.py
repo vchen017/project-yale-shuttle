@@ -17,7 +17,8 @@ when the feed has none, since a countdown is near-perfect once a bus is close
 The corrections and the history (history.HistoryPredictor) are loaded with
 the run. Once the time to leave is within DECIDE_AHEAD, the agent (#28)
 decides whether and when to notify, reading the live countdown, that
-prediction and the crowding read at the start. A notification
+prediction and the crowding read at the start. The time to leave keeps a few
+minutes to spare at the stop, the cushion the page builds in too (#155). A notification
 goes out at the time the agent picked. It's recorded first, under a unique
 constraint (TripNotification), so overlapping runs or a rerun never send it
 twice. When no device receives it, the record is dropped again, so the next
@@ -129,7 +130,20 @@ class WatchData(DataSource):
         our history's when the feed lists no bus or is down, in whole minutes
         as the page shows it. When the rider can't walk to the stop in time
         for that bus, the next bus in the feed they can make, as on the page
-        (calendars.plans.catchable_minutes). None when there's no such bus."""
+        (calendars.plans.catchable). None when there's no such bus."""
+        return self._ours(trip)[0]
+
+    def spare_minutes(self, trip):
+        """The minutes to spare at the stop that the time to leave builds in
+        for that bus, as on the page (#155): the cushion for its countdown,
+        or as much as there's time for. 0 when the time came from history."""
+        minutes, countdown = self._ours(trip)
+        if minutes is None or countdown is None:
+            return 0
+        cushion = self.corrections.cushion(trip.route_id, countdown)
+        return plans.spare_minutes(cushion, minutes, trip.walking_minutes)
+
+    def _ours(self, trip):
         try:
             countdowns = self._countdowns(trip)
         except FeedUnavailable:
@@ -138,7 +152,7 @@ class WatchData(DataSource):
             ours = self.corrections.correct(trip.route_id, countdowns[0])
         else:
             ours = self.history.minutes(trip.route_id, trip.stop_id, self.now)
-        return plans.catchable_minutes(None if ours is None else round(ours), countdowns, trip.walking_minutes)
+        return plans.catchable(None if ours is None else round(ours), countdowns, trip.walking_minutes)
 
     def crowding(self, trip):
         return self.crowding_by_route.get(trip.route_id)
@@ -287,7 +301,8 @@ def _request(trip, data):
     if best is None:
         return None, None
     _, request, minutes = best
-    return request, data.now + dt.timedelta(minutes=minutes - trip.walk_to_stop)
+    spare = data.spare_minutes(request)  # the few minutes at the stop that "Leave by" builds in (#155)
+    return request, data.now + dt.timedelta(minutes=minutes - trip.walk_to_stop - spare)
 
 
 def send_due(trips, now, reconnect=False):

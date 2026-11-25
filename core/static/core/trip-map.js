@@ -5,7 +5,9 @@
 // at once. Each [data-trip-map] holder names its JSON ([lat, lon] pairs) in
 // data-map-data, or the trip page's trip-map-data; nothing here calls the
 // shuttle feed. The base map is the same OpenFreeMap style as the home page's
-// map (map.js).
+// map (map.js). Once a map has loaded, its holder gets a "trip-map:ready"
+// event carrying it, so the next trip card (next-trip.js, #157) can put the
+// live bus on it.
 (() => {
   if (!window.maplibregl) return;
   const lngLat = ([lat, lon]) => [lon, lat];
@@ -82,6 +84,7 @@
             .addTo(map);
         }
       }
+      holder.dispatchEvent(new CustomEvent("trip-map:ready", { detail: map }));
     });
   }
 

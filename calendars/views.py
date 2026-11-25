@@ -2,8 +2,11 @@ import datetime as dt
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse
 from django.shortcuts import redirect, render
+from django.template.loader import render_to_string
 from django.utils import timezone
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import (
     require_http_methods,
     require_POST,
@@ -16,7 +19,7 @@ from transit.answer import route_segment
 from transit.downtowner import FeedUnavailable
 from transit.network import network
 
-from . import demo, plans, services
+from . import demo, next_trip, plans, services
 from .forms import CalendarForm
 
 
@@ -96,10 +99,11 @@ def leave(request):
         plan.has_a_bus = ask.has_a_bus(plan)
         plan.ask_from = ask.ask_from(plan.event, now)
         plan.agent_answer = answers.get(ask.key(plan.event))
-        plan.leave_in = round((plan.leave_by - now).total_seconds() / 60)
-        ride = plan.plan is not None and not plan.walking_is_quicker
-        plan.board_time = plan.leave_by + dt.timedelta(minutes=plan.plan.walk_to_stop) if ride else None
+        _timeline(plan, now)
         plan.map, plan.map_id = _trip_map(plan, home, routes_by_id), f"trip-map-{plan.event.pk}"
+    # The next trip, live, on top (#157). Not while the feed is down: "no
+    # shuttle links these" can't be told apart from "the feed didn't say".
+    upcoming = next_trip.next_plan(every_plan, now) if stops is not None else None
     # An answer that would notify offers to turn notifications on, to a rider who hasn't.
     alerts_on = any(answer.notify for answer in answers.values()) and request.user.push_subscriptions.exists()
     return render(
@@ -111,8 +115,53 @@ def leave(request):
             "feed_down": stops is None,
             "now": now,
             "alerts_on": alerts_on,
+            "next_trip": next_trip.read(upcoming, now) if upcoming else None,
+            "refresh_seconds": next_trip.REFRESH_SECONDS,
         },
     )
+
+
+@login_required
+@require_safe
+@never_cache
+def next_trip_card(request):
+    """The next trip card's live part (#157), which the when-to-leave page
+    swaps in every next_trip.REFRESH_SECONDS while it's watching for a bus:
+    {"key", "html", "bus", "watching"}, the bus being where it is on the map
+    now, and "watching" whether to keep asking. The key says which event the card
+    is about: the page reloads when it changes, so a new trip gets its map.
+    {"key": null} when there's no next trip; {"feed_down": true} while the
+    feed is down, which the page waits out with the card it has."""
+    now = timezone.now()
+    home = Place.objects.filter(user=request.user, is_home=True).first()
+    try:
+        net = network()
+    except FeedUnavailable:
+        return JsonResponse({"feed_down": True})
+    routes_by_id = {route["id"]: route for route in net["routes"]}
+    upcoming = None
+    for event in services.upcoming(request.user, now=now):  # soonest first: plan only up to the next trip
+        plan = plans.plan_event(
+            event, home, now=now, stops=net["stops"], routes_by_id=routes_by_id, running_at=plans.routes_running_at
+        )
+        if next_trip.next_plan([plan], now) is plan:
+            upcoming = plan
+            break
+    if upcoming is None:
+        return JsonResponse({"key": None})
+    if upcoming.leave_by is not None:
+        _timeline(upcoming, now)
+    trip = next_trip.read(upcoming, now)
+    html = render_to_string("calendars/_next_trip_live.html", {"trip": trip}, request=request)
+    return JsonResponse({"key": trip.key, "html": html, "bus": trip.bus, "watching": trip.watching})
+
+
+def _timeline(plan, now):
+    """The minutes until the plan says to leave, and its bus's time: the
+    walk, then the minutes to spare at the stop (#155)."""
+    plan.leave_in = round((plan.leave_by - now).total_seconds() / 60)
+    ride = plan.plan is not None and not plan.walking_is_quicker
+    plan.board_time = plan.leave_by + dt.timedelta(minutes=plan.plan.walk_to_stop + plan.spare_minutes) if ride else None
 
 
 def _days(every_plan, now):

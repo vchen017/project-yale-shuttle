@@ -8,6 +8,7 @@
           integrity="sha384-nXMl9YiLoSG5KBPTFgvxVuIqQQcqIvo0bFrvoEaGJC6r7IibIzF1S36Zbf/sKBtL" crossorigin="anonymous" defer></script>
   <script src="{% static 'core/trip-map.js' %}" defer></script>
   <script src="{% static 'core/agent.js' %}" defer></script>
+  <script src="{% static 'core/next-trip.js' %}" defer></script>
 {% endblock %}
 {% block content %}
 <h1 class="h3 mb-1">When to leave</h1>
@@ -30,6 +31,10 @@
     <i class="bi bi-wifi-off" aria-hidden="true"></i>
     <div>Live shuttle times are unavailable right now, so events below show their building without ride times.</div>
   </div>
+{% endif %}
+
+{% if next_trip %}
+  {% include "calendars/_next_trip.html" %}
 {% endif %}
 
 {% if days %}

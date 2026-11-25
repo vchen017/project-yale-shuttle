@@ -171,6 +171,18 @@ class NextBusesPageTests(TestCase):
         self.assertEqual((rows[1].official, rows[1].ours), ([9], 11))
         self.assertIsNone(rows[2].ours)
 
+    def test_each_bus_carries_the_cushion_its_countdown_needs(self, urlopen):
+        # #155: Blue's 5-10 minute countdowns need 3.2 minutes to spare,
+        # rounded up; nothing is fitted for its other sizes.
+        Calibration.objects.create(
+            route_id=1, bucket=countdown_bucket(9), delta_minutes=0.0, samples=40, cushion_minutes=3.2
+        )
+        urlopen.side_effect = feed()
+
+        rows = {row.route_id: row for row in self.get(10).context["board"].rows}
+
+        self.assertEqual(rows[1].cushions, {2: 0, 9: 4, 17: 0, 31: 0})
+
     def test_a_bus_about_to_come_keeps_the_feeds_countdown(self, urlopen):
         # At 5 minutes or less a countdown is near-perfect and a correction
         # only hurt (#117), so ours is the feed's number.

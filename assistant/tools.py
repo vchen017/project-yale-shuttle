@@ -49,6 +49,11 @@ class DataSource:
         """Minutes until the next bus, by our own prediction (#23)."""
         raise NotImplementedError
 
+    def spare_minutes(self, trip):
+        """The minutes to spare at the stop that the time to leave for the
+        bus predicted_minutes gave should build in (#155). 0 by default."""
+        return 0
+
     def crowding(self, trip):
         """{"current": label or None, "typical_now": label or None}, from riders' reports."""
         raise NotImplementedError
@@ -108,7 +113,9 @@ TOOLS = [
         "When our own prediction says the next bus reaches the stop, the time the rider must leave "
         "to meet it, and the minutes from its arrival to the rider's deadline. It's the live "
         "countdown corrected by what our recorded history says about countdowns like it, or, when "
-        "the feed lists no bus, a typical wait for this time of day. Says so when we have no prediction.",
+        "the feed lists no bus, a typical wait for this time of day. The time to leave keeps "
+        "minutes_to_spare at the stop, which our history says riders need to make the bus. "
+        "Says so when we have no prediction.",
     ),
     _definition(
         "get_crowding",
@@ -129,13 +136,16 @@ class ToolBox:
         self.trip, self.data, self.now = trip, data, now
         self.official = None  # arrival datetime, once get_official_arrival found one
         self.predicted = None
+        self.spare = 0  # minutes to spare at the stop that our prediction's time to leave keeps (#155)
 
     @property
     def leave_by(self):
         """When the rider must leave for the stop: our prediction wins over the official
-        time, as in decide.leave_by. None when no tool gave an arrival."""
-        arrival = self.predicted or self.official
-        return arrival - timedelta(minutes=self.trip.walking_minutes) if arrival else None
+        time, as in decide.leave_by, keeping its minutes to spare (#155). None when no
+        tool gave an arrival."""
+        if self.predicted:
+            return self.predicted - timedelta(minutes=self.trip.walking_minutes + self.spare)
+        return self.official - timedelta(minutes=self.trip.walking_minutes) if self.official else None
 
     def call(self, name, arguments):
         """Run a tool and return its result as JSON text. Never raises: a
@@ -173,16 +183,19 @@ class ToolBox:
             "now": _local(self.now),
         }
 
-    def _arrival(self, minutes, none_reason):
+    def _arrival(self, minutes, none_reason, spare=0):
         if minutes is None:
             return {"available": False, "reason": none_reason}, None
         arrival = self.now + timedelta(minutes=minutes)
-        leave = arrival - timedelta(minutes=self.trip.walking_minutes)
+        leave = arrival - timedelta(minutes=self.trip.walking_minutes + spare)
         # Arithmetic is done here, not left to the model: how long after the bus reaches the stop the
         # rider has to be at their destination (negative: the bus is later than that).
         gap = round((self.trip.needed_at - arrival).total_seconds() / 60)
-        return {"available": True, "arrival": _local(arrival), "leave_for_the_stop_by": _local(leave),
-                "minutes_from_arrival_to_deadline": gap}, arrival
+        result = {"available": True, "arrival": _local(arrival), "leave_for_the_stop_by": _local(leave),
+                  "minutes_from_arrival_to_deadline": gap}
+        if spare:
+            result["minutes_to_spare"] = spare
+        return result, arrival
 
     def _official(self):
         result, self.official = self._arrival(
@@ -191,8 +204,10 @@ class ToolBox:
         return result
 
     def _prediction(self):
+        minutes = self.data.predicted_minutes(self.trip)
+        self.spare = self.data.spare_minutes(self.trip) if minutes is not None else 0
         result, self.predicted = self._arrival(
-            self.data.predicted_minutes(self.trip), "We have no prediction for this route at this stop now."
+            minutes, "We have no prediction for this route at this stop now.", spare=self.spare
         )
         return result
 

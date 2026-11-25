@@ -150,6 +150,16 @@ class LeavePageTests(TestCase):
         self.assertIn("Leave by", content)
         self.assertIn("#00356b", content)  # the route's colour on its badge
 
+    def test_leave_by_shows_the_minutes_it_keeps_to_spare(self):
+        # #155: the bus 12 minutes out, and its countdown needs 3 minutes to spare.
+        self.lecture.start = timezone.now() + dt.timedelta(minutes=30)
+        self.lecture.save(update_fields=["start"])
+        cushioned = Row(route_id=1, name="Blue - Weekday Daytime", label="Blue", color="00356b",
+                        official=[12], ours=12, cushions={12: 3})
+        content = self.go([cushioned])[0].content.decode()
+        self.assertIn("3 min to spare</span>", content)
+        self.assertIn("in 9 min</span>", content)  # the stop is at Home's door: leave in 12 - 3
+
     def test_without_a_prediction_the_feed_s_countdown_shows(self):
         self.lecture.start = timezone.now() + dt.timedelta(minutes=20)
         self.lecture.save(update_fields=["start"])
@@ -209,7 +219,8 @@ class LeavePageTests(TestCase):
         self.assertIn("Location unknown", content)
         self.assertIn("one of the Yale buildings we know", content)
         self.assertIn("The event has no location", content)
-        self.assertEqual(content.count("data-trip-map"), 1)  # only the lecture has a trip to map
+        # Only the lecture has a trip to map (the next trip card on top maps it too, #157).
+        self.assertEqual(content.count('data-map-data="trip-map-'), 1)
 
     def test_without_a_home_the_events_wait_with_a_hint(self):
         Place.objects.filter(user=self.user).delete()

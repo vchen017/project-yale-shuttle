@@ -14,6 +14,7 @@
         <span class="cal-leave-time">Leave {% if plan.estimate %}around{% else %}by{% endif %} {{ plan.leave_by|date:"g:i A" }}</span>
         {% if not plan.estimate %}
           {% if plan.leave_in <= 0 %}<span class="cal-chip is-now">now</span>{% elif plan.leave_in <= 90 %}<span class="cal-chip is-soon">in {{ plan.leave_in }} min</span>{% endif %}
+          {% if plan.spare_minutes %}<span class="cal-chip is-spare" title="So you make the bus even when it comes early">{{ plan.spare_minutes }} min to spare</span>{% endif %}
         {% endif %}
       </div>
       <div class="cal-trip">
@@ -27,7 +28,7 @@
               <span class="cal-step-time">{% if not plan.estimate %}{{ plan.board_time|date:"g:i A" }}{% endif %}</span>
               <span class="cal-step-what">
                 {% if plan.row %}
-                  <span class="badge" style="background-color: #{{ plan.row.color }}; color: #{{ plan.row.text_color }};">{{ plan.row.name }}</span>
+                  <span class="badge" style="background-color: #{{ plan.row.color }}; color: {{ plan.row.text_color }};">{{ plan.row.name }}</span>
                 {% else %}
                   {% for name in plan.route_names %}<span class="badge text-bg-secondary me-1">{{ name }}</span>{% endfor %}
                 {% endif %}
