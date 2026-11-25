@@ -19,6 +19,12 @@ Watson Center, and is created only while the rider has no Home, so it never
 overrides one. It's written here rather than in `places/demo.py` only
 because it exists for this page; if the places app grows its own demo, this
 moves.
+
+A fourth event, office hours at Watson Center, is always 25 to 45 minutes
+away (#148). The trip agent is only asked about trips in the next two hours,
+as the trip watch asks it, and has the most to say about one whose time to
+leave is near, so this is the one graders can always put to it. Whenever it
+gets closer than SOON_KEEP, it moves to SOON_AHEAD from then.
 """
 
 import datetime as dt
@@ -39,6 +45,9 @@ EVENTS = [
     ("demo-brunch@yale", "Brunch with the cohort", "New Haven Green", dt.time(17, 30)),
     ("demo-basketball@yale", "Pick-up basketball", "", dt.time(19, 0)),
 ]
+SOON = ("demo-office-hours@yale", "Office hours", "Watson Center, 60 Sachem Street")  # uid, title, location
+SOON_AHEAD = dt.timedelta(minutes=40)  # where the office hours go
+SOON_KEEP = dt.timedelta(minutes=25)  # closer than this, and they move on
 
 
 def next_at(time_of_day, now):
@@ -49,6 +58,15 @@ def next_at(time_of_day, now):
     if when <= now:
         when += dt.timedelta(days=1)
     return when
+
+
+def next_soon(now):
+    """SOON_AHEAD from now, rounded up to the next five minutes: when the
+    office hours sit."""
+    when = now + SOON_AHEAD
+    if when.second or when.microsecond:
+        when = when.replace(second=0, microsecond=0) + dt.timedelta(minutes=1)
+    return when + dt.timedelta(minutes=-when.minute % 5)
 
 
 def seed(accounts, stdout):
@@ -65,8 +83,8 @@ def seed(accounts, stdout):
 
     calendar, _ = Calendar.objects.get_or_create(user=rider, is_demo=True, defaults={"ics_url": ""})
     now = timezone.now()
-    for uid, title, location, time_of_day in EVENTS:
-        start = next_at(time_of_day, now)
+    every = [(uid, title, location, next_at(time_of_day, now)) for uid, title, location, time_of_day in EVENTS]
+    for uid, title, location, start in [*every, (*SOON, next_soon(now))]:
         event = Event.objects.filter(calendar=calendar, uid=uid).first()
         if event is None:
             Event.objects.create(
@@ -89,8 +107,10 @@ def seed(accounts, stdout):
 
 
 def reanchor(now=None):
-    """The demo events whose time has passed move to their next occurrence:
-    the hourly job's part of keeping the page filled between deploys. Safe to
+    """The demo events whose time has passed move to their next occurrence,
+    and the office hours move on once they're closer than SOON_KEEP: the
+    hourly job's and the when-to-leave page's part of keeping the page filled
+    between deploys. Safe to
     run twice — a moved event is no longer behind now, so it stays put — and
     it leaves alone anything changed since. Returns how many moved, for the
     job's run log."""
@@ -102,6 +122,11 @@ def reanchor(now=None):
         if time_of_day is None:
             continue
         event.start = next_at(time_of_day, now)
+        event.end = event.start + LENGTH
+        event.save(update_fields=["start", "end"])
+        moved += 1
+    for event in Event.objects.filter(calendar__is_demo=True, uid=SOON[0], start__lt=now + SOON_KEEP):
+        event.start = next_soon(now)
         event.end = event.start + LENGTH
         event.save(update_fields=["start", "end"])
         moved += 1

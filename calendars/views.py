@@ -8,12 +8,12 @@ from django.views.decorators.http import (
     require_safe,
 )
 
-from notifications import trips
+from notifications import ask, trips
 from places.models import Place
 from transit.downtowner import FeedUnavailable
 from transit.network import network
 
-from . import plans, services
+from . import demo, plans, services
 from .forms import CalendarForm
 
 
@@ -67,8 +67,13 @@ def leave(request):
     stop to walk to, and the time to leave, from the rider's Home. Events
     whose location we can't match to a building are listed as location
     unknown. The feed being down never breaks the page: the events and their
-    buildings still show, without ride times."""
+    buildings still show, without ride times. A rideable event can be put to
+    the trip agent from here (#148)."""
     now = timezone.now()
+    # The demo events move on here too, not only in the hourly calendar job:
+    # the job clock runs that job on production only, so on staging they'd
+    # sit in the past between deploys, with nothing to ask the agent about.
+    demo.reanchor(now)
     events = services.upcoming(request.user, now=now)
     home = Place.objects.filter(user=request.user, is_home=True).first()
     try:
@@ -89,6 +94,13 @@ def leave(request):
         else:
             stranded.append(plan)
     rideable.sort(key=lambda plan: plan.leave_by)
+    answers = ask.answers_for(request.user, [plan.event for plan in rideable])
+    for plan in rideable:
+        plan.has_a_bus = ask.has_a_bus(plan)
+        plan.ask_from = ask.ask_from(plan.event, now)
+        plan.agent_answer = answers.get(ask.key(plan.event))
+    # An answer that would notify offers to turn notifications on, to a rider who hasn't.
+    alerts_on = any(answer.notify for answer in answers.values()) and request.user.push_subscriptions.exists()
     return render(
         request,
         "calendars/leave.html",
@@ -99,5 +111,6 @@ def leave(request):
             "has_home": home is not None,
             "feed_down": stops is None,
             "now": now,
+            "alerts_on": alerts_on,
         },
     )

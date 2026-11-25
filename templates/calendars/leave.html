@@ -1,5 +1,7 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}When to leave · Yale Shuttle{% endblock %}
+{% block extra_head %}<script src="{% static 'core/agent.js' %}" defer></script>{% endblock %}
 {% block content %}
 <h1 class="h3 mb-1">When to leave</h1>
 <p class="text-body-secondary mb-4">Your events for the next 24 hours, with the shuttle to catch and when to head out the door. Connect your calendar on the <a href="{% url 'calendar' %}">Calendar page</a>.</p>
@@ -33,7 +35,7 @@
 {% if rideable %}
   <ul class="list-group mb-4">
     {% for plan in rideable %}
-      <li class="list-group-item py-3">
+      <li class="list-group-item py-3" id="event-{{ plan.event.pk }}">
         <div class="d-flex flex-wrap gap-2 align-items-baseline">
           <span class="fw-semibold fs-5">{{ plan.event.title }}</span>
           <span class="text-body-secondary">{{ plan.event.start|date:"D, M j · g:i A" }}</span>
@@ -64,6 +66,12 @@
               Leave around <strong>{{ plan.leave_by|date:"g:i A" }}</strong> — an estimate that assumes about 15 minutes' wait at the stop. Check back within 45 minutes of the event for a live bus.
             {% endif %}
           </div>
+        {% endif %}
+        {% if plan.has_a_bus and plan.ask_from %}
+          {# The button's shape, greyed: the agent reads the next buses, so it's asked about the next two hours' trips #}
+          <div class="mt-3"><span class="agent-later" title="The AI trip agent looks at the next buses, so it answers about trips in the next two hours."><i class="bi bi-clock" aria-hidden="true"></i>Ask the AI trip agent from {{ plan.ask_from|date:"g:i A" }}</span></div>
+        {% elif plan.has_a_bus %}
+          {% include "notifications/_agent.html" with event=plan.event answer=plan.agent_answer %}
         {% endif %}
       </li>
     {% endfor %}

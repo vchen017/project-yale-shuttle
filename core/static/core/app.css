@@ -257,3 +257,68 @@
 .trip-details > :not(summary) { margin-left: 1rem; margin-right: 1rem; }
 .trip-details[open] > summary + * { margin-top: 0.9rem; }
 .trip-details[open] { padding-bottom: 0.9rem; }
+
+/* The trip agent on the when-to-leave page (#148): a verdict by a round badge, the notification it would
+   send, a timeline (asked, the alert, the bus, the event) and a crowding meter. All in the site's font. */
+.btn-agent {
+  --bs-btn-color: var(--ys-blue);
+  --bs-btn-bg: rgba(0, 53, 107, 0.05);
+  --bs-btn-border-color: rgba(0, 53, 107, 0.25);
+  --bs-btn-hover-color: #fff;
+  --bs-btn-hover-bg: var(--ys-blue);
+  --bs-btn-hover-border-color: var(--ys-blue);
+  --bs-btn-active-color: #fff;
+  --bs-btn-active-bg: var(--ys-blue-dark);
+  --bs-btn-active-border-color: var(--ys-blue-dark);
+  --bs-btn-disabled-color: var(--ys-blue);
+  --bs-btn-disabled-bg: rgba(0, 53, 107, 0.05);
+  --bs-btn-disabled-border-color: rgba(0, 53, 107, 0.25);
+  border-radius: 999px;
+}
+/* Before it can be asked: the button's shape, greyed */
+.agent-later { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.25rem 0.75rem; border: 1px dashed var(--bs-border-color); border-radius: 999px; font-size: 0.875rem; color: var(--bs-secondary-color); }
+.agent-panel { padding: 0.75rem 1rem 1rem; border-radius: 1rem; background: rgba(0, 53, 107, 0.04); border: 1px solid rgba(0, 53, 107, 0.12); }
+.agent-panel.agent-failed { background: #fff8e6; border-color: #f1d58a; }
+.agent-head { margin-bottom: 0.6rem; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--bs-secondary-color); }
+/* "AI" in a Yale-blue pill, so it's plain this is the AI feature */
+.agent-ai { display: inline-flex; align-items: center; gap: 0.2rem; margin-right: 0.45rem; padding: 0.05rem 0.5rem; border-radius: 999px; background: var(--ys-blue); color: #fff; }
+.agent-ai .bi { color: #fff; }
+/* The verdict */
+.agent-hero { display: flex; align-items: center; gap: 0.75rem; }
+.agent-badge { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 2.75rem; height: 2.75rem; border-radius: 50%; background: var(--ys-blue); color: #fff; font-size: 1.3rem; box-shadow: 0 2px 6px rgba(0, 53, 107, 0.25); }
+.agent-badge.is-now { background: var(--bs-danger); box-shadow: 0 2px 6px rgba(220, 53, 69, 0.3); }
+.agent-badge.is-quiet { background: var(--bs-success); box-shadow: 0 2px 6px rgba(25, 135, 84, 0.3); }
+.agent-badge.is-failed { background: #b07d00; box-shadow: none; }
+.agent-badge.is-asking { background: #fff; color: var(--ys-blue-medium); border: 2px solid rgba(0, 53, 107, 0.15); box-shadow: none; }
+.agent-hero-title { font-size: 1.35rem; font-weight: 700; line-height: 1.2; color: var(--ys-blue); }
+.agent-hero-title.is-now { color: var(--bs-danger-text-emphasis); }
+.agent-hero-title.is-quiet { color: var(--bs-success-text-emphasis); }
+.agent-failed .agent-hero-title { color: var(--bs-body-color); }
+.agent-hero-sub { font-size: 0.9rem; color: var(--bs-secondary-color); }
+/* The notification it would send, the way a phone shows one */
+.agent-notice { display: flex; gap: 0.7rem; max-width: 30rem; margin-top: 0.9rem; padding: 0.7rem 0.85rem; border-radius: 1rem; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 4px 14px rgba(0, 53, 107, 0.1); line-height: 1.4; overflow-wrap: anywhere; }
+.agent-notice img { width: 2.25rem; height: 2.25rem; border-radius: 0.55rem; flex-shrink: 0; }
+.agent-notice-app { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--bs-secondary-color); }
+/* What the AI checked: a row each for the Downtowner's time, our prediction and crowding */
+.agent-checked { margin-top: 0.9rem; }
+.agent-checked-title { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--bs-secondary-color); }
+.agent-checks { margin: 0.25rem 0 0; padding: 0; list-style: none; }
+.agent-check { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.6rem; padding: 0.4rem 0; border-top: 1px solid rgba(0, 53, 107, 0.08); }
+.agent-check:first-child { border-top: 0; }
+.agent-check-icon { width: 1.25rem; text-align: center; color: var(--ys-blue-medium); }
+.agent-check-label { min-width: 7.5rem; font-size: 0.9rem; color: var(--bs-secondary-color); }
+.agent-check-value { display: inline-flex; align-items: center; gap: 0.45rem; font-weight: 600; }
+.agent-check .placeholder { width: 4.5rem; border-radius: 0.25rem; }
+.agent-chip { padding: 0 0.5rem; border-radius: 999px; background: rgba(0, 53, 107, 0.07); font-size: 0.78rem; font-weight: 600; color: var(--bs-secondary-color); white-space: nowrap; }
+.agent-chip.is-late { background: #fff1d6; color: #8a5300; }
+.agent-chip.is-ok { background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
+/* Crowding's meter: four bars, filled in its level's colour up to its level */
+.agent-meter { display: inline-flex; align-items: flex-end; gap: 2px; }
+.agent-meter span { width: 0.45rem; border-radius: 2px; background: rgba(0, 53, 107, 0.15); }
+.agent-meter span:nth-child(1) { height: 0.45rem; }
+.agent-meter span:nth-child(2) { height: 0.65rem; }
+.agent-meter span:nth-child(3) { height: 0.85rem; }
+.agent-meter span:nth-child(4) { height: 1.05rem; }
+.agent-meter.crowd-0 span:nth-child(-n+1), .agent-meter.crowd-1 span:nth-child(-n+2),
+.agent-meter.crowd-2 span:nth-child(-n+3), .agent-meter.crowd-3 span { background: var(--crowd); }
+.agent-link { display: inline-block; margin-top: 0.75rem; font-size: 0.9rem; }

@@ -1,0 +1,88 @@
+{% load static %}
+{# The AI trip agent about one event on the when-to-leave page (#148): the button that asks it, then its answer: #}
+{# a verdict, the notification it would send and what it checked (the Downtowner's time, our prediction and #}
+{# crowding), drawn by app.css ("The trip agent"). notifications.views renders it too, for core/agent.js to swap in. #}
+<div class="mt-3" data-agent{% if answer.is_asking %} data-agent-poll="{% url 'agent-answer' answer.pk %}"{% endif %} aria-live="polite">
+  {% if answer %}
+    <div class="agent-panel{% if answer.is_failed %} agent-failed{% endif %}">
+      <div class="agent-head"><span class="agent-ai"><i class="bi bi-stars" aria-hidden="true"></i>AI</span>Trip agent</div>
+      {% if answer.is_asking %}
+        <div class="agent-hero">
+          <span class="agent-badge is-asking"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span></span>
+          <div>
+            <div class="agent-hero-title">Checking live bus times…</div>
+            <div class="agent-hero-sub">This can take a minute.</div>
+          </div>
+        </div>
+        <ul class="agent-checks placeholder-glow" aria-hidden="true">
+          <li class="agent-check"><i class="bi bi-broadcast agent-check-icon"></i><span class="agent-check-label">Downtowner</span><span class="placeholder"></span></li>
+          <li class="agent-check"><i class="bi bi-graph-up agent-check-icon"></i><span class="agent-check-label">Our prediction</span><span class="placeholder"></span></li>
+          <li class="agent-check"><i class="bi bi-people agent-check-icon"></i><span class="agent-check-label">Crowding</span><span class="placeholder"></span></li>
+        </ul>
+        <noscript><p class="small text-body-secondary mb-0 mt-2">Reload the page in a minute to see its answer.</p></noscript>
+      {% elif answer.is_failed %}
+        <div class="agent-hero">
+          <span class="agent-badge is-failed"><i class="bi bi-exclamation-lg" aria-hidden="true"></i></span>
+          <div>
+            <div class="agent-hero-title">Couldn't answer</div>
+            <div class="agent-hero-sub">{{ answer.failure|capfirst }}.</div>
+          </div>
+        </div>
+      {% else %}
+        <div class="agent-hero">
+          {% if not answer.notify %}
+            <span class="agent-badge is-quiet"><i class="bi bi-check-lg" aria-hidden="true"></i></span>
+            <div class="agent-hero-title is-quiet">No alert right now</div>
+          {% elif answer.notify_now %}
+            <span class="agent-badge is-now"><i class="bi bi-bell-fill" aria-hidden="true"></i></span>
+            <div class="agent-hero-title is-now">Alert now</div>
+          {% else %}
+            <span class="agent-badge"><i class="bi bi-bell-fill" aria-hidden="true"></i></span>
+            <div class="agent-hero-title">Alert at {{ answer.notify_at|date:"g:i A" }}</div>
+          {% endif %}
+        </div>
+        {% if answer.notify %}
+          {# The notification it would send, the way a phone shows one #}
+          <div class="agent-notice">
+            <img src="{% static 'notifications/icon-192.png' %}" alt="" width="36" height="36">
+            <div>
+              <div class="agent-notice-app">Yale Shuttle</div>
+              {{ answer.message }}
+            </div>
+          </div>
+        {% endif %}
+        {% if answer.checks %}
+          <div class="agent-checked">
+            <div class="agent-checked-title">What it checked</div>
+            <ul class="agent-checks">
+              {% for check in answer.checks %}
+                <li class="agent-check">
+                  <i class="bi bi-{{ check.icon }} agent-check-icon" aria-hidden="true"></i>
+                  <span class="agent-check-label">{{ check.label }}</span>
+                  <span class="agent-check-value">{% if check.crowd is not None %}<span class="agent-meter crowd-{{ check.crowd }}" aria-hidden="true"><span></span><span></span><span></span><span></span></span>{% endif %}{{ check.value }}</span>
+                  {% if check.note %}<span class="agent-chip{% if check.tone %} is-{{ check.tone }}{% endif %}">{{ check.note }}</span>{% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+        {% if answer.notify and not alerts_on %}
+          <a class="agent-link" href="{% url 'notifications' %}"><i class="bi bi-bell me-1" aria-hidden="true"></i>Get alerts on your phone</a>
+        {% endif %}
+      {% endif %}
+    </div>
+  {% endif %}
+  {% if not answer or answer.can_ask_again %}
+    <form method="post" action="{% url 'agent-ask' %}"{% if answer %} class="mt-1"{% endif %} data-agent-ask>
+      {% csrf_token %}
+      <input type="hidden" name="calendar" value="{{ event.calendar_id }}">
+      <input type="hidden" name="uid" value="{{ event.uid }}">
+      <input type="hidden" name="start" value="{{ event.start|date:'c' }}">
+      {% if answer %}
+        <button class="btn btn-sm btn-link px-0" type="submit"><i class="bi bi-arrow-clockwise me-1" aria-hidden="true"></i>{% if answer.is_failed %}Try again{% else %}Ask again{% endif %}</button>
+      {% else %}
+        <button class="btn btn-sm btn-agent" type="submit"><i class="bi bi-stars me-1" aria-hidden="true"></i>Ask the AI trip agent</button>
+      {% endif %}
+    </form>
+  {% endif %}
+</div>

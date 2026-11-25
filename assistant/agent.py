@@ -58,7 +58,7 @@ arrives and when to leave.
 {REPLY_FORMAT}"""
 
 
-def decide_with_tools(trip, data=None, *, now=None, strict=False):
+def decide_with_tools(trip, data=None, *, now=None, strict=False, report_invalid=False):
     """Ask the LLM about one trip, with tools; returns a Decision.
 
     `trip` is a tools.TripRequest. `data` is where the tools read from (default:
@@ -66,6 +66,9 @@ def decide_with_tools(trip, data=None, *, now=None, strict=False):
     LLM trouble never raises: it counts as "don't notify". With strict=True, a
     failure to reach OpenRouter (or to finish in time) raises OpenRouterError
     instead, so the by-hand evaluation can't mistake an outage for a decision.
+    With report_invalid=True, an answer that doesn't fit raises InvalidAnswer
+    instead, so a rider who asked the agent (#148) is told it couldn't answer,
+    rather than shown a "no" it never gave.
     """
     toolbox = ToolBox(trip, data or LiveData(), now or timezone.now())
     messages = [
@@ -102,6 +105,8 @@ def decide_with_tools(trip, data=None, *, now=None, strict=False):
         return DONT_NOTIFY
     except InvalidAnswer as error:
         logger.warning("Not notifying: the agent's answer didn't fit (%s): %.200r", error, reply)
+        if report_invalid:
+            raise
         return DONT_NOTIFY
 
 
