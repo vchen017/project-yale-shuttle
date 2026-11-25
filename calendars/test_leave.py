@@ -376,18 +376,26 @@ class DemoSeedTests(TestCase):
 
     def test_the_office_hours_are_always_25_to_45_minutes_away(self):
         """The trip agent is only asked about the next two hours' trips, so
-        one demo event always sits close by (#148)."""
-        self.seed()
-        now = timezone.now()
-        office_hours = Event.objects.get(calendar__user=self.user, uid=demo.SOON[0])
-        self.assertTrue(now + dt.timedelta(minutes=40) <= office_hours.start <= now + dt.timedelta(minutes=45))
-        self.assertEqual(office_hours.start.minute % 5, 0)
-        later = office_hours.start - dt.timedelta(minutes=26)  # still more than 25 minutes out: it stays
-        self.assertEqual(demo.reanchor(later), 0)
-        later = office_hours.start - dt.timedelta(minutes=24)
-        self.assertEqual(demo.reanchor(later), 1)
-        office_hours.refresh_from_db()
-        self.assertGreaterEqual(office_hours.start - later, dt.timedelta(minutes=40))
+        one demo event always sits close by (#148). At any time of day: the
+        other demo events sit at fixed times (4:00, 5:30 and 7:00 PM), and
+        in the quarter hour before each, reanchor rightly moves one of them
+        too, so the office hours are checked themselves, not reanchor's
+        count of what moved (#177)."""
+        for moment in (et(2026, 11, 25, 10, 2), et(2026, 11, 25, 15, 50), et(2026, 11, 25, 17, 20), et(2026, 11, 25, 18, 50)):
+            with self.subTest(at=f"{moment:%-I:%M %p}"), mock.patch("django.utils.timezone.now", return_value=moment):
+                Calendar.objects.filter(user=self.user).delete()  # seed afresh at this moment
+                self.seed()
+                office_hours = Event.objects.get(calendar__user=self.user, uid=demo.SOON[0])
+                start = office_hours.start
+                self.assertTrue(moment + dt.timedelta(minutes=40) <= start <= moment + dt.timedelta(minutes=45))
+                self.assertEqual(start.minute % 5, 0)
+                demo.reanchor(start - dt.timedelta(minutes=26))  # still more than 25 minutes out: it stays
+                office_hours.refresh_from_db()
+                self.assertEqual(office_hours.start, start)
+                later = start - dt.timedelta(minutes=24)  # closer than 25: it moves on
+                demo.reanchor(later)
+                office_hours.refresh_from_db()
+                self.assertGreaterEqual(office_hours.start - later, dt.timedelta(minutes=40))
 
     def test_the_page_moves_started_events_forward_too(self):
         """Staging has no hourly job to move them (the job clock runs on
