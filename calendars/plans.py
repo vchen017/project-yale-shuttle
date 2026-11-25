@@ -172,10 +172,18 @@ def catchable_bus(row, walk):
     skipped along with it."""
     if row is None:
         return None
-    soonest = row.ours if row.ours is not None else row.next_official
+    return catchable_minutes(row.ours, row.official, walk)
+
+
+def catchable_minutes(ours, official, walk):
+    """catchable_bus without a board row: `ours` is our prediction for the
+    route's soonest bus, or None, and `official` the feed's countdowns,
+    soonest first. The trip watch (#29) times trips with it, so the AI plans
+    around the same bus as this page (#153)."""
+    soonest = ours if ours is not None else (official[0] if official else None)
     if soonest is not None and soonest >= walk:
         return soonest
-    for minute in row.official[1:]:
+    for minute in official[1:]:
         if minute >= walk:
             return minute
     return None

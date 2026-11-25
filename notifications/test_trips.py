@@ -7,6 +7,7 @@ import threading
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.core.exceptions import ImproperlyConfigured
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -15,6 +16,8 @@ from django.utils import timezone
 from assistant.decide import DONT_NOTIFY, Decision
 from calendars import plans
 from calendars.models import Calendar, Event
+from history.models import Calibration
+from history.predictions import countdown_bucket
 from jobs.registry import all_jobs
 from places.models import Place
 from transit import trips as transit_trips
@@ -103,6 +106,7 @@ class Agent:
 @mock.patch.object(trips, "network", return_value=NETWORK)
 class WatchTests(TestCase):
     def setUp(self):
+        cache.clear()  # no countdown corrections another test left cached (history.stored_corrections)
         self.rider = User.objects.create_user("rider-one", password="not-a-real-one")
         Place.objects.create(user=self.rider, name="Home", lat=41.31, lon=-72.93, is_home=True)
         self.calendar = Calendar.objects.create(user=self.rider, ics_url="https://calendar.example.com/a.ics")
@@ -259,6 +263,35 @@ class WatchTests(TestCase):
              mock.patch.object(data.history, "minutes", return_value=12):
             self.assertEqual(trips._request(loaded[0], data)[1], START + dt.timedelta(minutes=7))
 
+    def test_our_prediction_is_the_feeds_countdown_corrected_as_on_the_page(self, network, plan_event, webpush):
+        """#153: the agent's prediction is the page's, the feed's countdown
+        corrected by what the recorded history says about countdowns that
+        size: here, Blue's countdowns of 10 to 15 minutes run 3 minutes
+        short. It times the trip, not the raw countdown or history's usual
+        wait for the hour, which the servers only know as of the nightly
+        import."""
+        Calibration.objects.create(route_id=1, bucket=countdown_bucket(12), delta_minutes=3.0, samples=40)
+        self.lecture(minutes_away=60)
+        loaded = trips.load_trips(START)
+        data = trips.watch_data(loaded, START)
+        bus = Bus(self.clock, arrives=START + dt.timedelta(minutes=12))
+        with mock.patch.object(trips.downtowner, "etas", side_effect=bus.etas), \
+             mock.patch.object(data.history, "minutes", return_value=40):
+            request, leave_by = trips._request(loaded[0], data)
+            self.assertEqual(data.official_minutes(request), 12)
+            self.assertEqual(data.predicted_minutes(request), 15)
+        self.assertEqual(leave_by, START + dt.timedelta(minutes=10))  # the bus in 15, then a 5-minute walk
+
+    def test_with_no_bus_in_the_feed_our_prediction_is_historys(self, network, plan_event, webpush):
+        self.lecture(minutes_away=60)
+        loaded = trips.load_trips(START)
+        data = trips.watch_data(loaded, START)
+        with mock.patch.object(trips.downtowner, "etas", return_value=[]), \
+             mock.patch.object(data.history, "minutes", return_value=12.4):
+            request, leave_by = trips._request(loaded[0], data)
+            self.assertEqual(data.predicted_minutes(request), 12)  # whole minutes, as the page shows it
+        self.assertEqual(leave_by, START + dt.timedelta(minutes=7))
+
     def test_a_bus_the_rider_cant_walk_to_in_time_is_skipped(self, network, plan_event, webpush):
         """Austin's case on #142: the soonest bus is 3 minutes out and the walk
         is 8, so the time to leave comes from the next bus, 15 minutes out, and
@@ -278,6 +311,7 @@ class WatchTests(TestCase):
             request, leave_by = trips._request(trip, data)
             self.assertEqual(leave_by, START + dt.timedelta(minutes=7))
             self.assertEqual(data.official_minutes(request), 15)
+            self.assertEqual(data.predicted_minutes(request), 15)  # our prediction skips it too, as the page does
         with mock.patch.object(trips.downtowner, "etas", return_value=buses[:1]):
             self.assertEqual(trips._request(trip, data), (None, None))  # no bus they can make, and no history
 
@@ -348,6 +382,7 @@ class FirstCheckTests(TestCase):
     first check in that request, not at the next hourly run."""
 
     def setUp(self):
+        cache.clear()  # no countdown corrections another test left cached (history.stored_corrections)
         self.rider = User.objects.create_user("rider-two", password="not-a-real-one")
         Place.objects.create(user=self.rider, name="Home", lat=41.31, lon=-72.93, is_home=True)
         PushSubscription.objects.create(

@@ -173,9 +173,9 @@ class LiveDataTests(SimpleTestCase):
         self.assertIsNone(LiveData().official_minutes(TRIP))
 
     @mock.patch("history.predictions.predict_minutes", return_value=6.5)
-    def test_our_prediction_does_not_just_repeat_the_feed(self, predict):
+    def test_our_prediction_is_the_one_the_pages_show(self, predict):
         self.assertEqual(LiveData().predicted_minutes(TRIP), 6.5)
-        predict.assert_called_once_with(1, 20, use_live_feed=False)
+        predict.assert_called_once_with(1, 20)  # the feed's countdown, corrected (#153)
 
     @mock.patch("crowding.services.crowding")
     def test_crowding_is_the_current_and_the_usual_level(self, crowding):

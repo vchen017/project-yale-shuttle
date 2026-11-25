@@ -9,13 +9,15 @@ about each. That is its one routine visit to the database. With nothing
 coming up, the run ends right there.
 
 Otherwise it checks every trip each CHECK_EVERY against the live feed, in
-memory. The time to leave comes from the feed's countdown, or from our history
-prediction when the feed has none: the order predict_minutes uses, since a
-countdown is near-perfect once a bus is close (the Nov 17 audit) and history
-only knows the usual wait for the time of day. Once the time to leave is
-within DECIDE_AHEAD, the agent (#28) decides whether and when to notify,
-reading the live countdown, our history-based prediction (loaded with the run,
-history.HistoryPredictor) and the crowding read at the start. A notification
+memory. The time to leave comes from our prediction, the one the when-to-leave
+page plans with (#153): the feed's countdown, corrected by what the recorded
+history says about countdowns that size (#117), or our history prediction
+when the feed has none, since a countdown is near-perfect once a bus is close
+(the Nov 17 audit) and history only knows the usual wait for the time of day.
+The corrections and the history (history.HistoryPredictor) are loaded with
+the run. Once the time to leave is within DECIDE_AHEAD, the agent (#28)
+decides whether and when to notify, reading the live countdown, that
+prediction and the crowding read at the start. A notification
 goes out at the time the agent picked. It's recorded first, under a unique
 constraint (TripNotification), so overlapping runs or a rerun never send it
 twice. When no device receives it, the record is dropped again, so the next
@@ -51,7 +53,7 @@ from assistant.tools import DataSource, TripRequest
 from calendars import plans
 from calendars.models import Event
 from crowding.services import crowding
-from history.predictions import HistoryPredictor
+from history.predictions import Corrections, HistoryPredictor, stored_corrections
 from jobs import clock as job_clock
 from places.models import Place
 from transit import downtowner
@@ -96,27 +98,47 @@ class Trip:
 
 class WatchData(DataSource):
     """What the agent's tools read during a watch, never the database: the
-    live feed's countdown (cached 30 seconds), our history prediction loaded
-    with the run, and the crowding read when it started. `now` is set before
-    each check."""
+    live feed's countdown (cached 30 seconds), the countdown corrections and
+    our history prediction, both loaded with the run, and the crowding read
+    when it started. `now` is set before each check. Without corrections
+    nothing is corrected, as on a fresh database."""
 
-    def __init__(self, history, crowding_by_route, now):
+    def __init__(self, history, crowding_by_route, now, corrections=None):
         self.history, self.crowding_by_route, self.now = history, crowding_by_route, now
+        self.corrections = corrections or Corrections(by_route={}, by_bucket={}, overall=0.0)
+
+    def _countdowns(self, trip):
+        """The feed's countdowns to the route's buses at the stop, soonest first."""
+        return sorted(
+            arrival["minutes"]
+            for arrival in downtowner.etas(trip.stop_id)
+            if arrival["route_id"] == trip.route_id and arrival["minutes"] >= 0
+        )
 
     def official_minutes(self, trip):
         """The feed's countdown to the route's soonest bus the rider can still
         walk to the stop for. A bus that comes sooner is skipped, as on the
         trip page (calendars.plans.catchable_bus). None when the feed lists no
         such bus."""
-        times = [
-            arrival["minutes"]
-            for arrival in downtowner.etas(trip.stop_id)
-            if arrival["route_id"] == trip.route_id and arrival["minutes"] >= trip.walking_minutes
-        ]
-        return min(times) if times else None
+        times = [minutes for minutes in self._countdowns(trip) if minutes >= trip.walking_minutes]
+        return times[0] if times else None
 
     def predicted_minutes(self, trip):
-        return self.history.minutes(trip.route_id, trip.stop_id, self.now)
+        """Our prediction, the one the when-to-leave page plans with (#153):
+        the feed's countdown to the route's soonest bus, corrected (#117), or
+        our history's when the feed lists no bus or is down, in whole minutes
+        as the page shows it. When the rider can't walk to the stop in time
+        for that bus, the next bus in the feed they can make, as on the page
+        (calendars.plans.catchable_minutes). None when there's no such bus."""
+        try:
+            countdowns = self._countdowns(trip)
+        except FeedUnavailable:
+            countdowns = []
+        if countdowns:
+            ours = self.corrections.correct(trip.route_id, countdowns[0])
+        else:
+            ours = self.history.minutes(trip.route_id, trip.stop_id, self.now)
+        return plans.catchable_minutes(None if ours is None else round(ours), countdowns, trip.walking_minutes)
 
     def crowding(self, trip):
         return self.crowding_by_route.get(trip.route_id)
@@ -196,8 +218,8 @@ def plan_trip(event, home, *, now, stops, routes_by_id, subscriptions=None, sent
 
 
 def watch_data(trips, now):
-    """The WatchData for these trips: the history and crowding they need,
-    read now, with the trips."""
+    """The WatchData for these trips: the history, the countdown corrections
+    and the crowding they need, read now, with the trips."""
     pairs = {(route_id, trip.stop_id) for trip in trips for route_id in trip.routes}
     routes = {route_id: name for trip in trips for route_id, name in trip.routes.items()}
     answers = crowding([
@@ -210,7 +232,7 @@ def watch_data(trips, now):
         }
         for route_id, answer in zip(routes, answers)
     }
-    return WatchData(HistoryPredictor(pairs, now=now), crowding_by_route, now)
+    return WatchData(HistoryPredictor(pairs, now=now), crowding_by_route, now, stored_corrections())
 
 
 def check(trips, now, data, decide=None):
@@ -246,7 +268,8 @@ def check(trips, now, data, decide=None):
 def _request(trip, data):
     """The agent's question about the trip now, and its time to leave: for the
     linking route whose next bus the rider can still catch soonest. Each
-    route's next bus is timed by the feed's countdown, or by our history
+    route's bus is timed by our prediction, the one the when-to-leave page
+    plans with (#153): the feed's countdown, corrected, or our history
     prediction when the feed has none. (None, None) when no route has a time."""
     best = None
     for route_id, name in sorted(trip.routes.items()):
@@ -254,12 +277,7 @@ def _request(trip, data):
             route=name, stop=trip.stop_name, needed_at=trip.start,
             walking_minutes=trip.walk_to_stop, route_id=route_id, stop_id=trip.stop_id,
         )
-        try:
-            minutes = data.official_minutes(request)
-        except FeedUnavailable:
-            minutes = None
-        if minutes is None:
-            minutes = data.predicted_minutes(request)
+        minutes = data.predicted_minutes(request)
         if minutes is None:
             continue
         catchable = minutes >= trip.walk_to_stop
