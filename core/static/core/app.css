@@ -241,6 +241,7 @@
 .trip-map { height: 18rem; background: #e9eef4; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 16px rgba(0, 53, 107, 0.06); }
 @media (min-width: 768px) { .trip-map { height: 22rem; } }
 .trip-stop { width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 4px solid var(--bs-primary); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); }
+.share-bus { width: 22px; height: 22px; border-radius: 50%; background: var(--bs-primary); border: 4px solid #fff; box-shadow: 0 0 0 3px rgba(0, 53, 107, 0.35), 0 1px 4px rgba(0, 0, 0, 0.35); } /* the shared trip's bus (#10) */
 /* "Walking is quicker" notice in the answer's empty space (#131) */
 .trip-answer-row { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 0.75rem 1.5rem; }
 .walk-notice { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.85rem; border-radius: 999px; background: #fff; border: 1px solid var(--bs-success-border-subtle); color: var(--bs-success-text-emphasis); font-weight: 600; font-size: 0.95rem; }
@@ -256,3 +257,183 @@
 .trip-details > :not(summary) { margin-left: 1rem; margin-right: 1rem; }
 .trip-details[open] > summary + * { margin-top: 0.9rem; }
 .trip-details[open] { padding-bottom: 0.9rem; }
+
+/* The trip agent on the when-to-leave page (#148): a verdict by a round badge, the notification it would
+   send, a timeline (asked, the alert, the bus, the event) and a crowding meter. All in the site's font. */
+.btn-agent {
+  --bs-btn-color: var(--ys-blue);
+  --bs-btn-bg: rgba(0, 53, 107, 0.05);
+  --bs-btn-border-color: rgba(0, 53, 107, 0.25);
+  --bs-btn-hover-color: #fff;
+  --bs-btn-hover-bg: var(--ys-blue);
+  --bs-btn-hover-border-color: var(--ys-blue);
+  --bs-btn-active-color: #fff;
+  --bs-btn-active-bg: var(--ys-blue-dark);
+  --bs-btn-active-border-color: var(--ys-blue-dark);
+  --bs-btn-disabled-color: var(--ys-blue);
+  --bs-btn-disabled-bg: rgba(0, 53, 107, 0.05);
+  --bs-btn-disabled-border-color: rgba(0, 53, 107, 0.25);
+  border-radius: 999px;
+}
+/* Before it can be asked: the button's shape, greyed */
+.agent-later { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.25rem 0.75rem; border: 1px dashed var(--bs-border-color); border-radius: 999px; font-size: 0.875rem; color: var(--bs-secondary-color); }
+.agent-panel { padding: 0.75rem 1rem 1rem; border-radius: 1rem; background: rgba(0, 53, 107, 0.04); border: 1px solid rgba(0, 53, 107, 0.12); }
+.agent-panel.agent-failed { background: #fff8e6; border-color: #f1d58a; }
+.agent-head { margin-bottom: 0.6rem; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--bs-secondary-color); }
+/* "AI" in a Yale-blue pill, so it's plain this is the AI feature */
+.agent-ai { display: inline-flex; align-items: center; gap: 0.2rem; margin-right: 0.45rem; padding: 0.05rem 0.5rem; border-radius: 999px; background: var(--ys-blue); color: #fff; }
+.agent-ai .bi { color: #fff; }
+/* The verdict */
+.agent-hero { display: flex; align-items: center; gap: 0.75rem; }
+.agent-badge { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 2.75rem; height: 2.75rem; border-radius: 50%; background: var(--ys-blue); color: #fff; font-size: 1.3rem; box-shadow: 0 2px 6px rgba(0, 53, 107, 0.25); }
+.agent-badge.is-now { background: var(--bs-danger); box-shadow: 0 2px 6px rgba(220, 53, 69, 0.3); }
+.agent-badge.is-quiet { background: var(--bs-success); box-shadow: 0 2px 6px rgba(25, 135, 84, 0.3); }
+.agent-badge.is-failed { background: #b07d00; box-shadow: none; }
+.agent-badge.is-asking { background: #fff; color: var(--ys-blue-medium); border: 2px solid rgba(0, 53, 107, 0.15); box-shadow: none; }
+.agent-hero-title { font-size: 1.35rem; font-weight: 700; line-height: 1.2; color: var(--ys-blue); }
+.agent-hero-title.is-now { color: var(--bs-danger-text-emphasis); }
+.agent-hero-title.is-quiet { color: var(--bs-success-text-emphasis); }
+.agent-failed .agent-hero-title { color: var(--bs-body-color); }
+.agent-hero-sub { font-size: 0.9rem; color: var(--bs-secondary-color); }
+/* The notification it would send, the way a phone shows one */
+.agent-notice { display: flex; gap: 0.7rem; max-width: 30rem; margin-top: 0.9rem; padding: 0.7rem 0.85rem; border-radius: 1rem; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 4px 14px rgba(0, 53, 107, 0.1); line-height: 1.4; overflow-wrap: anywhere; }
+.agent-notice img { width: 2.25rem; height: 2.25rem; border-radius: 0.55rem; flex-shrink: 0; }
+.agent-notice-app { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--bs-secondary-color); }
+/* What the AI checked: a row each for the Downtowner's time, our prediction and crowding */
+.agent-checked { margin-top: 0.9rem; }
+.agent-checked-title { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--bs-secondary-color); }
+.agent-checks { margin: 0.25rem 0 0; padding: 0; list-style: none; }
+.agent-check { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.6rem; padding: 0.4rem 0; border-top: 1px solid rgba(0, 53, 107, 0.08); }
+.agent-check:first-child { border-top: 0; }
+.agent-check-icon { width: 1.25rem; text-align: center; color: var(--ys-blue-medium); }
+.agent-check-label { min-width: 7.5rem; font-size: 0.9rem; color: var(--bs-secondary-color); }
+.agent-check-value { display: inline-flex; align-items: center; gap: 0.45rem; font-weight: 600; }
+.agent-check .placeholder { width: 4.5rem; border-radius: 0.25rem; }
+.agent-chip { padding: 0 0.5rem; border-radius: 999px; background: rgba(0, 53, 107, 0.07); font-size: 0.78rem; font-weight: 600; color: var(--bs-secondary-color); white-space: nowrap; }
+.agent-chip.is-late { background: #fff1d6; color: #8a5300; }
+.agent-chip.is-ok { background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
+/* Crowding's meter: four bars, filled in its level's colour up to its level */
+.agent-meter { display: inline-flex; align-items: flex-end; gap: 2px; }
+.agent-meter span { width: 0.45rem; border-radius: 2px; background: rgba(0, 53, 107, 0.15); }
+.agent-meter span:nth-child(1) { height: 0.45rem; }
+.agent-meter span:nth-child(2) { height: 0.65rem; }
+.agent-meter span:nth-child(3) { height: 0.85rem; }
+.agent-meter span:nth-child(4) { height: 1.05rem; }
+.agent-meter.crowd-0 span:nth-child(-n+1), .agent-meter.crowd-1 span:nth-child(-n+2),
+.agent-meter.crowd-2 span:nth-child(-n+3), .agent-meter.crowd-3 span { background: var(--crowd); }
+.agent-link { display: inline-block; margin-top: 0.75rem; font-size: 0.9rem; }
+/* The trip agent's answer folded to one line on the calendar, until it's opened */
+.agent-answer > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; list-style: none; cursor: pointer; }
+.agent-answer > summary::-webkit-details-marker { display: none; }
+.agent-answer > summary:focus-visible { outline: 2px solid var(--ys-blue-medium); outline-offset: 3px; border-radius: 0.5rem; }
+.agent-answer .agent-hero-title { font-size: 1.1rem; }
+.agent-badge.is-small { width: 2rem; height: 2rem; font-size: 1rem; box-shadow: none; }
+.agent-chevron { margin-left: auto; color: var(--ys-blue-medium); transition: transform 0.15s; }
+.agent-answer[open] .agent-chevron { transform: rotate(180deg); }
+
+/* The when-to-leave page as a calendar: a chip per day, each day's events by start time, and each trip's
+   steps from Home (a rail of times) beside its map */
+.cal-days { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.25rem; }
+.cal-day { display: flex; flex-direction: column; align-items: center; min-width: 4.75rem; padding: 0.35rem 0.75rem; border: 1px solid rgba(0, 53, 107, 0.22); border-radius: 0.75rem; color: var(--ys-blue); text-decoration: none; line-height: 1.15; }
+.cal-day:hover { background: rgba(0, 53, 107, 0.05); color: var(--ys-blue); }
+.cal-day.is-first { background: var(--ys-blue); border-color: var(--ys-blue); color: #fff; }
+.cal-day-name { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.cal-day-number { font-size: 1.4rem; font-weight: 700; }
+.cal-day-count { font-size: 0.75rem; }
+.cal-heading { margin: 1.4rem 0 0.7rem; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--bs-secondary-color); }
+.cal-event { display: grid; grid-template-columns: 4.25rem minmax(0, 1fr); gap: 0.75rem; margin-bottom: 0.85rem; scroll-margin-top: 1rem; }
+.cal-when { padding-top: 0.75rem; text-align: right; line-height: 1.1; color: var(--ys-blue); }
+.cal-when.is-faded { color: var(--bs-secondary-color); }
+.cal-when-time { display: block; font-size: 1.25rem; font-weight: 700; }
+.cal-when-ampm { font-size: 0.75rem; }
+.cal-block { position: relative; min-width: 0; padding: 0.8rem 1rem 1rem 1.4rem; border: 1px solid var(--bs-border-color); border-radius: 0.9rem; background: #fff; }
+.cal-block::before { content: ""; position: absolute; top: 0.85rem; bottom: 0.85rem; left: 0.55rem; width: 4px; border-radius: 4px; background: var(--ys-blue); }
+.cal-block.is-faded { padding-top: 0.6rem; padding-bottom: 0.7rem; border-style: dashed; background: transparent; }
+.cal-block.is-faded::before { background: var(--bs-border-color); }
+.cal-title { font-size: 1.15rem; font-weight: 700; line-height: 1.25; }
+.cal-place { font-size: 0.9rem; color: var(--bs-secondary-color); overflow-wrap: anywhere; }
+.cal-leave { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.6rem; margin: 0.55rem 0 0.35rem; }
+.cal-leave-time { font-size: 1.35rem; font-weight: 700; line-height: 1.2; color: var(--ys-blue); }
+.cal-chip { padding: 0.05rem 0.55rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }
+.cal-chip.is-soon { background: #fff1d6; color: #8a5300; }
+.cal-chip.is-now { background: var(--bs-danger); color: #fff; }
+.cal-chip.is-spare { background: var(--bs-primary-bg-subtle); color: var(--ys-blue); }
+.cal-trip { display: grid; grid-template-columns: minmax(0, 1fr) 17rem; gap: 0.75rem 1rem; align-items: start; }
+.cal-rail { position: relative; margin: 0.25rem 0 0; padding: 0 0 0 1.35rem; list-style: none; }
+.cal-rail::before { content: ""; position: absolute; top: 0.7rem; bottom: 0.7rem; left: 0.4rem; width: 2px; background: rgba(0, 53, 107, 0.18); }
+.cal-step { position: relative; display: flex; align-items: baseline; gap: 0.6rem; padding: 0.3rem 0; font-size: 0.95rem; line-height: 1.35; }
+.cal-step::before { content: ""; position: absolute; top: 0.62rem; left: -1.2rem; width: 0.75rem; height: 0.75rem; border-radius: 50%; background: #fff; border: 2px solid var(--ys-blue-medium); }
+.cal-step.is-bus::before { background: var(--ys-blue-medium); }
+.cal-step.is-event::before { background: var(--ys-blue); border-color: var(--ys-blue); }
+.cal-step-time { flex: 0 0 4.4rem; font-weight: 700; white-space: nowrap; }
+.cal-step-what { min-width: 0; overflow-wrap: anywhere; }
+.cal-live { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0 0.5rem; border-radius: 999px; background: var(--bs-success-bg-subtle); font-size: 0.8rem; font-weight: 600; color: var(--bs-success-text-emphasis); white-space: nowrap; }
+.cal-live::before { content: ""; width: 0.45rem; height: 0.45rem; border-radius: 50%; background: var(--bs-success); }
+.cal-map { height: 12rem; border-radius: 0.75rem; background: #e9eef4; overflow: hidden; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); }
+.cal-note { margin: 0.5rem 0 0; font-size: 0.85rem; color: var(--bs-secondary-color); }
+.cal-block .agent-panel, .cal-block > [data-agent] > form { margin-top: 0.25rem; }
+@media (max-width: 767.98px) {
+  .cal-trip { grid-template-columns: minmax(0, 1fr); }
+  .cal-map { height: 11rem; }
+}
+@media (max-width: 575.98px) {
+  .cal-event { grid-template-columns: 3.1rem minmax(0, 1fr); gap: 0.5rem; }
+  .cal-when-time { font-size: 1.05rem; }
+  .cal-block { padding: 0.7rem 0.75rem 0.85rem 1.15rem; }
+  .cal-block::before { left: 0.4rem; }
+  .cal-step-time { flex-basis: 3.9rem; font-size: 0.85rem; }
+  .cal-step { font-size: 0.9rem; }
+}
+
+/* The accuracy dashboard's on-time meter (#156): ours filled in Yale blue, with ticks for the
+   official ETA's rate, the baseline we started from (dashed) and the goal. The legend's keys
+   are the same ticks, so the colour rules come after both. */
+.ontime-meter { position: relative; height: 0.9rem; margin: 0.45rem 0; border-radius: 999px; background: rgba(0, 53, 107, 0.12); }
+.ontime-meter .ontime-fill { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 999px; background: var(--ys-blue); }
+.ontime-mark { position: absolute; top: -0.35rem; bottom: -0.35rem; margin-left: -1px; border-left: 2px solid; }
+.ontime-legend { display: flex; flex-wrap: wrap; gap: 0.25rem 1.1rem; color: var(--bs-secondary-color); }
+.ontime-key { display: inline-block; height: 0.85rem; margin-right: 0.4rem; vertical-align: -0.1rem; border-left: 2px solid; }
+.ontime-key.ontime-fill { width: 0.85rem; border: 0; border-radius: 2px; background: var(--ys-blue); }
+.ontime-official { border-left-color: #212529; }
+.ontime-baseline { border-left-color: #6c757d; border-left-style: dashed; }
+.ontime-goal { border-left-color: var(--bs-success); }
+.ontime-mini { display: inline-block; width: 3rem; height: 0.45rem; margin-right: 0.4rem; border-radius: 999px; background: rgba(0, 53, 107, 0.12); vertical-align: middle; overflow: hidden; }
+.ontime-mini span { display: block; height: 100%; border-radius: 999px; background: var(--ys-blue); }
+
+/* The next trip card (#157): the rider's next trip, live, on top of the when-to-leave page. When to
+   leave and the time it leaves to spare, the bus as a range, crowding and detour chips, and its map with
+   the live bus; or, when no shuttle runs, Yale's other ways there with tap-to-call buttons. */
+.next-trip { display: grid; grid-template-columns: minmax(0, 1fr) 19rem; gap: 1rem 1.25rem; align-items: start; padding: 1rem 1.25rem; border-radius: 1rem; background: var(--bs-primary-bg-subtle); border: 1px solid var(--bs-primary-border-subtle); }
+.next-trip.is-solo { grid-template-columns: minmax(0, 1fr); }
+.next-trip-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.75rem; margin-bottom: 0.4rem; }
+.next-trip-tag { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.05rem 0.6rem; border-radius: 999px; background: var(--ys-blue); color: #fff; font-size: 0.8rem; font-weight: 700; }
+.next-trip-event { font-weight: 600; overflow-wrap: anywhere; }
+.next-trip-when { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.5rem; }
+.next-trip-big { font-size: 1.6rem; font-weight: 700; line-height: 1.2; color: var(--ys-blue); }
+.next-trip-sub { margin: 0.35rem 0 0.75rem; color: var(--bs-secondary-color); }
+.next-trip-bus { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.6rem; margin-top: 0.65rem; }
+.next-trip-range { font-size: 1.15rem; font-weight: 700; }
+.next-trip .cal-chip.is-spare { background: #fff; border: 1px solid var(--bs-primary-border-subtle); }  /* the card is that light blue already */
+.next-trip-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.6rem; }
+.next-trip-chips:empty { display: none; }
+.next-trip-chip { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.1rem 0.6rem; border-radius: 999px; background: #fff; border: 1px solid var(--bs-border-color); font-size: 0.85rem; font-weight: 600; }
+.next-trip-chip.is-warn { background: #fff1d6; border-color: #f0c36d; color: #8a5300; }
+.next-trip-updated { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.75rem; font-size: 0.8rem; color: var(--bs-secondary-color); }
+.next-trip-live-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--bs-success); animation: next-trip-pulse 2s ease-in-out infinite; }
+@keyframes next-trip-pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .next-trip-live-dot { animation: none; } }
+.next-trip-map { height: 13rem; border-radius: 0.75rem; background: #e9eef4; overflow: hidden; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); }
+.next-trip-bus-dot { width: 18px; height: 18px; border-radius: 50%; background: var(--ys-blue); border: 3px solid #fff; box-shadow: 0 0 0 3px rgba(0, 53, 107, 0.35), 0 1px 4px rgba(0, 0, 0, 0.4); }
+.next-trip-options { display: grid; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+.next-trip-option { display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 0.75rem; border-radius: 0.75rem; background: #fff; border: 1px solid var(--bs-border-color); }
+.next-trip-option-icon { font-size: 1.35rem; color: var(--ys-blue); }
+.next-trip-option-what { flex: 1; min-width: 0; }
+.next-trip-call { white-space: nowrap; }
+@media (max-width: 767.98px) {
+  .next-trip { grid-template-columns: minmax(0, 1fr); padding: 0.85rem 1rem; }
+  .next-trip-map { height: 11rem; }
+  /* The call button goes under the words, so a phone keeps them readable. */
+  .next-trip-option { flex-wrap: wrap; align-items: flex-start; }
+  .next-trip-option-what { flex-basis: calc(100% - 2.2rem); }
+  .next-trip-call { margin-left: 2.1rem; }
+}

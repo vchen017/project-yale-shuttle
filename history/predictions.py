@@ -64,10 +64,11 @@ production actually runs.
 """
 
 import datetime as dt
+import math
 import statistics
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from zoneinfo import ZoneInfo
 
 from django.core.cache import cache
@@ -100,6 +101,8 @@ MIN_CALIBRATION_SAMPLES = 20  # a (route, bucket) with fewer residuals defers
 # to the all-routes row for its bucket
 OVERALL_BUCKET = -1  # the Corrections row that covers every countdown
 CALIBRATION_CACHE_SECONDS = 600  # the stored corrections, re-read this often
+ON_TIME_SLACK = 2  # minutes the bus may beat the time we gave and still be caught (#155)
+ON_TIME_TARGET = 0.9  # the share of riders "Leave by" should get to the stop in time (#155)
 
 
 @dataclass
@@ -119,20 +122,50 @@ class Corrections:
     countdown bucket), with the all-routes medians beneath and the overall
     median beneath those. `delta` walks that ladder; an empty fit — a new
     database, no history yet — corrects nothing, so the raw countdown
-    answers and a fresh deploy degrades safely."""
+    answers and a fresh deploy degrades safely.
+
+    The cushions (#155) walk the same ladder: how much earlier than the
+    corrected time a rider should leave, so that "Leave by" gets them to the
+    stop before the bus ON_TIME_TARGET of the time. Without a fit there's no
+    cushion, and "Leave by" is the corrected time, as before."""
 
     by_route: dict  # (route id, bucket) -> median residual
     by_bucket: dict  # bucket -> median residual
     overall: float  # median residual over everything fitted
+    cushion_by_route: dict = field(default_factory=dict)  # (route id, bucket) -> minutes
+    cushion_by_bucket: dict = field(default_factory=dict)  # bucket -> minutes
+    cushion_overall: float = 0.0
 
     def delta(self, route_id, countdown):
         """The minutes to add to a countdown of this size for this route."""
-        bucket = countdown_bucket(countdown)
+        return self._delta_in(route_id, countdown_bucket(countdown))
+
+    def _delta_in(self, route_id, bucket):
         if (route_id, bucket) in self.by_route:
             return self.by_route[(route_id, bucket)]
         if bucket in self.by_bucket:
             return self.by_bucket[bucket]
         return self.overall
+
+    def cushion(self, route_id, countdown):
+        """Whole minutes to leave earlier than the corrected time, for a
+        countdown of this size on this route (#155): rounded up, so the
+        target holds. 0 without a fit."""
+        bucket = countdown_bucket(countdown)
+        if (route_id, bucket) in self.cushion_by_route:
+            minutes = self.cushion_by_route[(route_id, bucket)]
+        elif bucket in self.cushion_by_bucket:
+            minutes = self.cushion_by_bucket[bucket]
+        else:
+            minutes = self.cushion_overall
+        return max(0, math.ceil(round(minutes, 1)))
+
+    def correct(self, route_id, countdown):
+        """A live countdown as predict_minutes answers it: untouched at or
+        below RAW_MAX, corrected by delta() above it, never below zero; None
+        passes through. For a caller that loaded the corrections once and
+        mustn't read them again, like the trip watch (#29, #153)."""
+        return _fused_countdown(route_id, countdown, self)
 
 
 def countdown_bucket(countdown):
@@ -204,9 +237,14 @@ def predict_minutes(route_id, stop_id, now=None, use_live_feed=True, current_by_
     present, not a simulated moment.
 
     `use_live_feed=False` skips the feed's own countdown, so the answer comes
-    only from our recorded polls and history. Pages that show the official
-    time next to ours use it (the next-buses page, #83): with the feed, our
-    number would just repeat the official one.
+    only from our recorded polls and history. Riders shouldn't get that
+    answer (#153): the servers import the recorded polls once a night, so
+    during the day no poll is fresh and it's the history layer's guess,
+    which replayed over a month of recorded buses got riders to the stop
+    before the bus only 49% of the time, against 78% for the corrected
+    countdown. The next-buses page used it until then (#83), from before the
+    countdown was corrected (#117), when ours would only have repeated the
+    official time.
 
     A caller asking about many routes at one stop (the next-buses board)
     passes `current_by_route` from current_stops_by_route(), so the served
@@ -240,6 +278,55 @@ def predict_minutes(route_id, stop_id, now=None, use_live_feed=True, current_by_
     return _predict_history(profile, now, _last_arrival_before(arrivals, now))
 
 
+class HistoryPredictor:
+    """The history layer's predictions for chosen (route, stop) pairs, loaded
+    in one go, for a caller that asks again and again and mustn't touch the
+    database each time: the trip watch (#29) checks every 5 minutes for up to
+    2 hours. Two queries when it's made, none after.
+
+    It answers as predict_minutes(..., use_live_feed=False) does once no
+    recorded poll is fresh, which the daily import makes the usual case: the
+    walk-up median for the time of day, conditioned on the last arrival the
+    history saw. Arrivals recorded after it was made aren't seen.
+    """
+
+    def __init__(self, pairs, now=None):
+        now = now or timezone.now()
+        pairs = set(pairs)
+        self._served = current_stops_by_route()
+        arrivals = {pair: [] for pair in pairs}
+        if pairs:
+            rows = (
+                Eta.objects.filter(
+                    route_id__in={route_id for route_id, _ in pairs},
+                    stop_id__in={stop_id for _, stop_id in pairs},
+                    eta_minutes__lte=ARRIVAL_ETA,
+                    polled_at__gt=now - dt.timedelta(days=HISTORY_DAYS),
+                    polled_at__lte=now,
+                )
+                .order_by("polled_at", "bus_id")
+                .values_list("route_id", "stop_id", "polled_at", "bus_id", "eta_minutes")
+            )
+            grouped = defaultdict(list)
+            for route_id, stop_id, polled_at, bus_id, eta in rows:
+                if (route_id, stop_id) in arrivals:
+                    grouped[(route_id, stop_id)].append((polled_at, bus_id, eta))
+            for pair, moments in grouped.items():
+                arrivals[pair] = _arrival_events(moments)
+        self._arrivals = arrivals
+        self._profiles = {pair: _learn(moments) for pair, moments in arrivals.items()}
+
+    def minutes(self, route_id, stop_id, now):
+        """Our minutes until the route's next bus reaches the stop, from
+        history; None when history has nothing, the pair wasn't loaded, or
+        the route no longer serves the stop."""
+        pair = (route_id, stop_id)
+        if pair not in self._profiles or not _stop_is_served(route_id, stop_id, self._served):
+            return None
+        last_arrival = _last_arrival_before(self._arrivals[pair], now)
+        return _predict_history(self._profiles[pair], now, last_arrival)
+
+
 def _fused_countdown(route_id, countdown, corrections):
     """The live answer (#117): the countdown, plus the history's correction
     for countdowns of its size — unless it is at or below RAW_MAX, where the
@@ -258,32 +345,37 @@ def stored_corrections():
     """The fitted Corrections, from the table the nightly fit_calibration
     job rewrites (#117), held in the cache between reads. Nothing stored —
     a fresh database, or the job yet to run — is an empty fit: the raw
-    countdown answers uncorrected."""
+    countdown answers uncorrected, with no cushion. A row fitted before the
+    cushions (#155) has none, so the cushion skips that rung of the ladder."""
     rows = cache.get("history.calibration")
     if rows is None:
-        rows = list(Calibration.objects.values_list("route_id", "bucket", "delta_minutes"))
+        rows = list(
+            Calibration.objects.values_list("route_id", "bucket", "delta_minutes", "cushion_minutes")
+        )
         cache.set("history.calibration", rows, CALIBRATION_CACHE_SECONDS)
-    by_route = {
-        (route_id, bucket): delta
-        for route_id, bucket, delta in rows
-        if route_id is not None and bucket != OVERALL_BUCKET
-    }
-    by_bucket = {
-        bucket: delta
-        for route_id, bucket, delta in rows
-        if route_id is None and bucket != OVERALL_BUCKET
-    }
-    overall = next(
-        (delta for route_id, bucket, delta in rows if route_id is None and bucket == OVERALL_BUCKET),
-        0.0,
-    )
-    return Corrections(by_route=by_route, by_bucket=by_bucket, overall=overall)
+    corrections = Corrections(by_route={}, by_bucket={}, overall=0.0)
+    for route_id, bucket, delta, *cushion in rows:
+        cushion = cushion[0] if cushion else None  # a row cached before #155 has no cushion
+        if route_id is not None and bucket != OVERALL_BUCKET:
+            corrections.by_route[(route_id, bucket)] = delta
+            if cushion is not None:
+                corrections.cushion_by_route[(route_id, bucket)] = cushion
+        elif route_id is None and bucket != OVERALL_BUCKET:
+            corrections.by_bucket[bucket] = delta
+            if cushion is not None:
+                corrections.cushion_by_bucket[bucket] = cushion
+        elif route_id is None:
+            corrections.overall = delta
+            if cushion is not None:
+                corrections.cushion_overall = cushion
+    return corrections
 
 
 def _fit_corrections(residuals):
     """The Corrections for residuals keyed (route id, countdown bucket): the
     median per key where at least MIN_CALIBRATION_SAMPLES taught it, the
-    all-routes median per bucket beneath, the overall median beneath that."""
+    all-routes median per bucket beneath, the overall median beneath that,
+    and the cushions fitted on the same residuals (_fit_cushions)."""
     by_route = {
         key: statistics.median(values)
         for key, values in residuals.items()
@@ -295,7 +387,44 @@ def _fit_corrections(residuals):
     by_bucket = {bucket: statistics.median(values) for bucket, values in pooled.items()}
     everything = [value for values in residuals.values() for value in values]
     overall = statistics.median(everything) if everything else 0.0
-    return Corrections(by_route=by_route, by_bucket=by_bucket, overall=overall)
+    corrections = Corrections(by_route=by_route, by_bucket=by_bucket, overall=overall)
+    _fit_cushions(residuals, corrections)
+    return corrections
+
+
+def _fit_cushions(residuals, corrections):
+    """Fill in the corrections' cushions (#155): per (route id, countdown
+    bucket), how many minutes earlier than the corrected time a rider has to
+    leave so that the bus beats them by more than ON_TIME_SLACK no more than
+    1 - ON_TIME_TARGET of the time. That's the ON_TIME_TARGET quantile of
+    (corrected - actual), less the slack, never below zero, on the deltas'
+    ladder: per route where MIN_CALIBRATION_SAMPLES taught it, all routes per
+    bucket beneath, everything beneath that.
+
+    A residual is actual - countdown, so corrected - actual is delta -
+    residual where the countdown gets corrected, and -residual in bucket 0,
+    below RAW_MAX, where it answers raw. (A countdown of exactly RAW_MAX
+    answers raw too but sits in bucket 1, which counts it as corrected; the
+    residuals don't keep the countdown to tell.)"""
+    pooled = defaultdict(list)
+    for (route_id, bucket), values in residuals.items():
+        delta = 0.0 if bucket == 0 else corrections._delta_in(route_id, bucket)
+        errors = [delta - value for value in values]
+        pooled[bucket].extend(errors)
+        if len(values) >= MIN_CALIBRATION_SAMPLES:
+            corrections.cushion_by_route[(route_id, bucket)] = _cushion(errors)
+    for bucket, errors in pooled.items():
+        corrections.cushion_by_bucket[bucket] = _cushion(errors)
+    everything = [error for errors in pooled.values() for error in errors]
+    corrections.cushion_overall = _cushion(everything) if everything else 0.0
+
+
+def _cushion(errors):
+    """The minutes to leave early so ON_TIME_TARGET of these (corrected -
+    actual) errors land within ON_TIME_SLACK."""
+    ordered = sorted(errors)
+    quantile = ordered[min(len(ordered) - 1, int(ON_TIME_TARGET * len(ordered)))]
+    return max(0.0, quantile - ON_TIME_SLACK)
 
 
 def _shown_residuals(since, until=None, exclude_dates=frozenset(), arrivals_by_pair=None):

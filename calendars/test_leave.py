@@ -1,11 +1,14 @@
 """The when-to-leave page (#8): what each of the next 24 hours' events shows,
-the routes the recorded history says run at an event's weekday and hour, and
-the demo seed that exists so graders see the page populated. The feed is
-mocked at calendars.views.network and the live board at
-calendars.plans.next_buses, so no test reaches the network; building matching
-runs against our own buildings list, as the real page does."""
+laid out as a calendar with a map per trip, the routes the recorded history
+says run at an event's weekday and hour, and the demo seed that exists so
+graders see the page populated. The feed is mocked at calendars.views.network
+and the live board at calendars.plans.next_buses, so no test reaches the
+network; building matching runs against our own buildings list, as the real
+page does."""
 
 import datetime as dt
+import json
+import re
 from io import StringIO
 from unittest import mock
 from zoneinfo import ZoneInfo
@@ -113,7 +116,7 @@ class LeavePageTests(TestCase):
         self.assertIn("/stops/30/", content)  # the stop links to its next-buses page
         self.assertIn("Science Hill", content)
         self.assertIn("Leave around", content)
-        self.assertIn("an estimate", content)
+        self.assertIn("An estimate", content)
         self.assertNotIn("Location unknown", content)
 
     def test_a_night_event_plans_on_the_routes_running_then_not_now(self):
@@ -142,22 +145,34 @@ class LeavePageTests(TestCase):
         page, board_mock = self.go([row(ours=8)])
         board_mock.assert_called_once_with(UNION["id"], SCIENCE_HILL["id"])
         content = page.content.decode()
-        self.assertIn("Our guess: the bus is about 8 min away", content)
+        self.assertIn("bus in 8 min · our guess", content)
+        self.assertIn("in 8 min</span>", content)  # the bus is at Home's door: leave in 8 minutes
         self.assertIn("Leave by", content)
         self.assertIn("#00356b", content)  # the route's colour on its badge
+
+    def test_leave_by_shows_the_minutes_it_keeps_to_spare(self):
+        # #155: the bus 12 minutes out, and its countdown needs 3 minutes to spare.
+        self.lecture.start = timezone.now() + dt.timedelta(minutes=30)
+        self.lecture.save(update_fields=["start"])
+        cushioned = Row(route_id=1, name="Blue - Weekday Daytime", label="Blue", color="00356b",
+                        official=[12], ours=12, cushions={12: 3})
+        content = self.go([cushioned])[0].content.decode()
+        self.assertIn("3 min to spare</span>", content)
+        self.assertIn("in 9 min</span>", content)  # the stop is at Home's door: leave in 12 - 3
 
     def test_without_a_prediction_the_feed_s_countdown_shows(self):
         self.lecture.start = timezone.now() + dt.timedelta(minutes=20)
         self.lecture.save(update_fields=["start"])
         feed_only = Row(route_id=1, name="Blue - Weekday Daytime", label="Blue", color="00356b", official=[9], ours=None)
         page, _ = self.go([feed_only])
-        self.assertIn("The feed says the bus is 9 min away", page.content.decode())
+        self.assertIn("bus in 9 min · the feed", page.content.decode())
 
-    def test_the_events_are_ordered_by_when_to_leave_not_by_start(self):
+    def test_the_calendar_lists_events_by_start_time(self):
+        """Like any calendar, by when each event starts. Before the calendar
+        view the list went by when to leave: the lecture, whose estimate says
+        leave at :33, came before the colloquium, whose bus is 40 minutes out
+        (:40). Each block still shows its own time to leave."""
         now = timezone.now()
-        # The colloquium starts sooner, but the lecture's estimate says leave at
-        # :33 while the colloquium's bus is 40 minutes out (:40) — so the
-        # lecture is the one to head out for first.
         Event.objects.create(
             calendar=self.calendar,
             uid="colloquium@yale",
@@ -170,7 +185,9 @@ class LeavePageTests(TestCase):
         page, board_mock = self.go([row(ours=40)])
         board_mock.assert_called_once()  # only the colloquium is inside the live window
         content = page.content.decode()
-        self.assertLess(content.index("MGT 656 lecture"), content.index("Colloquium"))
+        self.assertLess(content.index("Colloquium"), content.index("MGT 656 lecture"))
+        self.assertIn("Leave by", content)  # the colloquium, on its live bus
+        self.assertIn("Leave around", content)  # the lecture, an estimate
 
     def test_a_walking_plan_says_so(self):
         self.home.lat, self.home.lon = 41.3156, -72.9238  # Watson Center's own corner
@@ -178,8 +195,8 @@ class LeavePageTests(TestCase):
         page, board_mock = self.go()
         board_mock.assert_not_called()
         content = page.content.decode()
-        self.assertIn("walk from Home", content)
-        self.assertNotIn("Board at the", content)
+        self.assertIn("Leave Home · 1 min walk", content)
+        self.assertNotIn("Board at", content)
 
     def test_unmatched_and_empty_locations_are_listed_as_unknown(self):
         now = timezone.now()
@@ -202,6 +219,8 @@ class LeavePageTests(TestCase):
         self.assertIn("Location unknown", content)
         self.assertIn("one of the Yale buildings we know", content)
         self.assertIn("The event has no location", content)
+        # Only the lecture has a trip to map (the next trip card on top maps it too, #157).
+        self.assertEqual(content.count('data-map-data="trip-map-'), 1)
 
     def test_without_a_home_the_events_wait_with_a_hint(self):
         Place.objects.filter(user=self.user).delete()
@@ -211,7 +230,7 @@ class LeavePageTests(TestCase):
         self.assertIn("Set your Home", content)
         self.assertIn("Watson Center", content)  # the building still shows
         self.assertNotIn("Leave around", content)
-        self.assertNotIn("Board at the", content)
+        self.assertNotIn("Board at", content)
 
     def test_when_the_feed_is_down_events_still_show_without_times(self):
         Event.objects.create(
@@ -233,6 +252,49 @@ class LeavePageTests(TestCase):
         self.assertIn("MGT 656 lecture", content)  # the events, and their buildings…
         self.assertIn("Watson Center", content)  # …are all still there
         self.assertNotIn("Leave around", content)
+        self.assertNotIn("data-trip-map", content)  # no trips, so no maps
+
+    def map_data(self, content, event):
+        """What an event's map draws, as the page hands it to core/trip-map.js."""
+        found = re.search(rf'<script id="trip-map-{event.pk}" type="application/json">(.*?)</script>', content)
+        return json.loads(found.group(1)) if found else None
+
+    def test_a_trip_gets_a_map_of_its_walks_and_the_stretch_it_rides(self):
+        path = [UNION["lat"], UNION["lon"], 41.3100, -72.9250, SCIENCE_HILL["lat"], SCIENCE_HILL["lon"]]
+        with mock.patch.dict(ROUTES[1], {"path": path}):
+            page, _ = self.go()
+        data = self.map_data(page.content.decode(), self.lecture)
+        self.assertEqual(data["origin"], [self.home.lat, self.home.lon])
+        self.assertEqual(len(data["destination"]), 2)  # Watson Center
+        self.assertEqual((data["board"]["name"], data["get_off"]["name"]), ("Union Station", "Science Hill"))
+        self.assertEqual(data["board"]["at"], [UNION["lat"], UNION["lon"]])
+        self.assertEqual((data["route"]["name"], data["route"]["color"]), ("Blue - Weekday Daytime", "00356b"))
+        ride = data["route"]["path"]  # from the stop where you get on, along the route, to the one where you get off
+        self.assertEqual((ride[0], ride[-1]), ([UNION["lat"], UNION["lon"]], [SCIENCE_HILL["lat"], SCIENCE_HILL["lon"]]))
+        self.assertIn([41.31, -72.925], ride)
+
+    def test_a_walk_maps_just_the_walk(self):
+        self.home.lat, self.home.lon = 41.3156, -72.9238  # Watson Center's own corner
+        self.home.save(update_fields=["lat", "lon"])
+        page, _ = self.go()
+        self.assertEqual(set(self.map_data(page.content.decode(), self.lecture)), {"origin", "destination"})
+
+    def test_each_day_gets_a_chip_and_a_heading_in_new_haven_time(self):
+        now = et(2026, 11, 23, 22, 30)  # a Monday, 10:30 PM
+        self.lecture.start = et(2026, 11, 23, 23, 45)
+        self.lecture.save(update_fields=["start"])
+        Event.objects.create(
+            calendar=self.calendar, uid="seminar@yale", title="Seminar", start=et(2026, 11, 24, 9, 0),
+            location="Watson Center, 60 Sachem Street",
+        )
+        with mock.patch("django.utils.timezone.now", return_value=now):
+            page, _ = self.go()
+        content = page.content.decode()
+        self.assertEqual(len(re.findall(r'class="cal-day(?: is-first)?"', content)), 2)
+        self.assertIn("Today · Monday, Nov 23", content)
+        self.assertIn("Tomorrow · Tuesday, Nov 24", content)
+        self.assertLess(content.index("MGT 656 lecture"), content.index("Tomorrow · Tuesday"))
+        self.assertLess(content.index("Tomorrow · Tuesday"), content.index("Seminar"))
 
 
 class RunningAtTests(TestCase):
@@ -305,12 +367,40 @@ class DemoSeedTests(TestCase):
         Event.objects.filter(calendar__user=self.user).update(
             start=now - dt.timedelta(hours=2), end=now - dt.timedelta(hours=1)
         )
-        self.assertEqual(demo.reanchor(now), 3)
+        self.assertEqual(demo.reanchor(now), 4)  # with the office hours (#148)
         starts = {event.title: event.start for event in Event.objects.filter(calendar__user=self.user)}
         self.assertEqual(timezone.localtime(starts["MGT 656 lecture"]).time(), dt.time(16, 0))
         for title, start in starts.items():
             self.assertGreater(start, now, title)
         self.assertEqual(demo.reanchor(now), 0)  # safe to run twice
+
+    def test_the_office_hours_are_always_25_to_45_minutes_away(self):
+        """The trip agent is only asked about the next two hours' trips, so
+        one demo event always sits close by (#148)."""
+        self.seed()
+        now = timezone.now()
+        office_hours = Event.objects.get(calendar__user=self.user, uid=demo.SOON[0])
+        self.assertTrue(now + dt.timedelta(minutes=40) <= office_hours.start <= now + dt.timedelta(minutes=45))
+        self.assertEqual(office_hours.start.minute % 5, 0)
+        later = office_hours.start - dt.timedelta(minutes=26)  # still more than 25 minutes out: it stays
+        self.assertEqual(demo.reanchor(later), 0)
+        later = office_hours.start - dt.timedelta(minutes=24)
+        self.assertEqual(demo.reanchor(later), 1)
+        office_hours.refresh_from_db()
+        self.assertGreaterEqual(office_hours.start - later, dt.timedelta(minutes=40))
+
+    def test_the_page_moves_started_events_forward_too(self):
+        """Staging has no hourly job to move them (the job clock runs on
+        production only), so the page does, and graders always find the
+        lecture coming up to ask the trip agent about (#148)."""
+        self.seed()
+        now = timezone.now()
+        Event.objects.filter(calendar__user=self.user).update(
+            start=now - dt.timedelta(hours=2), end=now - dt.timedelta(hours=1)
+        )
+        self.assertIn("MGT 656 lecture", self.go())
+        for event in Event.objects.filter(calendar__user=self.user):
+            self.assertGreater(event.start, now, event.title)
 
     def test_the_job_reports_the_refresh_and_the_reanchoring_together(self):
         self.seed()
@@ -318,18 +408,18 @@ class DemoSeedTests(TestCase):
         Event.objects.filter(calendar__user=self.user).update(start=now - dt.timedelta(hours=2))
         summary = refresh_calendars()
         self.assertIn("0 calendars", summary)  # the demo calendar is never fetched
-        self.assertIn("3 demo events re-anchored", summary)
+        self.assertIn("4 demo events re-anchored", summary)
         self.assertTrue(Event.objects.filter(calendar__user=self.user, start__gt=now).exists())
 
     def test_seeding_fills_the_page_and_is_safe_to_rerun(self):
         self.seed()
-        self.seed()  # twice: one calendar, three events, one Home
+        self.seed()  # twice: one calendar, four events, one Home
         self.assertEqual(Calendar.objects.filter(user=self.user, is_demo=True).count(), 1)
-        self.assertEqual(Event.objects.filter(calendar__user=self.user).count(), 3)
+        self.assertEqual(Event.objects.filter(calendar__user=self.user).count(), 4)
         self.assertEqual(Place.objects.filter(user=self.user, is_home=True).count(), 1)
         content = self.go()
         self.assertIn("MGT 656 lecture", content)
-        self.assertIn("Board at the", content)  # the demo Home makes the lecture rideable
+        self.assertIn("Board at", content)  # the demo Home makes the lecture rideable
         self.assertIn("Location unknown", content)
         self.assertIn("Pick-up basketball", content)
         self.assertIn("The event has no location", content)
@@ -360,4 +450,4 @@ class DemoSeedTests(TestCase):
         self.seed()
         self.assertFalse(Place.objects.filter(user=self.user, is_home=True).exists())
         self.assertEqual(Place.objects.filter(user=self.user, name="Home").count(), 1)
-        self.assertEqual(Event.objects.filter(calendar__user=self.user).count(), 3)  # events still demo
+        self.assertEqual(Event.objects.filter(calendar__user=self.user).count(), 4)  # events still demo

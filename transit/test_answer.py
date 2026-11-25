@@ -8,6 +8,7 @@ import json
 from unittest import mock
 from urllib.parse import parse_qs, urlsplit
 
+from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
@@ -98,6 +99,10 @@ class AnswerTests(SimpleTestCase):
 
     def test_a_bus_without_an_id_gives_no_ride_time(self):
         self.assertIsNone(ride([eta(10, bus_id=None)], [eta(22)]).ride_minutes)
+
+    def test_it_names_the_bus_it_picked_for_a_shared_trip_to_follow(self):
+        self.assertEqual(ride([eta(3, bus_id=1), eta(12, bus_id=2)], [eta(20, bus_id=2)], walk_to=8).bus_id, 2)
+        self.assertIsNone(ride([eta(10, bus_id=None)], [eta(22)]).bus_id)  # the feed named none (#10)
 
     def test_it_skips_a_bus_the_rider_cant_reach_in_time(self):
         # An 8-minute walk: the bus in 3 minutes leaves before they're there.
@@ -303,6 +308,20 @@ class TripPageAnswerTests(TestCase):
         self.assertEqual(answer.ride_minutes, 12)
         self.assertContains(response, "<dd>12 min</dd>", html=True)
         self.assertContains(response, "Arrive at Union")
+
+    def test_a_logged_in_rider_can_share_the_bus_with_a_friend(self, urlopen, predict):
+        self.stub(urlopen, [(1, 812, 10)], [(1, 812, 22)])
+        self.client.force_login(get_user_model().objects.create_user("night-rider", password="not-it"))
+        response = self.client.get(reverse("trip"), TRIP)
+        self.assertContains(response, f'action="{reverse("share-create")}"')
+        for name, value in (("route_id", 1), ("bus_id", 812), ("board_stop_id", 20), ("get_off_stop_id", 30)):
+            self.assertContains(response, f'name="{name}" value="{value}"')  # the bus and stops, nothing of theirs (#10)
+
+    def test_a_rider_not_logged_in_is_asked_to_log_in_to_share(self, urlopen, predict):
+        self.stub(urlopen, [(1, 812, 10)], [(1, 812, 22)])
+        response = self.client.get(reverse("trip"), TRIP)
+        self.assertContains(response, "to share this bus with a friend")
+        self.assertNotContains(response, reverse("share-create"))
 
     def test_without_a_ride_time_it_says_so_instead_of_guessing(self, urlopen, predict):
         self.stub(urlopen, [(1, 812, 10)], [])

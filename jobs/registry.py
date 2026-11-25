@@ -37,17 +37,23 @@ class Job:
     schedule: str
     timeout: dt.timedelta
     description: str
+    takes_over: bool = False
 
 
 _jobs = {}
 _discovered = False
 
 
-def job(*, schedule, timeout=dt.timedelta(minutes=10), name=None):
+def job(*, schedule, timeout=dt.timedelta(minutes=10), name=None, takes_over=False):
     """Register the decorated function as a scheduled job.
 
     `timeout` is how long a run may take. A run still unfinished after that is
     taken to have died with its process, and stops blocking the next run.
+
+    `takes_over=True` is for a job whose run outlasts its schedule on purpose,
+    like the trip watch (#29), which keeps watching until the next hourly run
+    starts: a new run takes over from one still going, instead of being
+    skipped. The workflow cancels the older run's process (jobs.yml).
     """
 
     def register(func):
@@ -57,7 +63,9 @@ def job(*, schedule, timeout=dt.timedelta(minutes=10), name=None):
         if existing and f"{existing.func.__module__}.{existing.func.__qualname__}" != where:
             raise ValueError(f"Two jobs are called {job_name!r}")
         description = (func.__doc__ or "").strip().split("\n")[0]
-        _jobs[job_name] = Job(job_name, func, " ".join(schedule.split()), timeout, description)
+        _jobs[job_name] = Job(
+            job_name, func, " ".join(schedule.split()), timeout, description, takes_over
+        )
         return func
 
     return register

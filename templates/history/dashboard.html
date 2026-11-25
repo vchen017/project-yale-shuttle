@@ -36,6 +36,31 @@
   Saved {{ snapshot.computed_eastern|date:'M j, g:i A' }} ET — scoring took {{ snapshot.duration_seconds|floatformat:0 }}s.
 </p>
 
+{# How often a rider who left when we said would have made the bus (#156), against the official ETA, where we started and the goal #}
+{% with ours=result.overall.ours official=result.overall.official %}
+{% if ours and "on_time_percent" in ours %}
+<div class="card mb-4 ontime-card"><div class="card-body">
+  <div class="d-flex align-items-baseline flex-wrap column-gap-2 mb-2">
+    <span class="fs-2 fw-bold lh-1 text-primary">{{ ours.on_time_percent }}%</span>
+    <span class="fw-semibold">on time</span>
+    <span class="small text-body-secondary">leaving when we said, a rider would have made the bus</span>
+  </div>
+  <div class="ontime-meter" role="img" aria-label="On time: ours {{ ours.on_time_percent }}%{% if official and 'on_time_percent' in official %}, official ETA {{ official.on_time_percent }}%{% endif %}, baseline {{ on_time_baseline }}%, goal {{ on_time_goal }}%">
+    <span class="ontime-fill" style="width: {{ ours.on_time_percent }}%"></span>
+    {% if official and "on_time_percent" in official %}<span class="ontime-mark ontime-official" style="left: {{ official.on_time_percent }}%"></span>{% endif %}
+    <span class="ontime-mark ontime-baseline" style="left: {{ on_time_baseline }}%"></span>
+    <span class="ontime-mark ontime-goal" style="left: {{ on_time_goal }}%"></span>
+  </div>
+  <div class="ontime-legend small mt-2">
+    <span><i class="ontime-key ontime-fill" aria-hidden="true"></i>Ours {{ ours.on_time_percent }}%</span>
+    {% if official and "on_time_percent" in official %}<span><i class="ontime-key ontime-official" aria-hidden="true"></i>Official ETA {{ official.on_time_percent }}%</span>{% endif %}
+    <span><i class="ontime-key ontime-baseline" aria-hidden="true"></i>Baseline {{ on_time_baseline }}% (Nov 25)</span>
+    <span><i class="ontime-key ontime-goal" aria-hidden="true"></i>Goal {{ on_time_goal }}%</span>
+  </div>
+</div></div>
+{% endif %}
+{% endwith %}
+
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-3"><div class="card h-100"><div class="card-body">
     <div class="small text-body-secondary">Queries scored</div>
@@ -76,6 +101,8 @@
 
 <p class="small text-body-secondary mt-4 mb-0">
   <i class="bi bi-info-circle me-1" aria-hidden="true"></i>
+  <em>On time</em> is how often a rider who timed their walk to that answer would have made the
+  bus: it didn't come more than 2 minutes before the time given.
   Each cell reads <em>mean error / MAE (queries scored)</em>. "Official ETA" is scored the way
   riders see it (#116): the freshest countdown at the query instant, aged by its own lag.
   "History" is our history layer alone — it can beat the live-inclusive number on held-out days.

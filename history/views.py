@@ -88,7 +88,10 @@ def accuracy_dashboard(request):
     minutes and no request may wait for that."""
     start, end, error = _range(request)
     snapshot = AccuracySnapshot.objects.filter(range_start=start, range_end=end).first()
-    context = {"start": start, "end": end, "error": error, "today": timezone.localdate()}
+    context = {
+        "start": start, "end": end, "error": error, "today": timezone.localdate(),
+        "on_time_baseline": accuracy.ON_TIME_BASELINE, "on_time_goal": accuracy.ON_TIME_GOAL,
+    }
     if snapshot is None:
         context["saved"] = AccuracySnapshot.objects.all()[:6]
     else:

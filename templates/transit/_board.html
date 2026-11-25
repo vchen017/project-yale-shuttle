@@ -15,6 +15,11 @@
         <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
           <span class="route-chip m-0" style="background-color: #{{ row.color }}; color: {{ row.text_color }};">{{ row.label }}</span>
           <span class="fw-semibold">{{ row.name }}</span>
+          {% if row.detoured %}
+            <span class="badge text-bg-warning">
+              <i class="bi bi-cone-striped me-1" aria-hidden="true"></i>possible detour
+            </span>
+          {% endif %}
         </div>
         <div class="row g-2">
           <div class="{% if row.ours is None %}col-12{% else %}col-6{% endif %}">
@@ -50,6 +55,6 @@
     {% endfor %}
   </ul>
   <p class="small text-body-secondary mb-0">
-    Official times come from the Downtowner's live estimate. Our prediction comes from the arrivals we've recorded, not from that estimate, so the two can differ.
+    Official times come from the Downtowner's live estimate. Our prediction is that estimate, corrected by the arrivals we've recorded, so the two agree when a bus is close.
   </p>
 {% endif %}

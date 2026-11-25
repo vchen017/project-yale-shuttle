@@ -4,8 +4,11 @@ For every poll in the last HISTORY_DAYS, the fit asks how far the shown
 countdown was from the truth (predictions._shown_residuals) and takes the
 median of those residuals per (route, countdown bucket), with the
 all-routes medians beneath and the overall median as the last fallback.
-The nightly job runs this after the history import; predict_minutes reads
-the stored rows through the cache. Safe to run twice, late, or on a fresh
+Each row also stores its cushion (#155): how much earlier than the corrected
+time to leave so "Leave by" gets riders to the stop in time 90% of the
+time (predictions._fit_cushions). The nightly job runs this after the
+history import; predict_minutes and the trip plans read the stored rows
+through the cache. Safe to run twice, late, or on a fresh
 database: a run replaces every row, and a thin fit simply corrects less.
 """
 
@@ -37,6 +40,7 @@ class Command(BaseCommand):
                 route_id=route_id,
                 bucket=bucket,
                 delta_minutes=round(delta, 2),
+                cushion_minutes=round(corrections.cushion_by_route[(route_id, bucket)], 2),
                 samples=len(residuals[(route_id, bucket)]),
                 fitted_at=fitted,
             )
@@ -47,6 +51,7 @@ class Command(BaseCommand):
                 route_id=None,
                 bucket=bucket,
                 delta_minutes=round(delta, 2),
+                cushion_minutes=round(corrections.cushion_by_bucket[bucket], 2),
                 samples=sum(
                     len(values)
                     for (route_id, that), values in residuals.items()
@@ -63,6 +68,7 @@ class Command(BaseCommand):
                     route_id=None,
                     bucket=predictions.OVERALL_BUCKET,
                     delta_minutes=round(corrections.overall, 2),
+                    cushion_minutes=round(corrections.cushion_overall, 2),
                     samples=everything,
                     fitted_at=fitted,
                 )
@@ -79,5 +85,5 @@ class Command(BaseCommand):
         self.stdout.write(
             f"Fitted {len(rows)} correction rows from {everything} residuals "
             f"over the last {predictions.HISTORY_DAYS} days "
-            f"(overall median {corrections.overall:+.1f} min)."
+            f"(overall median {corrections.overall:+.1f} min, overall cushion {corrections.cushion_overall:.1f} min)."
         )

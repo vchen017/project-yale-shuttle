@@ -6,16 +6,17 @@ from django.templatetags.static import static
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_safe
 
-from alerts.services import admin_alerts, current_alerts
+from alerts.services import current_alerts, home_page_alerts
 from transit.downtowner import FeedUnavailable
 from transit.network import network
 
 
 def home(request):
-    """The home page. Its service alerts start with the admins' own, from the
-    database, and the page then fetches the full list from home_alerts, so it
-    never waits on the shuttle feed (#13)."""
-    return render(request, "core/home.html", {"alerts": admin_alerts(), "feed_ok": True})
+    """The home page. Its service alerts start with the admins' own, plus any
+    detour noticed in the last minute, all from the database and the
+    detection cache; the page then fetches the full list from home_alerts, so
+    it never waits on the shuttle feed (#13, #55)."""
+    return render(request, "core/home.html", {"alerts": home_page_alerts(), "feed_ok": True})
 
 
 @require_safe

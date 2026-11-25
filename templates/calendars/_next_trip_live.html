@@ -1,0 +1,60 @@
+{# The next trip card's live part (#157), rendered with the page and again by next_trip_card every refresh #}
+{% with plan=trip.plan row=trip.plan.row %}
+<div class="next-trip-head">
+  <span class="next-trip-tag"><i class="bi bi-signpost-split-fill" aria-hidden="true"></i>Next trip</span>
+  <span class="next-trip-event">{{ plan.event.title }} · {{ plan.event.start|date:"g:i A" }}</span>
+</div>
+
+{% if trip.no_shuttle %}
+  <div class="next-trip-big">No shuttle runs then</div>
+  <p class="next-trip-sub">{% if plan.walk_all %}Walking takes {{ plan.walk_all }} min. {% endif %}Yale's other ways there:</p>
+  <ul class="next-trip-options">
+    {% for option in trip.options %}
+      <li class="next-trip-option">
+        <i class="bi {{ option.icon }} next-trip-option-icon" aria-hidden="true"></i>
+        <div class="next-trip-option-what">
+          <div class="fw-semibold">{{ option.name }}</div>
+          <div class="small text-body-secondary">{{ option.hours }} · {{ option.how }}</div>
+        </div>
+        {% if option.tel %}
+          <a class="btn btn-primary btn-sm next-trip-call" href="tel:{{ option.tel }}"><i class="bi bi-telephone-fill me-1" aria-hidden="true"></i>{{ option.phone }}</a>
+        {% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+
+{% elif plan.walking_is_quicker %}
+  <div class="next-trip-big">Walk · leave by {{ plan.leave_by|date:"g:i A" }}</div>
+  <p class="next-trip-sub mb-0"><i class="bi bi-person-walking me-1" aria-hidden="true"></i>{{ plan.plan.walk_all_the_way }} min on foot, quicker than the shuttle.</p>
+
+{% elif trip.live %}
+  <div class="next-trip-when">
+    <span class="next-trip-big">Leave by {{ plan.leave_by|date:"g:i A" }}</span>
+    {% if plan.leave_in <= 0 %}<span class="cal-chip is-now">now</span>{% else %}<span class="cal-chip is-soon">in {{ plan.leave_in }} min</span>{% endif %}
+    {% if plan.spare_minutes %}<span class="cal-chip is-spare">{{ plan.spare_minutes }} min to spare</span>{% endif %}
+  </div>
+  <div class="next-trip-bus">
+    <span class="badge" style="background-color: #{{ row.color }}; color: {{ row.text_color }};">{{ row.name }}</span>
+    <span class="next-trip-range">Bus in {{ trip.bus_range }} min</span>
+    <span class="text-body-secondary">at {{ plan.plan.board_at.name }}</span>
+  </div>
+  <div class="next-trip-chips">
+    {% if trip.crowd_label %}
+      <span class="next-trip-chip" title="{% if trip.crowd_usual %}How busy this route usually is at this hour{% else %}What riders reported in the last half hour{% endif %}">
+        <span class="agent-meter crowd-{{ trip.crowd_level }}" aria-hidden="true"><span></span><span></span><span></span><span></span></span>{{ trip.crowd_label }}{% if trip.crowd_usual %}, usually{% endif %}
+      </span>
+    {% endif %}
+    {% if trip.detoured %}
+      <span class="next-trip-chip is-warn"><i class="bi bi-cone-striped" aria-hidden="true"></i>Possible detour</span>
+    {% endif %}
+    {% if trip.bus and trip.bus.age_minutes %}
+      <span class="next-trip-chip"><i class="bi bi-clock-history" aria-hidden="true"></i>Bus last seen {{ trip.bus.age_minutes }} min ago</span>
+    {% endif %}
+  </div>
+  <div class="next-trip-updated"><span class="next-trip-live-dot" aria-hidden="true"></span>Live · {{ trip.now|date:"g:i A" }}</div>
+
+{% else %}
+  <div class="next-trip-big">Leave around {{ plan.leave_by|date:"g:i A" }}</div>
+  <p class="next-trip-sub mb-0"><i class="bi bi-clock me-1" aria-hidden="true"></i>Live bus times from {{ trip.live_from|date:"g:i A" }}</p>
+{% endif %}
+{% endwith %}

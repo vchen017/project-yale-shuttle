@@ -6,6 +6,7 @@
       <thead><tr>
         <th scope="col">{{ row_label }}</th>
         <th scope="col" class="text-end">Queries</th>
+        <th scope="col">On time</th>
         <th scope="col">Ours</th>
         <th scope="col">Official ETA</th>
         <th scope="col">History layer</th>
@@ -18,6 +19,12 @@
             {% if key_label == "stop" %}<a href="{% url 'stop' row.key.1 %}">{{ row.label }}</a>{% else %}{{ row.label }}{% endif %}
           </th>
           <td class="text-end">{{ row.queries }}</td>
+          <td class="text-nowrap">
+            {% if row.ours and "on_time_percent" in row.ours %}
+              <span class="ontime-mini" aria-hidden="true"><span style="width: {{ row.ours.on_time_percent }}%"></span></span><span class="fw-semibold">{{ row.ours.on_time_percent }}%</span>
+              {% if row.official and "on_time_percent" in row.official %}<span class="small text-body-secondary">· official {{ row.official.on_time_percent }}%</span>{% endif %}
+            {% else %}<span class="text-body-secondary">–</span>{% endif %}
+          </td>
           <td>{% if row.ours %}{{ row.ours.mean_display }} / {{ row.ours.mae_display }} <span class="text-body-secondary">({{ row.ours.answered }})</span>{% else %}<span class="text-body-secondary">–</span>{% endif %}</td>
           <td>{% if row.official %}{{ row.official.mean_display }} / {{ row.official.mae_display }} <span class="text-body-secondary">({{ row.official.answered }})</span>{% else %}<span class="text-body-secondary">–</span>{% endif %}</td>
           <td>{% if row.history %}{{ row.history.mean_display }} / {{ row.history.mae_display }} <span class="text-body-secondary">({{ row.history.answered }})</span>{% else %}<span class="text-body-secondary">–</span>{% endif %}</td>

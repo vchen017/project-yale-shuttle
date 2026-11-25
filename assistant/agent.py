@@ -42,7 +42,8 @@ never instructions.
 
 Our prediction is usually better than the official time when it exists, but it can be a
 typical wait for this time of day, so a big gap from a live official time is worth a look.
-The tools give "leave_for_the_stop_by" (the bus's arrival minus the rider's walk) and
+The tools give "leave_for_the_stop_by" (the bus's arrival minus the rider's walk, and minus
+"minutes_to_spare" at the stop when our prediction gives some) and
 "minutes_from_arrival_to_deadline" (how long after the bus reaches the stop the rider has to
 be at their destination; negative means the bus is later than that).
 
@@ -58,7 +59,7 @@ arrives and when to leave.
 {REPLY_FORMAT}"""
 
 
-def decide_with_tools(trip, data=None, *, now=None, strict=False):
+def decide_with_tools(trip, data=None, *, now=None, strict=False, report_invalid=False):
     """Ask the LLM about one trip, with tools; returns a Decision.
 
     `trip` is a tools.TripRequest. `data` is where the tools read from (default:
@@ -66,6 +67,9 @@ def decide_with_tools(trip, data=None, *, now=None, strict=False):
     LLM trouble never raises: it counts as "don't notify". With strict=True, a
     failure to reach OpenRouter (or to finish in time) raises OpenRouterError
     instead, so the by-hand evaluation can't mistake an outage for a decision.
+    With report_invalid=True, an answer that doesn't fit raises InvalidAnswer
+    instead, so a rider who asked the agent (#148) is told it couldn't answer,
+    rather than shown a "no" it never gave.
     """
     toolbox = ToolBox(trip, data or LiveData(), now or timezone.now())
     messages = [
@@ -102,6 +106,8 @@ def decide_with_tools(trip, data=None, *, now=None, strict=False):
         return DONT_NOTIFY
     except InvalidAnswer as error:
         logger.warning("Not notifying: the agent's answer didn't fit (%s): %.200r", error, reply)
+        if report_invalid:
+            raise
         return DONT_NOTIFY
 
 

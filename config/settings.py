@@ -49,6 +49,8 @@ INSTALLED_APPS = [
     "buildings",
     "places",
     "calendars",
+    "detours",
+    "sharing",
 ]
 
 MIDDLEWARE = [

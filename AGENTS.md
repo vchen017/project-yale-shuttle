@@ -67,9 +67,10 @@ or create clashing migrations:
 | `crowding` | Ishita | Riders' crowding reports, and crowding now and by time of day (#12) |
 | `places` | Ishita | Riders' saved places: Home and favourites (#7) |
 | `buildings` | Austin | Yale buildings by the names riders use, for the trip search (#98) |
-| `notifications` | Vivian | Browser push: riders' devices and sending to them (#27), and the trip-notification job (#29) |
+| `notifications` | Vivian | Browser push: riders' devices and sending to them (#27), the trip-notification job (#29), and asking the trip agent from the when-to-leave page (#148) |
 | `assistant` | Austin | The AI feature (#37, #28) |
 | `jobs` | Vivian | The scheduled-job runner and its run log (#40). Each app's own jobs go in its `jobs.py` |
+| `sharing` | Vivian | Live trips a rider shares with a friend: the link, its page and stopping it (#10) |
 
 Later areas, such as trips and crowding, get new apps the same way. Only change
 another app's code or migrations when your issue says to, and tell its owner.
