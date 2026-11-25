@@ -40,7 +40,8 @@ from transit import downtowner
 from transit.downtowner import FeedUnavailable
 
 from . import follow
-from .plans import LIVE_WINDOW
+from .models import Event
+from .plans import LIVE_WINDOW, match_building
 
 SESSION_KEY = "next_trip_followed"  # the trip remembered for following, in the rider's session
 FOLLOW_AT_MOST = dt.timedelta(hours=2)  # a followed trip ends this long after its "Leave by" at the latest
@@ -317,6 +318,8 @@ def remember(session, trip, home, now):
     row, board, get_off = plan.row, plan.plan.board_at, plan.plan.get_off_at
     session[SESSION_KEY] = {
         "key": trip.key,
+        "calendar_id": plan.event.calendar_id,
+        "uid": plan.event.uid,
         "title": plan.event.title,
         "start": plan.event.start.isoformat(),
         "leave_by": plan.leave_by.isoformat(),
@@ -331,10 +334,13 @@ def remember(session, trip, home, now):
     }
 
 
-def followed(session, now):
+def followed(session, now, user):
     """The remembered trip (#163) once it's past its "Leave by", until the
     rider should be at the event: None before then, and after, when it's
-    forgotten. It ends FOLLOW_AT_MOST after "Leave by" at the latest."""
+    forgotten. It ends FOLLOW_AT_MOST after "Leave by" at the latest, and
+    as soon as the rider's calendar no longer has the event as it was: gone
+    (cancelled or deleted, which the hourly refresh picks up), or moved to
+    another time or building. Then the card plans their next trip again."""
     record = session.get(SESSION_KEY)
     leave_by = _when(record.get("leave_by")) if isinstance(record, dict) else None
     if leave_by is None:
@@ -350,7 +356,32 @@ def followed(session, now):
     if now > ends:
         session.pop(SESSION_KEY, None)
         return None
+    event = _still_on(record, user)
+    if event is None:
+        session.pop(SESSION_KEY, None)
+        return None
+    if event.title != record.get("title"):
+        record = {**record, "title": event.title}  # renamed: the card says so
+        session[SESSION_KEY] = record
     return record
+
+
+def _still_on(record, user):
+    """The followed trip's event, as the rider's calendar has it now: the
+    same event (calendar and uid) at the same start, in the same building.
+    None when it's gone or moved, or the record can't say which it was."""
+    start = _when(record.get("start"))
+    if start is None or record.get("calendar_id") is None or not record.get("uid"):
+        return None
+    event = Event.objects.filter(
+        calendar__user=user, calendar_id=record["calendar_id"], uid=record["uid"], start=start
+    ).first()
+    if event is None:
+        return None
+    building = match_building(event.location)
+    if building is None or building["name"] != record.get("building", {}).get("name"):
+        return None
+    return event
 
 
 def follow_card(session, record, now):

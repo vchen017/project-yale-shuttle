@@ -337,6 +337,55 @@ class FollowingTests(TestCase):
         self.refreshed(later=2)
         self.assertEqual(self.remembered()["bus_id"], 900)
 
+    def following(self):
+        """The card, past "Leave by" (minute 12), following the bus."""
+        self.card()
+        self.at = {30: 2}
+        card = self.card(later=12)
+        self.assertIn("On your way", card)
+        return card
+
+    def test_a_cancelled_event_stops_being_followed(self):
+        # Austin's review: the hourly refresh deletes an event cancelled after
+        # "Leave by", and the card mustn't go on walking the rider there.
+        self.following()
+        self.lecture.delete()
+        self.assertEqual(self.refreshed(later=13), {"key": None})  # nothing else is next
+        self.assertIsNone(self.remembered())
+
+    def test_a_moved_event_is_planned_again(self):
+        key = re.search(r'data-key="([^"]+)"', self.following()).group(1)
+        self.lecture.start = self.start + dt.timedelta(minutes=90)
+        self.lecture.save(update_fields=["start"])
+        moved = self.refreshed(later=13)
+        self.assertNotEqual(moved["key"], key)  # another trip: the page reloads for it
+        self.assertNotIn("On your way", moved["html"])
+        self.assertIsNone(self.remembered())
+
+    def test_an_event_moved_to_another_building_is_planned_again(self):
+        self.following()
+        self.lecture.location = "Sterling Memorial Library, 120 High Street"
+        self.lecture.save(update_fields=["location"])
+        self.assertNotIn("On your way", self.refreshed(later=13).get("html", ""))
+        # The card plans the trip there instead, and remembers that one.
+        self.assertNotEqual((self.remembered() or {}).get("building", {}).get("name"), "Watson Center")
+
+    def test_a_renamed_event_is_still_followed_under_its_new_name(self):
+        self.following()
+        self.lecture.title = "MGT 656 review session"
+        self.lecture.save(update_fields=["title"])
+        html = self.refreshed(later=13)["html"]
+        self.assertIn("On your way", html)
+        self.assertIn("MGT 656 review session", html)
+
+    def test_the_map_starts_from_home_as_it_is_now(self):
+        self.card()
+        self.at = {30: 2}
+        Place.objects.filter(user=self.user, is_home=True).update(lat=41.3050, lon=-72.9300)
+        card = self.card(later=12)
+        data = json.loads(re.search(r'<script id="next-trip-map-data" type="application/json">(.*?)</script>', card).group(1))
+        self.assertEqual(data["origin"], [41.3050, -72.9300])
+
     def test_opening_the_page_late_plans_from_home_as_before(self):
         # Nothing remembered: the rider never had the card open, so they're still at Home.
         card = self.card(later=12)

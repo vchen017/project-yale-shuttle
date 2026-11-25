@@ -105,11 +105,11 @@ def leave(request):
     # shuttle links these" can't be told apart from "the feed didn't say".
     # Once it's past "Leave by", the trip the card remembered, with its bus (#163).
     card = None
-    record = next_trip.followed(request.session, now) if stops is not None else None
+    record = next_trip.followed(request.session, now, request.user) if stops is not None else None
     if record is not None:
         try:
             card = next_trip.follow_card(request.session, record, now)
-            card.map = _follow_map(record, routes_by_id)
+            card.map = _follow_map(record, routes_by_id, home)
         except FeedUnavailable:
             card = None
     elif stops is not None:
@@ -148,7 +148,7 @@ def next_trip_card(request):
     past "Leave by", the card follows the remembered trip's bus (#163),
     under the same key."""
     now = timezone.now()
-    record = next_trip.followed(request.session, now)
+    record = next_trip.followed(request.session, now, request.user)
     if record is not None:
         try:
             card = next_trip.follow_card(request.session, record, now)
@@ -197,12 +197,13 @@ def _timeline(plan, now):
     plan.board_time = plan.leave_by + dt.timedelta(minutes=plan.plan.walk_to_stop + plan.spare_minutes) if ride else None
 
 
-def _follow_map(record, routes_by_id):
+def _follow_map(record, routes_by_id, home):
     """A followed trip's map (#163), as _trip_map draws a plan's, from the
-    trip the card remembered, with the route's stretch from the live network."""
+    trip the card remembered, with the route's stretch from the live network
+    and the rider's Home as it is now (as remembered, if they've none now)."""
     board, get_off = record["board"], record["get_off"]
     data = {
-        "origin": record["home"],
+        "origin": [home.lat, home.lon] if home is not None else record["home"],
         "destination": [record["building"]["lat"], record["building"]["lon"]],
         "board": {"name": board["name"], "at": [board["lat"], board["lon"]]},
         "get_off": {"name": get_off["name"], "at": [get_off["lat"], get_off["lon"]]},
