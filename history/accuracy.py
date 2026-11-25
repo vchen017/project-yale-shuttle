@@ -14,6 +14,14 @@ poll's own lag — not the sampled poll grown stale by the whole offset,
 which overstated the official's error. The history layer is reported on its
 own — it can beat the live-inclusive number on held-out days (see #23).
 
+Each side also gets an on-time rate (#156): the share of its answers that
+would have got a rider to the stop in time, had they timed their walk to
+the time it gave. A bus that came up to ON_TIME_SLACK minutes before that
+time still counts as caught, since arrivals are only known to within a
+poll or so. It's what riders care about, where the errors are what we
+tune: ON_TIME_BASELINE is where ours stood when we started tracking it,
+and ON_TIME_GOAL the Sprint 4 goal (#155).
+
 Riders' reports (#6) are counted next to the errors, in the same groups.
 """
 
@@ -44,6 +52,9 @@ HOLDOUT_MODULUS = 3  # every third day is scored, the rest train on — as in ev
 STRIDE = 2  # every second poll stands for a rider asking
 SIDES = ("ours", "official", "history")
 MAX_RANGE_DAYS = 31  # the longest range a dashboard load or a scoring run covers
+ON_TIME_SLACK = 2  # minutes the bus may beat the time we gave and still be caught
+ON_TIME_BASELINE = 78  # % of our answers on time over Oct 26 - Nov 25 (#153's replay)
+ON_TIME_GOAL = 90  # % on time: the Sprint 4 goal (#155)
 
 
 def eastern_midnight(day):
@@ -82,6 +93,7 @@ def accuracy(since, until):
     signed = defaultdict(float)  # (side, kind, key) -> sum of (predicted - actual)
     absolute = defaultdict(float)  # ... -> sum of |predicted - actual|
     answered = defaultdict(int)  # ... -> queries this side answered
+    on_time = defaultdict(int)  # ... -> of those, how many would have got the rider there in time
     scored = defaultdict(int)  # (kind, key) -> queries scored at all
     no_prediction = not_served = 0
 
@@ -162,6 +174,8 @@ def accuracy(since, until):
                         signed[(side, kind, key)] += error
                         absolute[(side, kind, key)] += abs(error)
                         answered[(side, kind, key)] += 1
+                        if error <= ON_TIME_SLACK:  # the bus didn't come before the rider did
+                            on_time[(side, kind, key)] += 1
 
     reports = {"route": defaultdict(int), "stop": defaultdict(int), "hour": defaultdict(int)}
     sample_reports = {
@@ -188,12 +202,15 @@ def accuracy(since, until):
             if count:
                 mean = signed[(side, kind, key)] / count
                 mae = absolute[(side, kind, key)] / count
+                rate = on_time[(side, kind, key)] / count
                 data[side] = {
                     "mean": mean,
                     "mae": mae,
                     "answered": count,
                     "mean_display": _signed(mean),
                     "mae_display": f"{mae:.1f}",
+                    "on_time": rate,
+                    "on_time_percent": round(100 * rate),
                 }
             else:
                 data[side] = None
