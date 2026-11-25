@@ -10,12 +10,14 @@ import time
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import escape
 
 from crowding.services import RouteCrowding
+from history.models import Calibration
 from places.models import Place
 from transit.downtowner import FeedUnavailable
 from transit.next_buses import Board, Row
@@ -202,6 +204,7 @@ class FollowingTests(TestCase):
     rider to catch, from their stop to the event, refreshing in place."""
 
     def setUp(self):
+        cache.clear()  # no corrections another test left cached (history.stored_corrections)
         self.start = timezone.now()
         self.user = User.objects.create_user("rider", password="not-the-real-password")
         self.client.force_login(self.user)
@@ -299,6 +302,19 @@ class FollowingTests(TestCase):
         # Once they should be there and the lecture has started, the card moves on: nothing's next.
         self.assertEqual(self.refreshed(later=max(22 + walk + 6, 31)), {"key": None})
         self.assertIsNone(self.remembered())
+
+    def test_there_by_keeps_the_arrival_cushion(self):
+        # #174: the nightly fit says buses with 5-10 minute countdowns reach a
+        # stop up to 2.4 minutes later than the corrected time, so "There by"
+        # counts 3 more minutes.
+        Calibration.objects.create(
+            route_id=None, bucket=1, delta_minutes=0.0, samples=40, cushion_minutes=0.0, arrival_cushion_minutes=2.4
+        )
+        self.card()
+        trip = self.remembered()
+        get_off, walk = trip["get_off"]["id"], trip["walk_from_stop"]
+        self.at = {30: 2, get_off: 9}
+        self.assertIn(f"There by {self.clock(12 + 9 + 3 + walk)}", self.card(later=12))
 
     def test_its_next_loop_never_reads_as_coming_again(self):
         self.card()

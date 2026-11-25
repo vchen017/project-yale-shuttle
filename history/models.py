@@ -325,6 +325,14 @@ class Calibration(models.Model):
             "gets them to the stop before the bus 90% of the time (#155). Empty: fitted before cushions."
         ),
     )
+    arrival_cushion_minutes = models.FloatField(
+        null=True,
+        blank=True,
+        help_text=(
+            "How much later than the corrected time a bus can reach a stop, so that 'There by' holds "
+            "90% of the time (#174). Empty: fitted before arrival cushions."
+        ),
+    )
     fitted_at = models.DateTimeField(default=timezone.now)
 
     class Meta:

@@ -40,11 +40,13 @@ class FollowTests(SimpleTestCase):
         return [{"id": BUS, "name": "812", "route": ROUTE, "lat": 41.30, "lon": -72.93, "lastStop": self.last_stop,
                  "lastUpdate": time.time() - self.seconds_ago}]
 
-    def trip(self, board=None, get_off=None, later=0, correct=None):
+    def trip(self, board=None, get_off=None, later=0, correct=None, late=None):
         """The trip `later` minutes on, the feed timing the bus `board` minutes
         from the first stop and `get_off` from the second (None: not listed)."""
         self.at = {BOARD: board, GET_OFF: get_off}
-        return follow.follow(ROUTE, BUS, BOARD, GET_OFF, self.progress, self.minutes(later), correct=correct)
+        return follow.follow(
+            ROUTE, BUS, BOARD, GET_OFF, self.progress, self.minutes(later), correct=correct, late=late
+        )
 
     def minutes(self, later):
         return self.now + dt.timedelta(minutes=later)
@@ -175,6 +177,17 @@ class FollowTests(SimpleTestCase):
         self.assertEqual((trip.phase, trip.to_board, trip.to_get_off), (follow.COMING, 4, 10))
         self.assertEqual(trip.get_off_at, self.minutes(10))  # "There by" counts from the corrected time
         self.assertEqual(self.progress.get_off_at, self.minutes(12))  # the phases keep the feed's
+
+    def test_there_by_adds_the_arrival_cushion(self):
+        # #174: how much later than the corrected time the bus may reach the stop.
+        def late(route_id, minutes):
+            return 3
+
+        coming = self.trip(board=4, get_off=12, late=late)
+        self.assertEqual((coming.get_off_at, coming.get_off_by), (self.minutes(12), self.minutes(15)))
+        riding = self.trip(get_off=6, later=6, late=late)
+        self.assertEqual(riding.get_off_by, self.minutes(6 + 6 + 3))
+        self.assertEqual(self.trip(get_off=5, later=7).get_off_by, self.minutes(12))  # no fit: the time itself
 
     def test_without_a_bus_it_follows_the_route_s_soonest(self):
         with mock.patch("transit.downtowner.etas", return_value=[

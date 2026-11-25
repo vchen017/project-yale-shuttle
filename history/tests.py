@@ -983,6 +983,57 @@ class CalibrationTests(TestCase):
         self.assertEqual(corrections.delta(1, 12), 1.0)
         self.assertEqual(corrections.cushion(1, 12), 3)  # route 1's row has none: the bucket's, rounded up
 
+    def test_arrival_cushions_keep_there_by_on_time(self):
+        # #174, the other tail of #155's example: corrected by their median,
+        # -0.5, the twenty residuals leave buses up to 9.5 minutes later than
+        # the corrected time. Adding 6.5 minutes keeps 18 of 20 within the
+        # 2-minute slack, 90%; in whole minutes that's 7, and 95%.
+        residuals = {(1, 2): [float(value) for value in range(-10, 10)]}
+        corrections = predictions._fit_corrections(residuals, own_bus=residuals)
+        self.assertEqual(corrections.late_by_route[(1, 2)], 6.5)
+        self.assertEqual(corrections.late(1, 12), 7)
+        later = [value + 0.5 for value in residuals[(1, 2)]]
+        self.assertEqual(sum(minutes - 7 <= predictions.ON_TIME_SLACK for minutes in later) / len(later), 0.95)
+
+    def test_a_raw_countdowns_arrival_cushion_and_a_thin_routes_take_the_buckets(self):
+        # Below 5 minutes the countdown answers raw: a bus 3 minutes later
+        # than it said needs 1 minute added, beyond the slack. Route 2 is too
+        # thin for its own rung: the bucket's 90th percentile, 8, less the slack.
+        own_bus = {(1, 0): [3.0] * 25, (2, 0): [8.0] * 5}
+        corrections = predictions._fit_corrections(own_bus, own_bus=own_bus)
+        self.assertEqual(corrections.late(1, 3), 1)
+        self.assertNotIn((2, 0), corrections.late_by_route)
+        self.assertEqual(corrections.late(2, 3), 6)
+
+    def test_each_bus_is_measured_against_its_own_arrival(self):
+        # #174. Bus 9 says 12 minutes at noon and reaches the stop at 12:14:
+        # 2 minutes late. Bus 8 says 6 minutes at noon, and the polls missed
+        # its arrival (no countdown of 5 or less): its next one, a loop later,
+        # would read as 35 minutes late, so it teaches nothing. The correction
+        # fit's residuals, the stop's next arrival whichever bus it is, would
+        # have read bus 8's 6 minutes against bus 9's arrival: 8 minutes late.
+        add_eta_poll(eastern(DAY, 12), bus_id=9, eta_minutes=12)
+        add_eta_poll(eastern(DAY, 12, 10), bus_id=9, eta_minutes=4)  # there at 12:14
+        add_eta_poll(eastern(DAY, 12), bus_id=8, eta_minutes=6)
+        add_eta_poll(eastern(DAY, 12, 40), bus_id=8, eta_minutes=1)  # its next loop, at 12:41
+        own = predictions._own_bus_residuals(eastern(DAY, 0), eastern(DAY, 23))
+        self.assertEqual(own[(1, 2)], [2.0])  # 12 minutes, the 10-15 bucket: bus 9, 2 minutes late
+        self.assertEqual(own[(1, 0)], [0.0, 0.0])  # each bus's last countdown, run out
+        self.assertNotIn((1, 1), own)  # bus 8's 6 minutes taught nothing
+
+    def test_rows_from_before_the_arrival_cushions_fall_back(self):
+        self.assertEqual(predictions.Corrections(by_route={}, by_bucket={}, overall=0.0).late(1, 12), 0)
+        cache.clear()
+        Calibration.objects.create(route_id=1, bucket=2, delta_minutes=1.0, samples=25, cushion_minutes=1.0)  # before #174
+        Calibration.objects.create(
+            route_id=None, bucket=2, delta_minutes=1.0, samples=40, cushion_minutes=2.2, arrival_cushion_minutes=3.1
+        )
+        self.assertEqual(predictions.stored_corrections().late(1, 12), 4)  # the bucket's, rounded up
+        # Rows cached before #174 deployed, four values each, still load.
+        cache.set("history.calibration", [(1, 2, 1.0, 1.0)], 600)
+        corrections = predictions.stored_corrections()
+        self.assertEqual((corrections.delta(1, 12), corrections.cushion(1, 12), corrections.late(1, 12)), (1.0, 1, 0))
+
     def test_the_stored_fit_corrects_predict_minutes_until_nothing_is_stored(self):
         add_eta_poll(eastern(DAY, 12), bus_id=9, eta_minutes=8)
         Calibration.objects.create(route_id=None, bucket=1, delta_minutes=3.0, samples=25)
@@ -1014,6 +1065,9 @@ class CalibrationTests(TestCase):
         self.assertIn("42 residuals", stdout.getvalue())
         # Every bus came when its corrected countdown said: nothing to spare (#155).
         self.assertEqual({row.cushion_minutes for row in Calibration.objects.all()}, {0.0})
+        # Nor later: no arrival cushion either (#174).
+        self.assertEqual({row.arrival_cushion_minutes for row in Calibration.objects.all()}, {0.0})
+        self.assertIn("overall arrival cushion 0.0 min", stdout.getvalue())
         call_command("fit_calibration", stdout=StringIO())
         self.assertEqual(Calibration.objects.count(), 5)  # a rerun replaces, never duplicates
 

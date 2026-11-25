@@ -286,11 +286,13 @@ class Following:
 
     @property
     def arrive_at(self):
-        """When the rider reaches the event: the bus at their stop, then the
-        walk. None when the feed hasn't timed the bus there, or it's past."""
-        if self.follow.get_off_at is None:
+        """When the rider reaches the event, "There by": the bus at their
+        stop, by the time it's there 90% of the time (#174), then the walk.
+        None when the feed hasn't timed the bus there, or it's past."""
+        at_stop = self.follow.get_off_by or self.follow.get_off_at
+        if at_stop is None:
             return None
-        arrive = self.follow.get_off_at + dt.timedelta(minutes=self.walk_from_stop)
+        arrive = at_stop + dt.timedelta(minutes=self.walk_from_stop)
         return arrive if arrive >= self.now else None
 
 
@@ -357,9 +359,10 @@ def follow_card(session, record, now):
     trip's progress kept in the session. Raises FeedUnavailable when the
     feed is down."""
     progress = follow.Progress.from_dict(record.get("progress"))
+    corrections = stored_corrections()
     now_trip = follow.follow(
         record["route"]["id"], record.get("bus_id"), record["board"]["id"], record["get_off"]["id"], progress, now,
-        correct=stored_corrections().correct,
+        correct=corrections.correct, late=corrections.late,
     )
     if progress.as_dict() != record.get("progress"):
         record = {**record, "progress": progress.as_dict()}
