@@ -1,0 +1,20 @@
+{# Where the bus is on a trip (#163): the stop to get on at, the ride, the stop to get off at and, for the rider, the walk to where they're going. The bus sits on the leg or stop it's at (step, from calendars.follow.Follow.step). It's drawn for the eye; the headline says the same in words, so screen readers skip it. #}
+<ol class="journey" aria-hidden="true" style="--route: #{{ color }}; --route-text: {{ text_color }};">
+  <li class="journey-leg{% if step == 0 %} is-here{% else %} is-done{% endif %}"><i class="bi bi-bus-front-fill journey-bus"></i></li>
+  <li class="journey-stop{% if step == 1 %} is-here{% elif step > 1 %} is-done{% endif %}">
+    <span class="journey-dot">{% if step == 1 %}<i class="bi bi-bus-front-fill"></i>{% endif %}</span>
+    <span class="journey-name">{{ first }}</span>
+  </li>
+  <li class="journey-leg is-ride{% if step == 2 %} is-here{% elif step > 2 %} is-done{% endif %}"><i class="bi bi-bus-front-fill journey-bus"></i></li>
+  <li class="journey-stop{% if step == 3 %} is-here{% elif step > 3 %} is-done{% endif %}">
+    <span class="journey-dot">{% if step == 3 %}<i class="bi bi-bus-front-fill"></i>{% endif %}</span>
+    <span class="journey-name">{{ second }}</span>
+  </li>
+  {% if end %}
+    <li class="journey-leg is-walk{% if step == 4 %} is-here{% endif %}"><i class="bi bi-person-walking journey-bus"></i></li>
+    <li class="journey-stop is-end">
+      <span class="journey-dot"><i class="bi bi-geo-alt-fill"></i></span>
+      <span class="journey-name">{{ end }}</span>
+    </li>
+  {% endif %}
+</ol>

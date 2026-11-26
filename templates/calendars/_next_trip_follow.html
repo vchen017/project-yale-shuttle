@@ -1,0 +1,46 @@
+{# The next trip once it's past "Leave by" (#163): the rider's bus, followed from their stop to the event (calendars.next_trip.Following). Refreshed with the rest of the card's live part. #}
+{% with f=trip.follow route=trip.route %}
+<div class="next-trip-head">
+  <span class="next-trip-tag"><i class="bi bi-bus-front-fill" aria-hidden="true"></i>On your way</span>
+  <span class="next-trip-event">{{ trip.title }} · {{ trip.start|date:"g:i A" }}</span>
+</div>
+
+<div class="next-trip-when">
+  <span class="next-trip-big{% if f.phase == 'next-stop' or f.phase == 'get-off' %} is-alert{% endif %}">
+    {% if f.phase == "coming" %}Bus in {{ f.to_board }} min
+    {% elif f.phase == "boarding" %}Bus arriving
+    {% elif f.phase == "riding" %}Get off at {{ trip.get_off.name }}
+    {% elif f.phase == "next-stop" %}Get off at the next stop
+    {% elif f.phase == "get-off" %}Get off here
+    {% elif f.phase == "off" %}Walk to {{ trip.building.name }}
+    {% else %}We can't see your bus right now{% endif %}
+  </span>
+  {% if f.phase == "riding" and f.to_get_off %}<span class="cal-chip is-soon">in {{ f.to_get_off }} min</span>{% endif %}
+  {% if trip.arrive_at %}<span class="cal-chip is-spare">There by {{ trip.arrive_at|date:"g:i A" }}</span>{% endif %}
+</div>
+<p class="next-trip-sub">
+  {% if f.phase == "coming" %}<i class="bi bi-person-walking me-1" aria-hidden="true"></i>Walk to {{ trip.board.name }}
+  {% elif f.phase == "boarding" %}<i class="bi bi-box-arrow-in-right me-1" aria-hidden="true"></i>Get on at {{ trip.board.name }}
+  {% elif f.phase == "riding" %}<i class="bi bi-bus-front me-1" aria-hidden="true"></i>On the {{ route.label }} bus
+  {% elif f.phase == "next-stop" or f.phase == "get-off" %}<i class="bi bi-geo-alt-fill me-1" aria-hidden="true"></i><strong>{{ trip.get_off.name }}</strong>
+  {% elif f.phase == "off" %}<i class="bi bi-person-walking me-1" aria-hidden="true"></i>{{ trip.walk_from_stop }} min on foot from {{ trip.get_off.name }}
+  {% else %}The feed isn't timing it at {{ trip.board.name }} or {{ trip.get_off.name }}. It may be running late.{% endif %}
+</p>
+
+{% include "calendars/_journey.html" with step=f.step first=trip.board.name second=trip.get_off.name end=trip.building.name color=route.color text_color=route.text_color %}
+
+<div class="next-trip-bus">
+  <span class="badge" style="background-color: #{{ route.color }}; color: {{ route.text_color }};">{{ route.name }}</span>
+  {% if f.bus and f.bus.age_minutes %}
+    <span class="next-trip-chip"><i class="bi bi-clock-history" aria-hidden="true"></i>Bus last seen {{ f.bus.age_minutes }} min ago</span>
+  {% endif %}
+</div>
+
+<div class="next-trip-actions">
+  <span class="next-trip-updated"><span class="next-trip-live-dot" aria-hidden="true"></span>Live · {{ trip.now|date:"g:i A" }}</span>
+  <form method="post" action="{% url 'next-trip-stop' %}">
+    {% csrf_token %}
+    <button class="btn btn-link btn-sm" type="submit">Stop following</button>
+  </form>
+</div>
+{% endwith %}

@@ -103,7 +103,24 @@ def leave(request):
         plan.map, plan.map_id = _trip_map(plan, home, routes_by_id), f"trip-map-{plan.event.pk}"
     # The next trip, live, on top (#157). Not while the feed is down: "no
     # shuttle links these" can't be told apart from "the feed didn't say".
-    upcoming = next_trip.next_plan(every_plan, now) if stops is not None else None
+    # Once it's past "Leave by", the trip the card remembered, with its bus (#163).
+    card = None
+    record = next_trip.followed(request.session, now, request.user) if stops is not None else None
+    if record is not None:
+        try:
+            card = next_trip.follow_card(request.session, record, now)
+            card.map = _follow_map(record, routes_by_id, home)
+        except FeedUnavailable:
+            card = None
+    elif stops is not None:
+        upcoming = next_trip.next_plan(every_plan, now)
+        if upcoming:
+            card = next_trip.read(upcoming, now)
+            next_trip.remember(request.session, card, home, now)
+    # The event the card shows keeps its title and the agent in the calendar,
+    # but not its time to leave, steps and map: the card has them live (#173).
+    for plan in every_plan:
+        plan.on_card = card is not None and next_trip.event_key(plan.event) == card.key
     # An answer that would notify offers to turn notifications on, to a rider who hasn't.
     alerts_on = any(answer.notify for answer in answers.values()) and request.user.push_subscriptions.exists()
     return render(
@@ -115,7 +132,7 @@ def leave(request):
             "feed_down": stops is None,
             "now": now,
             "alerts_on": alerts_on,
-            "next_trip": next_trip.read(upcoming, now) if upcoming else None,
+            "next_trip": card,
             "refresh_seconds": next_trip.REFRESH_SECONDS,
         },
     )
@@ -131,8 +148,18 @@ def next_trip_card(request):
     now, and "watching" whether to keep asking. The key says which event the card
     is about: the page reloads when it changes, so a new trip gets its map.
     {"key": null} when there's no next trip; {"feed_down": true} while the
-    feed is down, which the page waits out with the card it has."""
+    feed is down, which the page waits out with the card it has. Once it's
+    past "Leave by", the card follows the remembered trip's bus (#163),
+    under the same key."""
     now = timezone.now()
+    record = next_trip.followed(request.session, now, request.user)
+    if record is not None:
+        try:
+            card = next_trip.follow_card(request.session, record, now)
+        except FeedUnavailable:
+            return JsonResponse({"feed_down": True})
+        html = render_to_string("calendars/_next_trip_live.html", {"trip": card}, request=request)
+        return JsonResponse({"key": card.key, "html": html, "bus": card.bus, "watching": card.watching})
     home = Place.objects.filter(user=request.user, is_home=True).first()
     try:
         net = network()
@@ -152,8 +179,18 @@ def next_trip_card(request):
     if upcoming.leave_by is not None:
         _timeline(upcoming, now)
     trip = next_trip.read(upcoming, now)
+    next_trip.remember(request.session, trip, home, now)
     html = render_to_string("calendars/_next_trip_live.html", {"trip": trip}, request=request)
     return JsonResponse({"key": trip.key, "html": html, "bus": trip.bus, "watching": trip.watching})
+
+
+@login_required
+@require_POST
+def stop_following(request):
+    """Stop following the trip (#163), say when the rider isn't going after
+    all: the card goes back to their next trip."""
+    next_trip.forget(request.session)
+    return redirect("when-to-leave")
 
 
 def _timeline(plan, now):
@@ -162,6 +199,24 @@ def _timeline(plan, now):
     plan.leave_in = round((plan.leave_by - now).total_seconds() / 60)
     ride = plan.plan is not None and not plan.walking_is_quicker
     plan.board_time = plan.leave_by + dt.timedelta(minutes=plan.plan.walk_to_stop + plan.spare_minutes) if ride else None
+
+
+def _follow_map(record, routes_by_id, home):
+    """A followed trip's map (#163), as _trip_map draws a plan's, from the
+    trip the card remembered, with the route's stretch from the live network
+    and the rider's Home as it is now (as remembered, if they've none now)."""
+    board, get_off = record["board"], record["get_off"]
+    data = {
+        "origin": [home.lat, home.lon] if home is not None else record["home"],
+        "destination": [record["building"]["lat"], record["building"]["lon"]],
+        "board": {"name": board["name"], "at": [board["lat"], board["lon"]]},
+        "get_off": {"name": get_off["name"], "at": [get_off["lat"], get_off["lon"]]},
+    }
+    route = (routes_by_id or {}).get(record["route"]["id"])
+    if route:
+        path = route_segment(route["path"], board, get_off)
+        data["route"] = {"name": route["name"], "color": route["color"], "path": [list(point) for point in path]}
+    return data
 
 
 def _days(every_plan, now):
