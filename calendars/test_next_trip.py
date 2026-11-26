@@ -16,7 +16,7 @@ from django.utils import timezone
 from django.utils.html import escape
 
 from crowding.models import CrowdReport
-from crowding.services import RouteCrowding, crowding
+from crowding.services import RouteCrowding
 from places.models import Place
 from transit.downtowner import FeedUnavailable
 from transit.next_buses import Board, Row
@@ -64,14 +64,15 @@ class NextTripTests(TestCase):
         self.etas, self.buses = arrivals(), buses()
 
     def mocks(self, live_board):
+        real_crowding = next_trip.crowding  # what the reports say, for a test that sets self.crowd to None
         return (
             mock.patch("calendars.views.network", return_value=feed()),
             mock.patch("calendars.plans.next_buses", return_value=live_board),
             mock.patch("transit.downtowner.etas", side_effect=lambda stop_id: self.etas),
             mock.patch("transit.downtowner.buses", side_effect=lambda: self.buses),
-            mock.patch(  # self.crowd stands in for the reports; None reads the real ones
+            mock.patch(
                 "calendars.next_trip.crowding",
-                side_effect=lambda routes, now=None: [self.crowd] if self.crowd is not None else crowding(routes, now),
+                side_effect=lambda routes, now=None: [self.crowd] if self.crowd is not None else real_crowding(routes, now),
             ),
             mock.patch("calendars.next_trip.detoured_routes", side_effect=lambda now=None: self.detours),
         )
