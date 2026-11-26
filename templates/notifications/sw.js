@@ -23,9 +23,23 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const url = new URL(event.notification.data.url, self.location.origin).href;
   event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+    (async () => {
+      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
       const open = windows.find((client) => client.url === url);
-      return open ? open.focus() : self.clients.openWindow(url);
-    }),
+      if (open) return open.focus();
+      // Otherwise take the site's own window there, as an app would, rather than
+      // opening a second one (#164): an installed site runs in just the one. Only
+      // a window this worker controls can be sent somewhere else.
+      const [mine] = await self.clients.matchAll({ type: "window" });
+      if (mine) {
+        try {
+          const focused = await mine.focus();
+          if (await focused.navigate(url)) return;
+        } catch {
+          // It couldn't be moved: open the page instead.
+        }
+      }
+      return self.clients.openWindow(url);
+    })(),
   );
 });
