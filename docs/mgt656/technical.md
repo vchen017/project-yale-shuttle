@@ -84,6 +84,7 @@ recorded and safe to repeat ([#40](https://github.com/vchen017/project-yale-shut
 | `fit_calibration` | daily, 5:29 AM | refits how far off the feed's countdowns run, which our predictions correct for |
 | `score_accuracy` | daily, 5:53 AM | scores our predictions for the accuracy dashboard ([#17](https://github.com/vchen017/project-yale-shuttle/issues/17)) |
 | `refresh_calendars` | hourly, at :41 | re-reads riders' connected calendars ([#25](https://github.com/vchen017/project-yale-shuttle/issues/25)) |
+| `check_ai` | hourly, at :43 | asks the AI agent about a fixed test trip, and fails if it doesn't answer ([#159](https://github.com/vchen017/project-yale-shuttle/issues/159)) |
 | `notify_trips` | hourly, at :45 | watches trips in the next 2 hours and sends the AI agent's notifications ([#29](https://github.com/vchen017/project-yale-shuttle/issues/29)) |
 
 - **Where they run:** on GitHub's machines, against production's database:

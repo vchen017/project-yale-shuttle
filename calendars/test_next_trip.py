@@ -17,6 +17,7 @@ from django.utils import timezone
 from django.utils.dateformat import format as date_format
 from django.utils.html import escape
 
+from crowding.models import CrowdReport
 from crowding.services import RouteCrowding
 from history.models import Calibration
 from places.models import Place
@@ -73,12 +74,16 @@ class NextTripTests(TestCase):
         self.etas, self.buses = arrivals(), buses()
 
     def mocks(self, live_board):
+        real_crowding = next_trip.crowding  # what the reports say, for a test that sets self.crowd to None
         return (
             mock.patch("calendars.views.network", return_value=feed()),
             mock.patch("calendars.plans.next_buses", return_value=live_board),
             mock.patch("transit.downtowner.etas", side_effect=lambda stop_id: self.etas),
             mock.patch("transit.downtowner.buses", side_effect=lambda: self.buses),
-            mock.patch("calendars.next_trip.crowding", side_effect=lambda routes, now=None: [self.crowd]),
+            mock.patch(
+                "calendars.next_trip.crowding",
+                side_effect=lambda routes, now=None: [self.crowd] if self.crowd is not None else real_crowding(routes, now),
+            ),
             mock.patch("calendars.next_trip.detoured_routes", side_effect=lambda now=None: self.detours),
         )
 
@@ -141,6 +146,29 @@ class NextTripTests(TestCase):
     def test_the_usual_crowding_says_so(self):
         self.crowd.typical_now = mock.Mock(label="Busy", level=2)
         self.assertIn("Busy, usually", self.page())
+
+    def test_demo_samples_never_show_as_the_usual_crowding(self):
+        """The seed's samples fill in the crowding page's pattern for graders,
+        but the card reads real riders' reports alone (#181)."""
+        now = timezone.now()
+        self.crowd = None
+
+        def report(level, is_sample):
+            for days_ago in (1, 2, 3):  # this hour on the Eastern clock, the last three days
+                CrowdReport.objects.create(
+                    user=self.user, route_id=1, route_name="Blue - Weekday Daytime", level=level,
+                    created_at=timezone.localtime(now) - dt.timedelta(days=days_ago), is_sample=is_sample,
+                )
+
+        def card():
+            content = self.page()
+            return content[content.index("data-next-trip"):content.index('id="day-')]
+
+        with mock.patch("django.utils.timezone.now", return_value=now):  # one hour all through
+            report(CrowdReport.Level.FULL, is_sample=True)
+            self.assertNotIn("agent-meter crowd-", card())
+            report(CrowdReport.Level.SEATS, is_sample=False)
+            self.assertIn("Seats available, usually", card())
 
     def test_the_card_refreshes_without_reloading_the_page(self):
         # #157's live updates: the endpoint the page asks every REFRESH_SECONDS.

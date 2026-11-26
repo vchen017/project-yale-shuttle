@@ -16,6 +16,7 @@ from django.utils import timezone
 from assistant.decide import DONT_NOTIFY, Decision
 from calendars import plans
 from calendars.models import Calendar, Event
+from crowding.models import CrowdReport
 from history.models import Calibration
 from history.predictions import countdown_bucket
 from jobs.registry import all_jobs
@@ -236,6 +237,25 @@ class WatchTests(TestCase):
         with mock.patch.object(trips.downtowner, "etas", side_effect=bus.etas), self.assertNumQueries(0):
             for minutes in (0, 5, 10):
                 trips.check(loaded, START + dt.timedelta(minutes=minutes), data, decide=self.agent)
+
+    def test_the_agent_reads_real_crowding_reports_never_demo_samples(self, network, plan_event, webpush):
+        """The seed's samples fill in the crowding page's pattern for graders,
+        never what the agent reads (#181)."""
+        def report(level, is_sample):
+            for days_ago in (1, 2, 3):  # 9:45 AM Eastern, the run's hour, on the days before
+                CrowdReport.objects.create(
+                    user=self.rider, route_id=BLUE["id"], route_name="Blue", level=level,
+                    created_at=START - dt.timedelta(days=days_ago), is_sample=is_sample,
+                )
+
+        self.lecture(minutes_away=40)
+        loaded = trips.load_trips(START)
+        report(CrowdReport.Level.FULL, is_sample=True)
+        self.assertEqual(trips.watch_data(loaded, START).crowding_by_route[1], {"current": None, "typical_now": None})
+        report(CrowdReport.Level.SEATS, is_sample=False)
+        self.assertEqual(
+            trips.watch_data(loaded, START).crowding_by_route[1], {"current": None, "typical_now": "Seats available"}
+        )
 
     def test_the_agent_is_asked_only_once_the_time_to_leave_is_near(self, network, plan_event, webpush):
         self.lecture(minutes_away=100)  # the bus at 11:15, leave by 11:10: 85 minutes away

@@ -89,21 +89,30 @@ def average_level(levels):
     return int(sum(levels) / len(levels) + 0.5)
 
 
-def crowding(routes, now=None):
+def crowding(routes, now=None, samples=False):
     """Current and typical crowding for each route.
 
     `routes` is a list of {"id", "name", "label", "color"}, as transit.network
     gives them; the answer keeps their order.
+
+    Sample (demo) reports count only with `samples`, which only the crowding
+    page sets: there they fill in the typical pattern for graders, labelled as
+    samples. Everything else, like the next trip card and the AI, gets real
+    riders' reports alone, so nobody is told a bus is usually full because of
+    demo data (#181).
     """
     now = now or timezone.now()
     ids = [route["id"] for route in routes]
     rows = CrowdReport.objects.counted().filter(
         route_id__in=ids, created_at__gt=now - TYPICAL_WINDOW, created_at__lte=now
-    ).values_list("route_id", "level", "created_at", "is_sample")
+    )
+    if not samples:
+        rows = rows.filter(is_sample=False)
+    rows = rows.values_list("route_id", "level", "created_at", "is_sample")
 
     current = defaultdict(list)  # route id -> [(created_at, level)]
     hourly = defaultdict(lambda: defaultdict(list))  # route id -> hour -> [level]
-    samples = set()
+    sampled = set()  # routes with sample reports among the rows
     for route_id, level, created_at, is_sample in rows:
         # Sample (demo) reports shape the typical pattern but never claim to
         # be how busy a bus is right now.
@@ -111,7 +120,7 @@ def crowding(routes, now=None):
             current[route_id].append((created_at, level))
         hourly[route_id][timezone.localtime(created_at).hour].append(level)
         if is_sample:
-            samples.add(route_id)
+            sampled.add(route_id)
 
     this_hour = timezone.localtime(now).hour
     answer = []
@@ -128,7 +137,7 @@ def crowding(routes, now=None):
             if len(levels) >= MIN_TYPICAL_REPORTS
         ]
         crowd.typical_now = next((h for h in crowd.by_hour if h.hour == this_hour), None)
-        crowd.includes_samples = route_id in samples and bool(crowd.by_hour)
+        crowd.includes_samples = route_id in sampled and bool(crowd.by_hour)
         answer.append(crowd)
     return answer
 

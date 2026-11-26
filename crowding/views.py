@@ -156,7 +156,7 @@ def _render(request, routes, running, feed_ok, form=None, status=200):
             "form": form if running and not blocked else None,
             "blocked": blocked,
             "hourly_limit": HOURLY_LIMIT,
-            "routes": crowding(routes),
+            "routes": crowding(routes, samples=True),  # the one place samples show, labelled (#181)
             "running": running,
             "feed_ok": feed_ok,
             "levels": CrowdReport.Level,
