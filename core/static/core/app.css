@@ -464,3 +464,8 @@
 .journey-stop.is-end .journey-dot { border-color: var(--ys-blue); background: var(--ys-blue); color: #fff; }
 .journey-name { max-width: 100%; margin-top: 0.3rem; font-size: 0.75rem; line-height: 1.15; color: var(--bs-secondary-color); overflow-wrap: anywhere; }
 .journey-stop.is-here .journey-name { color: var(--bs-body-color); font-weight: 600; }
+
+/* The event the next trip card shows, in the calendar below it (#173): its time to leave, steps and map
+   are the card's, live, so here they fold into a link up to it. */
+.cal-on-card { display: inline-flex; align-items: center; margin-top: 0.5rem; font-weight: 600; text-decoration: none; }
+.cal-on-card:hover { text-decoration: underline; }

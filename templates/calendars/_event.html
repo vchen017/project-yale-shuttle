@@ -10,6 +10,10 @@
     <div class="cal-block">
       <div class="cal-title">{{ plan.event.title }}</div>
       {% if plan.event.location %}<div class="cal-place"><i class="bi bi-geo-alt me-1" aria-hidden="true"></i>{{ plan.event.location }}</div>{% endif %}
+      {% if plan.on_card %}
+        {# The next trip card has its time to leave, steps and map, live (#173): here they'd go stale #}
+        <a class="cal-on-card" href="#next-trip"><i class="bi bi-arrow-up-circle me-1" aria-hidden="true"></i>Your next trip: live on the card above</a>
+      {% else %}
       <div class="cal-leave">
         <span class="cal-leave-time">Leave {% if plan.estimate %}around{% else %}by{% endif %} {{ plan.leave_by|date:"g:i A" }}</span>
         {% if not plan.estimate %}
@@ -53,6 +57,7 @@
       </div>
       {% if plan.estimate %}
         <p class="cal-note"><i class="bi bi-info-circle me-1" aria-hidden="true"></i>An estimate, allowing about 15 minutes' wait at the stop. The live bus shows from 45 minutes before.</p>
+      {% endif %}
       {% endif %}
       {% if plan.has_a_bus and plan.ask_from %}
         {# The button's shape, greyed: the agent reads the next buses, so it's asked about the next two hours' trips #}

@@ -58,13 +58,15 @@ HIDE_BUS_SECONDS = 600  # older than this, the map doesn't show the bus (as the 
 # https://your.yale.edu/campus-essentials/getting-around-campus/using-the-shuttle/contact-us
 # https://your.yale.edu/campus-essentials/getting-around-campus/using-the-shuttle/nighttime-routes
 # The two disagree on when the night shuttle stops: midnight on the contact
-# page, 1 AM on the routes page. This follows the routes page, which is the
-# one about the night shuttle.
+# page, 1 AM on the routes page. The recorded polls settle it (#173): over 30
+# nights, Oct 26 to Nov 24, the night routes (Blue and Orange - Night, Blue
+# West, Orange East) ran from about 6 PM to midnight. Their buses' last
+# fresh positions were by 12:15 AM on all but 3 nights, and never past 12:45.
 NIGHT_OPTIONS = (
     {
         "name": "Night shuttle to your door",
         "icon": "bi-moon-stars",
-        "hours": "6 PM – 1 AM, every night",
+        "hours": "6 PM – midnight, every night",
         "how": "Blue and Orange lines from 333 Cedar St. Tell the driver where you're going, within the shuttle's area.",
         "phone": None,
     },
@@ -114,8 +116,7 @@ class NextTrip:
     @property
     def key(self):
         """Which event the card is about: the page reloads when that changes."""
-        event = self.plan.event
-        return f"{event.calendar_id}-{event.uid}-{event.start:%Y%m%d%H%M}"
+        return event_key(self.plan.event)
 
     @property
     def live(self):
@@ -141,6 +142,11 @@ class NextTrip:
         """When an estimate turns into a live time: once the event is close
         enough for the live board (calendars.plans.LIVE_WINDOW)."""
         return self.plan.event.start - LIVE_WINDOW
+
+
+def event_key(event):
+    """Which event a card is about, as the page and its refreshes name it."""
+    return f"{event.calendar_id}-{event.uid}-{event.start:%Y%m%d%H%M}"
 
 
 def next_plan(plans, now):

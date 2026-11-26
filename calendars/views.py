@@ -117,6 +117,10 @@ def leave(request):
         if upcoming:
             card = next_trip.read(upcoming, now)
             next_trip.remember(request.session, card, home, now)
+    # The event the card shows keeps its title and the agent in the calendar,
+    # but not its time to leave, steps and map: the card has them live (#173).
+    for plan in every_plan:
+        plan.on_card = card is not None and next_trip.event_key(plan.event) == card.key
     # An answer that would notify offers to turn notifications on, to a rider who hasn't.
     alerts_on = any(answer.notify for answer in answers.values()) and request.user.push_subscriptions.exists()
     return render(

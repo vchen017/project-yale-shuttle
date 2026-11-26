@@ -73,7 +73,14 @@ def poll(when, active_by_route):
 
 
 class LeavePageTests(TestCase):
+    """The page's calendar: each event's block. The next trip card on top, and
+    the block it folds for its event (#173), have their own tests
+    (test_next_trip.py), so here the card stays out of the way."""
+
     def setUp(self):
+        no_card = mock.patch("calendars.views.next_trip.next_plan", return_value=None)
+        no_card.start()
+        self.addCleanup(no_card.stop)
         self.user = User.objects.create_user("rider", password="not-the-real-password")
         self.client.force_login(self.user)
         # By Union Station, as in the trip tests: the stop is at Home's door.

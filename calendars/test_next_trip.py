@@ -108,6 +108,26 @@ class NextTripTests(TestCase):
         bus = json.loads(re.search(r'<script id="next-trip-bus" type="application/json">(.*?)</script>', content).group(1))
         self.assertEqual((bus["lat"], bus["lon"], bus["age_minutes"]), (41.3010, -72.9270, None))
 
+    def test_the_card_s_event_folds_its_time_to_leave_but_keeps_the_agent(self):
+        # #173: the calendar block isn't live, so the card's event doesn't repeat what the card says.
+        later = Event.objects.create(
+            calendar=self.calendar, uid="office-hours@yale", title="Office hours",
+            start=timezone.now() + dt.timedelta(hours=3), location="Watson Center, 60 Sachem Street",
+        )
+        content = self.page()
+        self.assertIn('<section id="next-trip"', content)
+        lecture = content[content.index(f'id="event-{self.lecture.pk}"'):content.index(f'id="event-{later.pk}"')]
+        self.assertIn('href="#next-trip"', lecture)
+        self.assertIn("Your next trip: live on the card above", lecture)
+        self.assertIn("MGT 656 lecture", lecture)
+        self.assertIn("Ask the AI trip agent", lecture)  # the agent stays with its event (#148)
+        for folded in ("cal-leave", "cal-rail", "data-trip-map"):
+            self.assertNotIn(folded, lecture)
+        office_hours = content[content.index(f'id="event-{later.pk}"'):]
+        self.assertIn("Leave around", office_hours)  # an event the card doesn't show keeps its whole block
+        self.assertIn("data-trip-map", office_hours)
+        self.assertNotIn("live on the card above", office_hours)
+
     def test_crowding_and_a_detour_show_as_chips(self):
         self.crowd.current_level = 3
         self.detours = [{"route_id": 1, "route_name": "Blue", "bus_count": 1, "since": timezone.now()}]
@@ -174,6 +194,7 @@ class NextTripTests(TestCase):
         self.assertIn('href="tel:+12032815470,1"', card)  # Yale Transit dispatch, ext. 1
         self.assertIn('href="tel:+12034329255"', card)  # 2-Walk
         self.assertIn("Night shuttle to your door", card)
+        self.assertIn("6 PM – midnight, every night", card)  # as the recorded polls show it (#173)
         self.assertNotIn("data-live-bus", card)  # nothing to follow on a map
         self.assertIn('data-watching="false"', card)  # nor to keep refreshing
 
