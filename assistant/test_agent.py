@@ -9,13 +9,15 @@ from datetime import datetime, timedelta, timezone
 from unittest import mock
 from urllib.error import URLError
 
+from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.test import SimpleTestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 
 from assistant import agent, evals, openrouter
 from assistant.decide import DONT_NOTIFY, InvalidAnswer
 from assistant.tools import TOOLS, DataSource, LiveData, ToolBox, TripRequest
+from crowding.models import CrowdReport
 from transit.downtowner import FeedUnavailable
 
 EST = timezone(timedelta(hours=-5))
@@ -198,6 +200,27 @@ class LiveDataTests(SimpleTestCase):
         self.assertEqual(LiveData().crowding(TRIP), {"current": "Packed", "typical_now": "Busy"})
         crowding.return_value = [mock.Mock(current_label=None, typical_now=None)]
         self.assertEqual(LiveData().crowding(TRIP), {"current": None, "typical_now": None})
+
+
+class LiveDataCrowdingTests(TestCase):
+    """What get_crowding reads: real riders' reports, never the seed's demo samples (#181)."""
+
+    def setUp(self):
+        self.rider = get_user_model().objects.create_user("rider@example.com")
+
+    def report(self, level, is_sample):
+        for days_ago in (1, 2, 3):  # 8 AM Eastern, NOW's hour, on the days before
+            CrowdReport.objects.create(
+                user=self.rider, route_id=TRIP.route_id, route_name="Blue - Weekday Daytime", level=level,
+                created_at=NOW - timedelta(days=days_ago), is_sample=is_sample,
+            )
+
+    @mock.patch("django.utils.timezone.now", return_value=NOW)
+    def test_the_usual_level_comes_from_real_reports_only(self, now):
+        self.report(CrowdReport.Level.FULL, is_sample=True)
+        self.assertEqual(LiveData().crowding(TRIP), {"current": None, "typical_now": None})
+        self.report(CrowdReport.Level.SEATS, is_sample=False)
+        self.assertEqual(LiveData().crowding(TRIP), {"current": None, "typical_now": "Seats available"})
 
 
 @override_settings(OPENROUTER_API_KEY="test-key", OPENROUTER_MODEL="test/model")

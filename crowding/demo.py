@@ -2,9 +2,11 @@
 
 Sample reports from the rider account on the weekday daytime routes, one per
 route per hour (8 AM to 6 PM Eastern) on each weekday of the last two weeks,
-busier at rush hours. They're marked is_sample: they fill in "typical
-crowding by time of day" (labelled as including samples) but never count as
-a bus's crowding right now, so no rider is told a bus is full when it isn't.
+busier at rush hours. They're marked is_sample: they fill in the crowding
+page's "typical crowding by time of day" (labelled as including samples) and
+nothing else. They never count as a bus's crowding right now, and the next
+trip card and the AI never see them (#181), so no rider is told a bus is
+full when it isn't.
 
 Typical crowding looks back four weeks, so samples age out. A run replaces
 them when the newest is over a week old; otherwise it changes nothing, so
