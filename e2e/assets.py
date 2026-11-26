@@ -26,7 +26,7 @@ def pinned():
     """{url: integrity} for every CDN file a template pins with a hash."""
     found = {}
     for template in sorted((ROOT / "templates").rglob("*.html")):
-        for url, integrity in PINNED.findall(template.read_text()):
+        for url, integrity in PINNED.findall(template.read_text(encoding="utf-8")):
             found[url] = integrity
     return found
 
