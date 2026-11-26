@@ -211,14 +211,17 @@ def service_worker(request):
 
 @require_safe
 def manifest(request):
-    """Lets riders add the site to their Home Screen, which iPhones need for push."""
+    """Lets riders add the site to their Home Screen, which iPhones need for push.
+    Opened from there, it runs full-screen and starts at the rider's next trip
+    (#164). `id` keeps it the same app it was when it started at the home page."""
     icon = {"type": "image/png"}
     return JsonResponse(
         {
+            "id": "/",
             "name": "Yale Shuttle",
             "short_name": "Yale Shuttle",
             "description": "See when your Yale shuttle will actually arrive.",
-            "start_url": "/",
+            "start_url": reverse("when-to-leave"),
             "scope": "/",
             "display": "standalone",
             "background_color": "#ffffff",

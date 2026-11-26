@@ -279,13 +279,18 @@ class ServiceWorkerAndManifestTests(TestCase):
         self.assertEqual(response["Cache-Control"], "no-cache")
         self.assertContains(response, "showNotification")
         self.assertContains(response, "notifications/icon-192.png")
+        # A tapped notification takes the site's open window to its page, as an app would (#164).
+        self.assertContains(response, "navigate(url)")
 
     def test_the_manifest_makes_the_site_installable(self):
         response = self.client.get(reverse("manifest"))
         self.assertEqual(response["Content-Type"], "application/manifest+json")
         manifest = json.loads(response.content)
         self.assertEqual(manifest["display"], "standalone")
-        self.assertEqual(manifest["start_url"], "/")
+        # Opened from the Home Screen, it starts at the rider's next trip (#164), and
+        # stays the app it was when it started at "/".
+        self.assertEqual(manifest["start_url"], "/when-to-leave/")
+        self.assertEqual(manifest["id"], "/")
         sizes = {(icon["sizes"], icon.get("purpose", "any")) for icon in manifest["icons"]}
         self.assertEqual(sizes, {("192x192", "any"), ("512x512", "any"), ("512x512", "maskable")})
 
