@@ -17,6 +17,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.dateformat import format as date_format
 
 from history.models import Poll, RouteStatus
 from places.models import Place
@@ -382,7 +383,7 @@ class DemoSeedTests(TestCase):
         too, so the office hours are checked themselves, not reanchor's
         count of what moved (#177)."""
         for moment in (et(2026, 11, 25, 10, 2), et(2026, 11, 25, 15, 50), et(2026, 11, 25, 17, 20), et(2026, 11, 25, 18, 50)):
-            with self.subTest(at=f"{moment:%-I:%M %p}"), mock.patch("django.utils.timezone.now", return_value=moment):
+            with self.subTest(at=date_format(timezone.localtime(moment), "g:i A")), mock.patch("django.utils.timezone.now", return_value=moment):
                 Calendar.objects.filter(user=self.user).delete()  # seed afresh at this moment
                 self.seed()
                 office_hours = Event.objects.get(calendar__user=self.user, uid=demo.SOON[0])
