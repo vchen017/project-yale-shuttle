@@ -1,13 +1,13 @@
 {# The next trip, live, on top of the when-to-leave page (#157). next-trip.js swaps in the live part every refresh_seconds and moves the bus on the map, without reloading the page #}
-<section class="next-trip mb-4{% if not next_trip.plan.map or next_trip.no_shuttle %} is-solo{% endif %}" aria-label="Your next trip" data-next-trip data-key="{{ next_trip.key }}"
+<section class="next-trip mb-4{% if not next_trip.map or next_trip.no_shuttle %} is-solo{% endif %}" aria-label="Your next trip" data-next-trip data-key="{{ next_trip.key }}"
          data-url="{% url 'next-trip' %}" data-refresh-seconds="{{ refresh_seconds }}"
          data-watching="{{ next_trip.watching|yesno:'true,false' }}" data-live-from="{{ next_trip.live_from|date:'c' }}">
   {# No aria-live: the swap every refresh would have a screen reader read the whole card again each time #}
   <div class="next-trip-live" data-next-trip-live>
     {% include "calendars/_next_trip_live.html" with trip=next_trip %}
   </div>
-  {% if next_trip.plan.map and not next_trip.no_shuttle %}
-    {{ next_trip.plan.map|json_script:"next-trip-map-data" }}
+  {% if next_trip.map and not next_trip.no_shuttle %}
+    {{ next_trip.map|json_script:"next-trip-map-data" }}
     {{ next_trip.bus|json_script:"next-trip-bus" }}
     <div class="next-trip-map" data-trip-map data-map-data="next-trip-map-data" data-map-compact data-live-bus
          role="region" aria-label="Map of the trip{% if next_trip.live %} and the bus{% endif %}"></div>

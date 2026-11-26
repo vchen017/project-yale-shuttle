@@ -437,3 +437,30 @@
   .next-trip-option-what { flex-basis: calc(100% - 2.2rem); }
   .next-trip-call { margin-left: 2.1rem; }
 }
+
+/* Following the bus once it's past "Leave by" (#163), on the next trip card: the journey line
+   puts the bus on the leg or stop it's at (templates/calendars/_journey.html), in the
+   route's colour (--route, with --route-text on it). "Get off" reads red, so a glance is enough. */
+.next-trip-big.is-alert { color: var(--bs-danger); }
+.next-trip-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; margin-top: 0.75rem; }
+.next-trip-actions .next-trip-updated { margin-top: 0; margin-right: auto; }
+.next-trip-actions form { margin: 0; }
+.journey { display: flex; align-items: flex-start; margin: 0.5rem 0 0.25rem; padding: 0; list-style: none; }
+.journey-leg { position: relative; flex: 1 1 0; min-width: 1.75rem; height: 1.75rem; }
+.journey-leg::before { content: ""; position: absolute; left: -0.25rem; right: -0.25rem; top: 0.8rem; border-top: 3px dotted var(--bs-secondary-color); }
+.journey-leg.is-ride::before { border-top: 5px solid #fff; }
+.journey-leg.is-done::before { border-top: 5px solid var(--route); }
+.journey-leg.is-walk::before { border-top-style: dotted; border-top-width: 3px; }
+.journey-bus { display: none; position: absolute; left: 50%; top: 0; transform: translateX(-50%); width: 1.75rem; height: 1.75rem;
+               border-radius: 50%; background: var(--route); color: var(--route-text); font-size: 1rem; line-height: 1.75rem; text-align: center;
+               box-shadow: 0 0 0 3px #fff; z-index: 1; }
+.journey-leg.is-here .journey-bus { display: block; }
+.journey-stop { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; width: 5.5rem; margin: 0 -1.5rem; text-align: center; }
+.journey-dot { display: grid; place-items: center; width: 1.1rem; height: 1.1rem; margin-top: 0.32rem; border-radius: 50%;
+               border: 3px solid var(--route); background: #fff; color: var(--route-text); font-size: 0.7rem; z-index: 1; }
+.journey-stop.is-done .journey-dot { background: var(--route); }
+.journey-stop.is-here .journey-dot { width: 1.75rem; height: 1.75rem; margin-top: 0; background: var(--route); font-size: 1rem;
+                                     box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.9); }
+.journey-stop.is-end .journey-dot { border-color: var(--ys-blue); background: var(--ys-blue); color: #fff; }
+.journey-name { max-width: 100%; margin-top: 0.3rem; font-size: 0.75rem; line-height: 1.15; color: var(--bs-secondary-color); overflow-wrap: anywhere; }
+.journey-stop.is-here .journey-name { color: var(--bs-body-color); font-weight: 600; }

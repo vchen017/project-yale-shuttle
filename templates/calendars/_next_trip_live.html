@@ -1,4 +1,7 @@
 {# The next trip card's live part (#157), rendered with the page and again by next_trip_card every refresh #}
+{% if trip.following %}
+  {% include "calendars/_next_trip_follow.html" %}
+{% else %}
 {% with plan=trip.plan row=trip.plan.row %}
 <div class="next-trip-head">
   <span class="next-trip-tag"><i class="bi bi-signpost-split-fill" aria-hidden="true"></i>Next trip</span>
@@ -58,3 +61,4 @@
   <p class="next-trip-sub mb-0"><i class="bi bi-clock me-1" aria-hidden="true"></i>Live bus times from {{ trip.live_from|date:"g:i A" }}</p>
 {% endif %}
 {% endwith %}
+{% endif %}

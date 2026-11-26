@@ -13,6 +13,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.dateformat import format as date_format
 from django.utils.html import escape
 
 from crowding.services import RouteCrowding
@@ -26,6 +27,13 @@ from .plans import EventPlan
 from .test_leave import feed
 
 User = get_user_model()
+
+
+def shown_time(moment):
+    """A time as the card shows it, "4:05 PM" Eastern: Django's own format,
+    as the templates use it, since strftime's %-I is a glibc extension that
+    Windows rejects (as in history's data_quality, #87)."""
+    return date_format(timezone.localtime(moment), "g:i A")
 
 
 def board(ours=14, official=(12, 31), cushions=None):
@@ -89,7 +97,7 @@ class NextTripTests(TestCase):
         card = content[content.index("data-next-trip"):content.index('id="day-')]
         leave_by = timezone.localtime(timezone.now() + dt.timedelta(minutes=11))  # bus in 14, 3 to spare
         self.assertIn("MGT 656 lecture", card)
-        self.assertIn(f"Leave by {leave_by:%-I:%M %p}", card)
+        self.assertIn(f"Leave by {shown_time(leave_by)}", card)
         self.assertIn("3 min to spare", card)
         self.assertIn("Bus in 12–14 min", card)  # the feed's countdown to ours (#153)
         self.assertIn("at Union Station", card)
@@ -147,7 +155,7 @@ class NextTripTests(TestCase):
         card = self.page()
         live_from = timezone.localtime(self.lecture.start - dt.timedelta(minutes=45))
         self.assertIn("Leave around", card)
-        self.assertIn(f"Live bus times from {live_from:%-I:%M %p}", card)
+        self.assertIn(f"Live bus times from {shown_time(live_from)}", card)
         self.assertNotIn("Bus in", card)
         # Nothing live to refresh yet: the page asks once, when the live window opens.
         self.assertIn('data-watching="false"', card)
@@ -195,3 +203,205 @@ class NextPlanTests(TestCase):
         rideable = EventPlan(event=later, building={"name": "Watson Center"}, walk_all=26)
         self.assertIs(next_trip.next_plan([unknown, no_home, rideable], now), rideable)
         self.assertIsNone(next_trip.next_plan([unknown, no_home], now))
+
+
+class FollowingTests(TestCase):
+    """#163: once it's past "Leave by", the card follows the bus it told the
+    rider to catch, from their stop to the event, refreshing in place."""
+
+    def setUp(self):
+        self.start = timezone.now()
+        self.user = User.objects.create_user("rider", password="not-the-real-password")
+        self.client.force_login(self.user)
+        Place.objects.create(user=self.user, name="Home", lat=41.2971, lon=-72.9261, is_home=True)
+        calendar = Calendar.objects.create(user=self.user, ics_url="https://calendar.example.com/rider.ics")
+        self.lecture = Event.objects.create(
+            calendar=calendar, uid="lecture@yale", title="MGT 656 lecture",
+            start=self.start + dt.timedelta(minutes=30), location="Watson Center, 60 Sachem Street",
+        )
+        self.at = {30: 12}  # stop -> the bus's minutes there: Union Station, as on the card before "Leave by"
+        self.bus_id, self.last_stop, self.routes = 812, 97, []  # 97: the stop before Union Station
+        crowd = RouteCrowding(1, "Blue - Weekday Daytime", "Blue", "00356b")
+        for patch in (
+            mock.patch("calendars.views.network", return_value=feed()),
+            mock.patch("calendars.plans.next_buses", return_value=board()),
+            mock.patch("transit.downtowner.etas", side_effect=self.etas),
+            mock.patch("transit.downtowner.buses", side_effect=self.buses),
+            mock.patch("transit.downtowner.routes", side_effect=lambda: self.routes),
+            mock.patch("calendars.next_trip.crowding", side_effect=lambda routes, now=None: [crowd]),
+            mock.patch("calendars.next_trip.detoured_routes", return_value=[]),
+        ):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def etas(self, stop_id):
+        minutes = self.at.get(stop_id)
+        return [] if minutes is None else [{"route_id": 1, "bus_id": self.bus_id, "bus_name": "812", "minutes": minutes}]
+
+    def buses(self):
+        return [{"id": self.bus_id, "name": "812", "route": 1, "lat": 41.3010, "lon": -72.9270, "heading": 0,
+                 "lastStop": self.last_stop, "lastUpdate": time.time() - 20}]
+
+    def at_minute(self, later):
+        return mock.patch("django.utils.timezone.now", return_value=self.start + dt.timedelta(minutes=later))
+
+    def card(self, later=0):
+        with self.at_minute(later):
+            content = self.client.get(reverse("when-to-leave")).content.decode()
+        return content[content.index("data-next-trip"):content.index('id="day-')]
+
+    def refreshed(self, later):
+        with self.at_minute(later):
+            return self.client.get(reverse("next-trip")).json()
+
+    def remembered(self):
+        return self.client.session.get(next_trip.SESSION_KEY)
+
+    def clock(self, later):
+        return shown_time(self.start + dt.timedelta(minutes=later))
+
+    def test_it_follows_the_bus_from_the_stop_to_the_event(self):
+        # Before "Leave by" (in 11 minutes), the card remembers the bus it says to catch.
+        before = self.card()
+        key = re.search(r'data-key="([^"]+)"', before).group(1)
+        self.assertIn(f"Leave by {self.clock(11)}", before)
+        trip = self.remembered()
+        self.assertEqual((trip["bus_id"], trip["board"]["name"], trip["building"]["name"]), (812, "Union Station", "Watson Center"))
+        get_off, walk = trip["get_off"], trip["walk_from_stop"]
+        self.routes = [{"id": 1, "stops": [97, 30, 99, get_off["id"]]}]  # 99 is the stop before the rider's
+
+        # Past it: that bus, two minutes from Union Station.
+        self.at = {30: 2, get_off["id"]: 9}
+        card = self.card(later=12)
+        self.assertIn(f'data-key="{key}"', card)  # the same trip: the page never reloads for it
+        self.assertIn("On your way", card)
+        self.assertIn("Bus in 2 min", card)
+        self.assertIn("Walk to Union Station", card)
+        self.assertIn(f"There by {self.clock(12 + 9 + walk)}", card)  # the bus at the stop, then the walk
+        self.assertIn('class="journey"', card)
+        self.assertIn('class="journey-leg is-here"', card)  # the bus before the first stop
+        self.assertIn("data-live-bus", card)  # the trip's map, with the bus on it
+        self.assertIn(reverse("next-trip-stop"), card)
+        self.assertNotIn("Leave by", card)
+
+        # The refreshes, as the bus moves on: the ride...
+        self.last_stop, self.at = 30, {get_off["id"]: 6}
+        riding = self.refreshed(later=15)
+        self.assertEqual(riding["key"], key)
+        self.assertTrue(riding["watching"])
+        self.assertIn(f"Get off at {get_off['name']}", riding["html"])
+        self.assertIn("in 6 min", riding["html"])
+        self.assertIn("journey-leg is-ride is-here", riding["html"])
+        self.assertEqual((riding["bus"]["lat"], riding["bus"]["lon"]), (41.3010, -72.9270))
+        # ...the stop before theirs...
+        self.last_stop, self.at = 99, {get_off["id"]: 1}
+        self.assertIn("Get off at the next stop", self.refreshed(later=19)["html"])
+        # ...theirs...
+        self.at = {get_off["id"]: 0}
+        self.assertIn("Get off here", self.refreshed(later=20)["html"])
+        # ...and the walk the rest of the way.
+        self.last_stop, self.at = get_off["id"], {}
+        walking = self.refreshed(later=22)
+        self.assertIn("Walk to Watson Center", walking["html"])
+        self.assertEqual(walking["key"], key)
+        # Once they should be there and the lecture has started, the card moves on: nothing's next.
+        self.assertEqual(self.refreshed(later=max(22 + walk + 6, 31)), {"key": None})
+        self.assertIsNone(self.remembered())
+
+    def test_its_next_loop_never_reads_as_coming_again(self):
+        self.card()
+        get_off = self.remembered()["get_off"]["id"]
+        self.at = {get_off: 5}
+        self.refreshed(later=12)
+        self.at = {get_off: 0}
+        self.refreshed(later=17)
+        self.at = {30: 15, get_off: 24}  # the same bus, coming round to Union Station again
+        html = self.refreshed(later=19)["html"]
+        self.assertIn("Walk to Watson Center", html)
+        self.assertNotIn("Bus in", html)
+
+    def test_the_card_remembers_a_new_bus_but_not_every_refresh(self):
+        self.card()
+        first = self.remembered()
+        self.refreshed(later=1)  # the same bus, "Leave by" a minute on: not worth a session write
+        self.assertEqual(self.remembered(), first)
+        self.bus_id = 900  # the feed now has another bus at that countdown
+        self.refreshed(later=2)
+        self.assertEqual(self.remembered()["bus_id"], 900)
+
+    def following(self):
+        """The card, past "Leave by" (minute 12), following the bus."""
+        self.card()
+        self.at = {30: 2}
+        card = self.card(later=12)
+        self.assertIn("On your way", card)
+        return card
+
+    def test_a_cancelled_event_stops_being_followed(self):
+        # Austin's review: the hourly refresh deletes an event cancelled after
+        # "Leave by", and the card mustn't go on walking the rider there.
+        self.following()
+        self.lecture.delete()
+        self.assertEqual(self.refreshed(later=13), {"key": None})  # nothing else is next
+        self.assertIsNone(self.remembered())
+
+    def test_a_moved_event_is_planned_again(self):
+        key = re.search(r'data-key="([^"]+)"', self.following()).group(1)
+        self.lecture.start = self.start + dt.timedelta(minutes=90)
+        self.lecture.save(update_fields=["start"])
+        moved = self.refreshed(later=13)
+        self.assertNotEqual(moved["key"], key)  # another trip: the page reloads for it
+        self.assertNotIn("On your way", moved["html"])
+        self.assertIsNone(self.remembered())
+
+    def test_an_event_moved_to_another_building_is_planned_again(self):
+        self.following()
+        self.lecture.location = "Sterling Memorial Library, 120 High Street"
+        self.lecture.save(update_fields=["location"])
+        self.assertNotIn("On your way", self.refreshed(later=13).get("html", ""))
+        # The card plans the trip there instead, and remembers that one.
+        self.assertNotEqual((self.remembered() or {}).get("building", {}).get("name"), "Watson Center")
+
+    def test_a_renamed_event_is_still_followed_under_its_new_name(self):
+        self.following()
+        self.lecture.title = "MGT 656 review session"
+        self.lecture.save(update_fields=["title"])
+        html = self.refreshed(later=13)["html"]
+        self.assertIn("On your way", html)
+        self.assertIn("MGT 656 review session", html)
+
+    def test_the_map_starts_from_home_as_it_is_now(self):
+        self.card()
+        self.at = {30: 2}
+        Place.objects.filter(user=self.user, is_home=True).update(lat=41.3050, lon=-72.9300)
+        card = self.card(later=12)
+        data = json.loads(re.search(r'<script id="next-trip-map-data" type="application/json">(.*?)</script>', card).group(1))
+        self.assertEqual(data["origin"], [41.3050, -72.9300])
+
+    def test_opening_the_page_late_plans_from_home_as_before(self):
+        # Nothing remembered: the rider never had the card open, so they're still at Home.
+        card = self.card(later=12)
+        self.assertNotIn("On your way", card)
+        self.assertIn("Leave by", card)
+
+    def test_stop_following_goes_back_to_the_next_trip(self):
+        self.card()
+        self.at = {30: 2}
+        self.assertIn("On your way", self.card(later=12))
+        with self.at_minute(12):
+            response = self.client.post(reverse("next-trip-stop"))
+        self.assertRedirects(response, reverse("when-to-leave"), fetch_redirect_response=False)
+        self.assertNotIn("On your way", self.card(later=12))
+
+    def test_with_the_feed_down_a_refresh_keeps_the_card(self):
+        self.card()
+        with mock.patch("transit.downtowner.etas", side_effect=FeedUnavailable("down")):
+            self.assertEqual(self.refreshed(later=12), {"feed_down": True})
+        self.assertIsNotNone(self.remembered())
+
+    def test_a_bus_the_feed_stops_timing_says_so(self):
+        self.card()
+        self.at = {}
+        html = self.refreshed(later=12)["html"]
+        self.assertIn("We can't see your bus right now", html)
+        self.assertIn("It may be running late", html)

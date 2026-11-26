@@ -20,6 +20,13 @@ event with a building and a Home, as calendars.plans planned it.
 When no shuttle links Home to the event at its time, the card offers the
 ways Yale gets riders there at night or door to door instead (#14), with
 tap-to-call links.
+
+Once it's past "Leave by", the card follows the rider's bus (#163): the bus
+coming to their stop, the ride, "get off at the next stop", and when they'll
+reach the event, by calendars.follow. Re-planning from Home then would pick a later bus, so while the
+card watches a live bus it remembers that trip in the rider's session
+(remember), and from its "Leave by" until they should be there, the card is
+that trip (followed).
 """
 
 import datetime as dt
@@ -28,10 +35,18 @@ from dataclasses import dataclass, field
 
 from crowding.services import crowding
 from detours.detect import detoured_routes
+from history.predictions import stored_corrections
 from transit import downtowner
 from transit.downtowner import FeedUnavailable
 
-from .plans import LIVE_WINDOW
+from . import follow
+from .models import Event
+from .plans import LIVE_WINDOW, match_building
+
+SESSION_KEY = "next_trip_followed"  # the trip remembered for following, in the rider's session
+FOLLOW_AT_MOST = dt.timedelta(hours=2)  # a followed trip ends this long after its "Leave by" at the latest
+THERE_FOR = dt.timedelta(minutes=5)  # and this long after the rider should have reached the event
+LEAVE_BY_MOVES = dt.timedelta(minutes=2)  # a smaller change isn't worth rewriting the session
 
 REFRESH_SECONDS = 30  # the card refreshes this often; the feed is cached as long
 STALE_SECONDS = 180  # a bus position older than this gets its age shown (as on a shared trip, #10)
@@ -81,12 +96,20 @@ class NextTrip:
     bus_low: int | None = None  # "Bus in 12–14 min": the sooner of the feed's countdown and ours
     bus_high: int | None = None
     bus: dict | None = None  # {"lat", "lon", "age_minutes"}: the bus to catch, while the feed shows it
+    bus_id: int | None = None  # that bus, as the feed names it: the one to follow after "Leave by" (#163)
     crowd_label: str = ""  # "Packed", ...: riders' reports, or the usual for this hour
     crowd_level: int | None = None  # 0-3, for the meter
     crowd_usual: bool = False  # the label is the usual for this hour, not a recent report
     detoured: bool = False
     no_shuttle: bool = False  # nothing links Home to the event then: offer NIGHT_OPTIONS
     options: tuple = field(default=NIGHT_OPTIONS)
+
+    following = False  # a Following is the card once it's past "Leave by"
+
+    @property
+    def map(self):
+        """The trip's map, as the page drew it for the plan."""
+        return getattr(self.plan, "map", None)
 
     @property
     def key(self):
@@ -148,7 +171,7 @@ def read(plan, now):
     countdown = plan.bus_countdown
     if countdown is not None:
         trip.bus_low, trip.bus_high = sorted((countdown, plan.bus_minutes))
-        trip.bus = _bus(plan.plan.board_at["id"], row.route_id, countdown)
+        trip.bus_id, trip.bus = _bus(plan.plan.board_at["id"], row.route_id, countdown)
     else:
         trip.bus_low = trip.bus_high = plan.bus_minutes
     route = {"id": row.route_id, "name": row.name, "label": row.label, "color": row.color}
@@ -166,32 +189,222 @@ def read(plan, now):
 
 
 def _bus(stop_id, route_id, countdown):
-    """Where the bus the rider is catching is: the one the feed gives that
-    countdown at the boarding stop, from the buses answer. None when the feed
-    doesn't show it, or its position is too old to be worth a dot (#58)."""
+    """The bus the rider is catching, (bus_id, where it is): the one the feed
+    gives that countdown at the boarding stop, from the buses answer. Where
+    it is is None when the feed doesn't show it, or its position is too old
+    to be worth a dot (#58); bus_id is None when the feed didn't name it."""
     try:
         arrivals = downtowner.etas(stop_id)
         buses = downtowner.buses()
     except FeedUnavailable:
-        return None
+        return None, None
     bus_id = next(
         (arrival["bus_id"] for arrival in arrivals if arrival["route_id"] == route_id and arrival["minutes"] == countdown),
         None,
     )
     if bus_id is None:
-        return None
+        return None, None
     for bus in buses if isinstance(buses, list) else []:
         try:
             if int(bus["id"]) != int(bus_id):
                 continue
             age = max(0.0, time.time() - float(bus["lastUpdate"]))
             if age > HIDE_BUS_SECONDS:
-                return None
-            return {
+                return bus_id, None
+            return bus_id, {
                 "lat": float(bus["lat"]),
                 "lon": float(bus["lon"]),
                 "age_minutes": round(age / 60) if age > STALE_SECONDS else None,
             }
         except (KeyError, TypeError, ValueError):
             continue
-    return None
+    return bus_id, None
+
+
+@dataclass
+class Following:
+    """The next trip card once it's past "Leave by" (#163): the trip as the
+    card remembered it then (a session record, from remember), and its bus
+    now (a calendars.follow.Follow)."""
+
+    record: dict
+    follow: object
+    now: dt.datetime
+    map: dict | None = None  # the trip's map, on the page's first render
+
+    following = True
+    live = True
+    watching = True  # the page keeps refreshing it until it's over
+    no_shuttle = False
+
+    @property
+    def key(self):
+        return self.record["key"]
+
+    @property
+    def live_from(self):
+        return _when(self.record["leave_by"])
+
+    @property
+    def title(self):
+        return self.record["title"]
+
+    @property
+    def start(self):
+        return _when(self.record["start"])
+
+    @property
+    def route(self):
+        return self.record["route"]
+
+    @property
+    def board(self):
+        return self.record["board"]
+
+    @property
+    def get_off(self):
+        return self.record["get_off"]
+
+    @property
+    def building(self):
+        return self.record["building"]
+
+    @property
+    def bus_id(self):
+        return self.record.get("bus_id")
+
+    @property
+    def walk_from_stop(self):
+        return self.record.get("walk_from_stop") or 0
+
+    @property
+    def bus(self):
+        """The bus for the map, unless its position is too old to show (#58)."""
+        bus = self.follow.bus
+        if bus is None or (bus["age_minutes"] or 0) > follow.HIDE_BUS_MINUTES:
+            return None
+        return {"lat": bus["lat"], "lon": bus["lon"], "age_minutes": bus["age_minutes"]}
+
+    @property
+    def arrive_at(self):
+        """When the rider reaches the event: the bus at their stop, then the
+        walk. None when the feed hasn't timed the bus there, or it's past."""
+        if self.follow.get_off_at is None:
+            return None
+        arrive = self.follow.get_off_at + dt.timedelta(minutes=self.walk_from_stop)
+        return arrive if arrive >= self.now else None
+
+
+def remember(session, trip, home, now):
+    """While the card watches a live bus before "Leave by", remember the trip
+    in the rider's session, for following it once it's past "Leave by"
+    (#163). The newest plan wins, so the bus followed is the one the card
+    last told them to catch. The session is rewritten only when the trip or
+    its bus changes, or "Leave by" moves by LEAVE_BY_MOVES or more."""
+    plan = trip.plan
+    if not (trip.live and trip.watching and home is not None and plan.leave_by and now < plan.leave_by):
+        return
+    old = session.get(SESSION_KEY) or {}
+    old_leave_by = _when(old.get("leave_by"))
+    if (
+        old.get("key") == trip.key
+        and old.get("bus_id") == trip.bus_id
+        and old_leave_by is not None
+        and abs(old_leave_by - plan.leave_by) < LEAVE_BY_MOVES
+    ):
+        return
+    row, board, get_off = plan.row, plan.plan.board_at, plan.plan.get_off_at
+    session[SESSION_KEY] = {
+        "key": trip.key,
+        "calendar_id": plan.event.calendar_id,
+        "uid": plan.event.uid,
+        "title": plan.event.title,
+        "start": plan.event.start.isoformat(),
+        "leave_by": plan.leave_by.isoformat(),
+        "home": [home.lat, home.lon],
+        "building": {"name": plan.building["name"], "lat": plan.building["lat"], "lon": plan.building["lon"]},
+        "route": {"id": row.route_id, "name": row.name, "label": row.label, "color": row.color, "text_color": row.text_color},
+        "bus_id": trip.bus_id,
+        "board": {"id": board["id"], "name": board["name"], "lat": board["lat"], "lon": board["lon"]},
+        "get_off": {"id": get_off["id"], "name": get_off["name"], "lat": get_off["lat"], "lon": get_off["lon"]},
+        "walk_from_stop": plan.plan.walk_from_stop,
+        "progress": follow.Progress().as_dict(),
+    }
+
+
+def followed(session, now, user):
+    """The remembered trip (#163) once it's past its "Leave by", until the
+    rider should be at the event: None before then, and after, when it's
+    forgotten. It ends FOLLOW_AT_MOST after "Leave by" at the latest, and
+    as soon as the rider's calendar no longer has the event as it was: gone
+    (cancelled or deleted, which the hourly refresh picks up), or moved to
+    another time or building. Then the card plans their next trip again."""
+    record = session.get(SESSION_KEY)
+    leave_by = _when(record.get("leave_by")) if isinstance(record, dict) else None
+    if leave_by is None:
+        session.pop(SESSION_KEY, None)
+        return None
+    if now < leave_by:
+        return None
+    progress = follow.Progress.from_dict(record.get("progress"))
+    ends = leave_by + FOLLOW_AT_MOST
+    if progress.off:
+        walk = dt.timedelta(minutes=record.get("walk_from_stop") or 0)
+        ends = min(ends, (progress.get_off_at or now) + walk + THERE_FOR)
+    if now > ends:
+        session.pop(SESSION_KEY, None)
+        return None
+    event = _still_on(record, user)
+    if event is None:
+        session.pop(SESSION_KEY, None)
+        return None
+    if event.title != record.get("title"):
+        record = {**record, "title": event.title}  # renamed: the card says so
+        session[SESSION_KEY] = record
+    return record
+
+
+def _still_on(record, user):
+    """The followed trip's event, as the rider's calendar has it now: the
+    same event (calendar and uid) at the same start, in the same building.
+    None when it's gone or moved, or the record can't say which it was."""
+    start = _when(record.get("start"))
+    if start is None or record.get("calendar_id") is None or not record.get("uid"):
+        return None
+    event = Event.objects.filter(
+        calendar__user=user, calendar_id=record["calendar_id"], uid=record["uid"], start=start
+    ).first()
+    if event is None:
+        return None
+    building = match_building(event.location)
+    if building is None or building["name"] != record.get("building", {}).get("name"):
+        return None
+    return event
+
+
+def follow_card(session, record, now):
+    """The card for a followed trip: its bus now, by calendars.follow, with
+    the countdowns corrected as on the rest of the pages (#153) and the
+    trip's progress kept in the session. Raises FeedUnavailable when the
+    feed is down."""
+    progress = follow.Progress.from_dict(record.get("progress"))
+    now_trip = follow.follow(
+        record["route"]["id"], record.get("bus_id"), record["board"]["id"], record["get_off"]["id"], progress, now,
+        correct=stored_corrections().correct,
+    )
+    if progress.as_dict() != record.get("progress"):
+        record = {**record, "progress": progress.as_dict()}
+        session[SESSION_KEY] = record
+    return Following(record=record, follow=now_trip, now=now)
+
+
+def forget(session):
+    """Stop following: the card goes back to the next trip."""
+    session.pop(SESSION_KEY, None)
+
+
+def _when(text):
+    try:
+        return dt.datetime.fromisoformat(text) if text else None
+    except (TypeError, ValueError):
+        return None
