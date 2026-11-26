@@ -185,6 +185,7 @@ jobs in its own `jobs.py`, and `python manage.py run_job --list` shows them all.
 | `fit_calibration` | daily, 10:29 UTC (5:29 AM Eastern) | refits the countdown corrections from the last four weeks of recorded history (#117); until the first fit lands, predictions answer with the raw countdown |
 | `score_accuracy` | daily, 10:53 UTC (5:53 AM Eastern) | scores our predictions over the last seven days for the accuracy dashboard (#17), and over the last 31 days on Mondays; the dashboard only shows these saved scores |
 | `refresh_calendars` | hourly, at :41 | re-reads each rider's connected calendar address and replaces its events (#25) |
+| `check_ai` | hourly, at :43 | asks the AI agent about a fixed test trip, and fails if it doesn't answer, so a broken key or an OpenRouter outage shows up as a failed run (#159) |
 | `notify_trips` | hourly, at :45 | watches riders' trips in the next 2 hours and sends the notifications the AI agent decides on (#29); each run watches until the next one takes over |
 
 - **On time, by the job clock:** GitHub starts scheduled runs hours late, or
