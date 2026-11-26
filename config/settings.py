@@ -169,5 +169,7 @@ DOWNTOWNER_URL = os.environ.get("DOWNTOWNER_URL", "https://yale.downtownerapp.co
 
 # The AI feature calls the LLM through OpenRouter, from the server only (issue #37).
 # The key is never in the repo; without it the assistant never notifies anyone.
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+# A pasted key often brings a line break or a space along, which would break
+# every call, so those are trimmed (#159).
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "openai/gpt-4o-mini")

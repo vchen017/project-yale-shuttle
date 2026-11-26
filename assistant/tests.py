@@ -1,5 +1,7 @@
+import importlib
 import io
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from unittest import mock
 from urllib.error import HTTPError, URLError
@@ -10,6 +12,7 @@ from django.test import SimpleTestCase, override_settings
 
 from assistant import decide, evals, openrouter
 from assistant.decide import DONT_NOTIFY, Trip, decide_notification
+from config import settings as config_settings
 
 EST = timezone(timedelta(hours=-5))
 TRIP = Trip(
@@ -69,6 +72,27 @@ class OpenRouterTests(SimpleTestCase):
         with self.assertRaises(openrouter.OpenRouterError) as caught:
             openrouter.chat([])
         self.assertNotIn("test-key", str(caught.exception))
+
+    @override_settings(OPENROUTER_API_KEY="sk-or-v1-made-up\n")
+    def test_a_key_with_a_line_break_is_refused_before_a_header_could_quote_it(self, urlopen):
+        """Python's own error for a header with a line break quotes the whole
+        header, escaped, so the key would slip past the redaction (#159)."""
+        with self.assertRaises(openrouter.OpenRouterError) as caught:
+            openrouter.chat([])
+        self.assertEqual(str(caught.exception), "OPENROUTER_API_KEY has a space or line break in it")
+        self.assertIsNone(caught.exception.__cause__)
+        urlopen.assert_not_called()
+
+
+class KeySettingTests(SimpleTestCase):
+    def test_the_key_loses_the_spaces_and_line_breaks_pasting_brings(self):
+        """Rereads config/settings.py with a pasted key, then with this run's
+        own environment again (#159)."""
+        try:
+            with mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": " sk-or-v1-made-up\n"}):
+                self.assertEqual(importlib.reload(config_settings).OPENROUTER_API_KEY, "sk-or-v1-made-up")
+        finally:
+            importlib.reload(config_settings)
 
 
 @mock.patch("assistant.decide.openrouter.chat")

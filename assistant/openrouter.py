@@ -68,6 +68,11 @@ def _post(body):
     api_key = settings.OPENROUTER_API_KEY
     if not api_key:
         raise OpenRouterError("OPENROUTER_API_KEY is not set")
+    if any(character.isspace() or not character.isprintable() for character in api_key):
+        # A header can't carry a line break, and Python's error for one quotes
+        # the whole header, key included, escaped so the redaction below would
+        # miss it. Refuse it before there's a header to quote (#159).
+        raise OpenRouterError("OPENROUTER_API_KEY has a space or line break in it")
     request = Request(
         API_URL,
         data=json.dumps(body).encode(),
