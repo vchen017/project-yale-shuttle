@@ -12,10 +12,12 @@ Otherwise it checks every trip each CHECK_EVERY against the live feed, in
 memory. The time to leave comes from our prediction, the one the when-to-leave
 page plans with (#153): the feed's countdown, corrected by what the recorded
 history says about countdowns that size (#117), or our history prediction
-when the feed has none, since a countdown is near-perfect once a bus is close
-(the Nov 17 audit) and history only knows the usual wait for the time of day.
-The corrections and the history (history.HistoryPredictor) are loaded with
-the run. Once the time to leave is within DECIDE_AHEAD, the agent (#28)
+when the feed has none — or when the countdown and history both agree the
+bus is half an hour out or more (#154) — since a countdown is near-perfect
+once a bus is close (the Nov 17 audit) and history only knows the usual
+wait for the time of day. The corrections and the history
+(history.HistoryPredictor) are loaded with the run. Once the time to leave
+is within DECIDE_AHEAD, the agent (#28)
 decides whether and when to notify, reading the live countdown, that
 prediction and the crowding read at the start. The time to leave keeps a few
 minutes to spare at the stop, the cushion the page builds in too (#155). A notification
@@ -54,7 +56,12 @@ from assistant.tools import DataSource, TripRequest
 from calendars import plans
 from calendars.models import Event
 from crowding.services import crowding
-from history.predictions import Corrections, HistoryPredictor, stored_corrections
+from history.predictions import (
+    HISTORY_AT,
+    Corrections,
+    HistoryPredictor,
+    stored_corrections,
+)
 from jobs import clock as job_clock
 from places.models import Place
 from transit import downtowner
@@ -127,16 +134,20 @@ class WatchData(DataSource):
     def predicted_minutes(self, trip):
         """Our prediction, the one the when-to-leave page plans with (#153):
         the feed's countdown to the route's soonest bus, corrected (#117), or
-        our history's when the feed lists no bus or is down, in whole minutes
-        as the page shows it. When the rider can't walk to the stop in time
-        for that bus, the next bus in the feed they can make, as on the page
-        (calendars.plans.catchable). None when there's no such bus."""
+        our history's when the feed lists no bus or is down — or when the
+        countdown and the history agree the bus is HISTORY_AT minutes out or
+        more (#154) — in whole minutes as the page shows it. When the rider
+        can't walk to the stop in time for that bus, the next bus in the feed
+        they can make, as on the page (calendars.plans.catchable). None when
+        there's no such bus."""
         return self._ours(trip)[0]
 
     def spare_minutes(self, trip):
         """The minutes to spare at the stop that the time to leave builds in
         for that bus, as on the page (#155): the cushion for its countdown,
-        or as much as there's time for. 0 when the time came from history."""
+        or as much as there's time for. 0 when the time came from history —
+        no bus in the feed, or the far-out agreement (#154) — since the
+        cushion is a countdown's tool."""
         minutes, countdown = self._ours(trip)
         if minutes is None or countdown is None:
             return 0
@@ -144,10 +155,25 @@ class WatchData(DataSource):
         return plans.spare_minutes(cushion, minutes, trip.walking_minutes)
 
     def _ours(self, trip):
+        """(minutes, countdown) for the route's soonest catchable bus, timed
+        the way the page times it (#153). The countdown is the feed's for the
+        bus picked — what the spare cushion looks up (#155) — and None when
+        the answer came from history, whose cushion is nothing."""
         try:
             countdowns = self._countdowns(trip)
         except FeedUnavailable:
             countdowns = []
+        if countdowns and countdowns[0] >= HISTORY_AT:
+            history = self.history.minutes(trip.route_id, trip.stop_id, self.now)
+            # The walk check keeps #26's promise — a rider who can't reach the
+            # stop for the bus history agrees on gets the countdown's next
+            # catchable one, as if history had disagreed.
+            if (
+                history is not None
+                and history >= HISTORY_AT
+                and history >= trip.walking_minutes
+            ):
+                return round(history), None
         if countdowns:
             ours = self.corrections.correct(trip.route_id, countdowns[0])
         else:

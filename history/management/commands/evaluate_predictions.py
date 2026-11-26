@@ -91,3 +91,25 @@ class Command(BaseCommand):
                 f"  official, aged:  average error {result['official_aged_mae']} min "
                 f"(the pre-#116 scoring, kept for older numbers' sake)"
             )
+        self._write_by_countdown(result)
+
+    def _write_by_countdown(self, result):
+        """The error again, by how far away the bus was (#154)."""
+        rows = result.get("by_countdown") or {}
+        if not rows:
+            return
+        self.stdout.write("")
+        self.stdout.write("  By how far away the bus is (the countdown riders see at the query):")
+        self.stdout.write("    countdown    ours  history  official   queries")
+        for label in predictions.COUNTDOWN_LABELS:
+            row = rows.get(label)
+            if row is None:
+                continue
+
+            def cell(value):
+                return "      -" if value is None else f"{value:7.2f}"
+
+            self.stdout.write(
+                f"    {label:>9}  {cell(row['ours'])}  {cell(row['history'])}  "
+                f"{cell(row['official'])}  {row['n']:>7,}"
+            )
