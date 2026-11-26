@@ -95,6 +95,7 @@ class Follow:
     to_get_off: int | None = None
     get_off_at: dt.datetime | None = None
     bus: dict | None = None
+    get_off_by: dt.datetime | None = None  # get_off_at plus the arrival cushion (#174): when it's there by, 90% of the time
 
     @property
     def on_board(self):
@@ -107,14 +108,15 @@ class Follow:
         return {COMING: 0, LOST: 0, BOARDING: 1, RIDING: 2, NEXT_STOP: 2, GET_OFF: 3, OFF: 4}[self.phase]
 
 
-def follow(route_id, bus_id, board_stop_id, get_off_stop_id, progress, now, correct=None):
+def follow(route_id, bus_id, board_stop_id, get_off_stop_id, progress, now, correct=None, late=None):
     """The Follow for that bus now, moving `progress` along. With no bus_id
     (the feed didn't name one), it follows the route's soonest bus. The
     phases read the feed's own countdowns; the minutes shown, and when the
     bus reaches the stop to get off at, are corrected by `correct`
     (history.predictions.Corrections.correct, as the pages use it, #153)
-    when it's given. Raises downtowner.FeedUnavailable when the feed is down;
-    progress is unchanged then."""
+    when it's given, and `late` (Corrections.late, #174) gives how much
+    later it may come, for get_off_by. Raises downtowner.FeedUnavailable
+    when the feed is down; progress is unchanged then."""
     at_board = _minutes(downtowner.etas(board_stop_id), route_id, bus_id)
     at_get_off = _minutes(downtowner.etas(get_off_stop_id), route_id, bus_id)
     bus = _bus(downtowner.buses(), bus_id)
@@ -133,6 +135,12 @@ def follow(route_id, bus_id, board_stop_id, get_off_stop_id, progress, now, corr
 
     def reaches_get_off():
         return minutes_after(shown(at_get_off)) if at_get_off is not None else progress.get_off_at
+
+    def there_by():
+        """When it's at the stop to get off at by, ON_TIME_TARGET of the time (#174)."""
+        if at_get_off is None or late is None:
+            return reaches_get_off()
+        return minutes_after(shown(at_get_off) + late(route_id, at_get_off))
 
     # Its GPS, while fresh: the stop it last served, and the one it had at the last look.
     fresh = bus is not None and bus["age_minutes"] is None and bus["last_stop"] is not None
@@ -171,6 +179,7 @@ def follow(route_id, bus_id, board_stop_id, get_off_stop_id, progress, now, corr
             return Follow(
                 BOARDING if at_board == 0 else COMING,
                 to_board=shown(at_board), to_get_off=shown(at_get_off), get_off_at=reaches_get_off(), bus=bus,
+                get_off_by=there_by(),
             )
         # Past the first stop: timed to the second one first, coming round
         # again on its next loop, or no longer timed well after it was due.
@@ -191,7 +200,7 @@ def follow(route_id, bus_id, board_stop_id, get_off_stop_id, progress, now, corr
                 phase = NEXT_STOP
             else:
                 phase = RIDING
-            return Follow(phase, to_get_off=shown(at_get_off), get_off_at=reaches_get_off(), bus=bus)
+            return Follow(phase, to_get_off=shown(at_get_off), get_off_at=reaches_get_off(), bus=bus, get_off_by=there_by())
         # Not timed to the second stop any more, or only on the next loop:
         # past it, once it was due there. Before then, the feed lost it.
         due = progress.get_off_at is None or now >= progress.get_off_at - dt.timedelta(minutes=1)
