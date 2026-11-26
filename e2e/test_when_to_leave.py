@@ -207,7 +207,11 @@ class WithoutPlaywrightTests(SimpleTestCase):
         module = importlib.import_module(__name__)
         hidden = {"playwright": None, "playwright.sync_api": None}
         with mock.patch.dict(sys.modules, hidden):
-            importlib.reload(module)
+            # The reloaded module reads E2E at import: with it set (CI runs
+            # the suite with E2E=1), the guard re-raises instead of skipping
+            # and this test fails on the machine that has Playwright.
+            with mock.patch.dict(os.environ, {"E2E": ""}):
+                importlib.reload(module)
             try:
                 with self.assertRaises(unittest.SkipTest):
                     module.WhenToLeaveInABrowserTests.setUpClass()
