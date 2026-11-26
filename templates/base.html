@@ -47,7 +47,6 @@
           {% with here=request.resolver_match.url_name %}
           <ul class="navbar-nav">
             <li class="nav-item"><a class="nav-link{% if here == 'stops' or here == 'stop' or here == 'trip' %} active" aria-current="page{% endif %}" href="{% url 'stops' %}">Next buses</a></li>
-            <li class="nav-item"><a class="nav-link{% if here == 'crowding' %} active" aria-current="page{% endif %}" href="{% url 'crowding' %}">Crowding</a></li>
             <li class="nav-item"><a class="nav-link{% if here == 'reliability' %} active" aria-current="page{% endif %}" href="{% url 'reliability' %}">Missed bus</a></li>
             {% if user.is_authenticated %}
               {% if user.is_staff %}

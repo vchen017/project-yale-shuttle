@@ -29,6 +29,7 @@ ROUTES = [
     {"id": 16, "name": "Blue West", "short_name": "BW", "color": "3498DB", "active": False, "stops": [10]},
 ]
 STOPS = [{"id": 10, "name": "Science Hill", "lat": 41.316, "lon": -72.922, "description": ""}]
+BLUE = {"id": 1, "name": "Blue", "label": "Blue", "color": "4472C4"}  # as crowding() takes routes
 
 
 def feed(routes=ROUTES):
@@ -233,9 +234,39 @@ class CrowdingPageTests(ReportsMixin, TestCase):
         # The feed's colour, not the default, since the feed still lists the route.
         self.assertContains(response, "background-color: #FCE36C")
 
-    def test_the_navbar_links_to_crowding(self, urlopen, now):
-        self.assertContains(self.client.get("/"), f'href="{reverse("crowding")}"')
-        urlopen.assert_not_called()
+    def test_next_buses_links_here_and_the_menu_and_home_page_lead_with_the_trip(self, urlopen, now):
+        """Crowding stepped back (#181): riders on a bus find it from Next buses,
+        and the menu and the home page lead with the trip and the AI."""
+        urlopen.side_effect = feed()
+        link = f'href="{reverse("crowding")}"'
+        self.assertContains(self.client.get(reverse("stops")), link, count=1)
+        home = self.client.get("/")
+        self.assertNotContains(home, link)
+        self.assertContains(home, f'<a href="{reverse("when-to-leave")}">When to leave</a>', html=True)
+
+
+@mock.patch("django.utils.timezone.now", return_value=NOW)
+class SampleTests(ReportsMixin, TestCase):
+    """Demo samples count only where the crowding page asks for them (#181)."""
+
+    BLUE = {"id": 1, "name": "Blue - Weekday Daytime", "label": "Blue", "color": "4472C4"}
+
+    def test_only_the_crowding_page_counts_samples(self, now):
+        for days_ago in [1, 2, 3]:
+            self.add(Level.SEATS, at(days_ago=days_ago, hour=14))
+            self.add(Level.FULL, at(days_ago=days_ago, hour=14), is_sample=True)
+            self.add(Level.FULL, at(days_ago=days_ago, hour=9), is_sample=True)  # an hour of samples alone
+
+        (real,) = crowding([self.BLUE])
+        self.assertEqual([(h.hour, h.level, h.count) for h in real.by_hour], [(14, Level.SEATS, 3)])
+        self.assertEqual(real.typical_now.level, Level.SEATS)  # now is 2:40 PM
+        self.assertFalse(real.includes_samples)
+
+        (page,) = crowding([self.BLUE], samples=True)
+        self.assertEqual(
+            [(h.hour, h.level, h.count) for h in page.by_hour], [(9, Level.FULL, 3), (14, Level.STANDING, 6)]
+        )
+        self.assertTrue(page.includes_samples)
 
 
 class AverageLevelTests(TestCase):
@@ -262,11 +293,17 @@ class DemoTests(ReportsMixin, TestCase):
         self.assertEqual(reports.count(), 10 * 5 * 11)
         self.assertTrue(all(report.is_sample and report.user == self.rider for report in reports))
         self.assertTrue(all(report.created_at.astimezone(ET).weekday() < 5 for report in reports))
-        blue = crowding([{"id": 1, "name": "Blue", "label": "Blue", "color": "4472C4"}])[0]
+        blue = crowding([BLUE], samples=True)[0]  # as the crowding page asks
         self.assertIsNone(blue.current_level)
         self.assertEqual(blue.typical_now.level, demo.BY_HOUR[14])
         self.assertEqual({h.hour: h.level for h in blue.by_hour}, demo.BY_HOUR)
         self.assertTrue(blue.includes_samples)
+
+    def test_the_samples_count_only_on_the_crowding_page(self, now):
+        """The next trip card, the AI and the trip watch never see them (#181)."""
+        self.seed()
+        (blue,) = crowding([BLUE])
+        self.assertEqual((blue.current_level, blue.typical_now, blue.by_hour, blue.includes_samples), (None, None, [], False))
 
     def test_replaces_samples_once_they_are_a_week_old_and_keeps_real_reports(self, now):
         self.seed()
