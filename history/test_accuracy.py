@@ -221,9 +221,16 @@ class DisplayNameTests(TestCase):
     def setUpTestData(cls):
         User = get_user_model()
         cls.rider = User.objects.create_user("rider@example.com", password="a-rider-password-1")
-        day = DAYS[0]
-        for hour, name in ((9, "Old name"), (11, "New name")):
-            moment = eastern(day, hour)
+        # A day the holdout rule scores (its ordinal divides by three), with
+        # a real approach so the day counts as history: Nov 3, 2026.
+        day = dt.date(2026, 11, 3)
+        assert day.toordinal() % accuracy.HOLDOUT_MODULUS == 0
+        for hour, minute, eta, name in (
+            (10, 0, 25, "Old name"),  # promised 10:25
+            (10, 55, 4, "Old name"),  # the approach's end: an arrival, 10:59
+            (13, 0, 25, "New name"),  # renamed by the early afternoon
+        ):
+            moment = eastern(day, hour, minute)
             poll = Poll.objects.create(polled_at=moment, status=Poll.Status.RECORDED)
             Eta.objects.create(
                 poll=poll,
@@ -234,12 +241,12 @@ class DisplayNameTests(TestCase):
                 route_name=name,
                 bus_id=7,
                 bus_name="#7",
-                eta_minutes=25,
+                eta_minutes=eta,
                 calculation_time=moment,
             )
-        # One report is what puts the pair on the dashboard with no scored
-        # queries, so its label is all this test reads.
-        add_report(1, 100, eastern(day, 10), cls.rider)
+        # One report is what puts the pair on the dashboard with nothing
+        # scored worth reading, so its label is all this test reads.
+        add_report(1, 100, eastern(day, 11), cls.rider)
         cls.result = accuracy.accuracy(eastern(day), eastern(day + dt.timedelta(days=1)))
 
     def test_a_renamed_pair_shows_the_name_the_window_first_knew(self):
