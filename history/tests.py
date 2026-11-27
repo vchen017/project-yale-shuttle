@@ -771,7 +771,15 @@ def add_eta_poll(moment, bus_id, eta_minutes, route_id=1, stop_id=100):
 class LiveLayerTests(TestCase):
     """A bus counting down in the fresh polls is the prediction, and it
     ticks: the official app's whiplash ("20 minutes away", and 6 five
-    minutes later) is what this layer exists to never do."""
+    minutes later) is what this layer exists to never do. Far out, where the
+    countdown and the history agree the bus is half an hour out or more, the
+    history answers instead (#154)."""
+
+    def setUp(self):
+        cache.clear()  # no countdown corrections another test left cached
+
+    def tearDown(self):
+        cache.clear()
 
     def test_a_counting_down_bus_is_the_prediction(self):
         add_eta_poll(eastern(dt.date(2026, 11, 5), 12), bus_id=9, eta_minutes=7)
@@ -822,6 +830,46 @@ class LiveLayerTests(TestCase):
         self.assertGreaterEqual(ours, 4)
         self.assertLessEqual(ours, 8)
 
+    def test_a_countdown_far_out_is_historys_where_history_agrees(self):
+        # Both sources say the bus is half an hour out — the feed 33, the
+        # usual wait for this hour 52.5 (buses at 16:35 and 18:05 on the
+        # training days) — so the history answers (#154), the one far regime
+        # the measured record has it ahead of the corrected countdown in.
+        for day in (dt.date(2026, 11, 2), dt.date(2026, 11, 3), dt.date(2026, 11, 4)):
+            add_eta_poll(eastern(day, 16, 35), bus_id=31, eta_minutes=0)
+            add_eta_poll(eastern(day, 18, 5), bus_id=32, eta_minutes=0)
+        add_eta_poll(eastern(dt.date(2026, 11, 5), 17), bus_id=9, eta_minutes=40)
+        ours = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 17, 7))
+        self.assertEqual(ours, 52.5)  # the history's, not the countdown's 33
+
+    def test_a_countdown_a_minute_shy_of_far_out_stays_the_countdown(self):
+        # 29 minutes is the countdown's land even against a usual wait of
+        # 52.5: the switch lives at HISTORY_AT (#154), not near it.
+        for day in (dt.date(2026, 11, 2), dt.date(2026, 11, 3), dt.date(2026, 11, 4)):
+            add_eta_poll(eastern(day, 16, 35), bus_id=31, eta_minutes=0)
+            add_eta_poll(eastern(day, 18, 5), bus_id=32, eta_minutes=0)
+        add_eta_poll(eastern(dt.date(2026, 11, 5), 17), bus_id=9, eta_minutes=36)
+        ours = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 17, 7))
+        self.assertEqual(ours, 29.0)  # the countdown, seven minutes aged
+
+    def test_a_far_out_countdown_stays_when_history_disagrees(self):
+        # The feed promises a bus 33 minutes out; the route's usual wait at
+        # that hour is 7. The disagreement keeps the countdown (#154): the
+        # far promises history argues with are the ones the corrections fit
+        # was measured on.
+        for day in (dt.date(2026, 11, 2), dt.date(2026, 11, 3), dt.date(2026, 11, 4)):
+            add_arrivals(day, headway_minutes=12, first_hour=7, last_hour=19)
+        add_eta_poll(eastern(dt.date(2026, 11, 5), 12), bus_id=9, eta_minutes=40)
+        ours = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 12, 7))
+        self.assertEqual(ours, 33.0)
+
+    def test_far_out_without_history_the_countdown_answers(self):
+        # No arrivals to learn from: the history has nothing to agree with,
+        # and a countdown is still better than nothing (#154).
+        add_eta_poll(eastern(dt.date(2026, 11, 5), 17), bus_id=9, eta_minutes=40)
+        ours = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 17, 7))
+        self.assertEqual(ours, 33.0)
+
     def test_nothing_after_now_is_used(self):
         add_eta_poll(eastern(dt.date(2026, 11, 5), 12, 10), bus_id=9, eta_minutes=7)
         self.assertIsNone(
@@ -868,6 +916,20 @@ class FeedLiveLayerTests(TestCase):
             ours = predictions.predict_minutes(1, 100, now=eastern(dt.date(2026, 11, 5), 12))
         etas.assert_not_called()
         self.assertIsNone(ours)  # no recorded polls either: nothing to say
+
+    def test_a_far_off_feed_countdown_is_historys_where_history_agrees(self):
+        # The live layer's first source follows the same rule (#154): the
+        # feed counts a bus 33 minutes out, the usual wait for the hour is
+        # 52.5, and the history's answer wins the far-out agreement.
+        for day in (dt.date(2026, 11, 2), dt.date(2026, 11, 3), dt.date(2026, 11, 4)):
+            add_eta_poll(eastern(day, 16, 35), bus_id=31, eta_minutes=0)
+            add_eta_poll(eastern(day, 18, 5), bus_id=32, eta_minutes=0)
+        feed = [{"route_id": 1, "bus_id": 4, "bus_name": "#4", "minutes": 33}]
+        with mock.patch.object(
+            predictions.timezone, "now", return_value=eastern(dt.date(2026, 11, 5), 17, 7)
+        ), mock.patch("transit.downtowner.etas", return_value=feed):
+            ours = predictions.predict_minutes(1, 100)
+        self.assertEqual(ours, 52.5)
 
 
 class CalibrationTests(TestCase):
@@ -1319,6 +1381,59 @@ class EvaluateTests(TestCase):
         # the ask), and history had no train day to learn from.
         self.assertEqual(result["ours_mae"], 0.0)
         self.assertIsNone(result["history_mae"])
+        # The breakdown (#154): the ask at 12:02 saw a countdown of 13, so
+        # this is the whole "10-15" bucket, and buckets without a query don't
+        # appear at all.
+        self.assertEqual(
+            result["by_countdown"]["10-15"], {"n": 1, "ours": 0.0, "history": None, "official": 0.0}
+        )
+        self.assertEqual(list(result["by_countdown"]), ["10-15"])
+
+    def test_the_breakdown_buckets_by_the_countdown_riders_see(self):
+        # A bus promised 40 minutes out at 11:59, arriving 12:39 (the 12:36
+        # poll's eta 3 is the approach's end): the ask at 12:06 sees a
+        # countdown of 33 — the "30+" bucket, not the poll's 40 — and both
+        # countdown scorers are spot on there.
+        day = next(
+            day
+            for day in (dt.date(2026, 11, 9), dt.date(2026, 11, 10), dt.date(2026, 11, 11))
+            if day.toordinal() % 3 == 0  # what evaluate() will hold out
+        )
+        add_eta_poll(eastern(day, 11, 59), bus_id=9, eta_minutes=40)
+        add_eta_poll(eastern(day, 12, 36), bus_id=9, eta_minutes=3)
+        result = predictions.evaluate(stride=1, now=eastern(day, 23))
+
+        self.assertEqual(result["queries"], 1)
+        self.assertEqual(
+            result["by_countdown"]["30+"], {"n": 1, "ours": 0.0, "history": None, "official": 0.0}
+        )
+        self.assertNotIn("0-5", result["by_countdown"])
+
+    def test_the_breakdown_scores_the_far_out_agreement_as_history(self):
+        # The far-out agreement (#154): the held-out ask at 17:07 sees a
+        # countdown of 33 and the training days teach a 52.5-minute usual
+        # wait, so ours is the history's answer there — scored in the "30+"
+        # bucket the rider saw, next to the official's countdown, spot on.
+        held_out = next(
+            day
+            for day in (dt.date(2026, 11, 9), dt.date(2026, 11, 10), dt.date(2026, 11, 11))
+            if day.toordinal() % 3 == 0  # what evaluate() will hold out
+        )
+        for day in (dt.date(2026, 11, 2), dt.date(2026, 11, 4), dt.date(2026, 11, 5)):
+            # All three sit on the training side of the split.
+            self.assertNotEqual(day.toordinal() % 3, held_out.toordinal() % 3)
+            add_eta_poll(eastern(day, 16, 35), bus_id=31, eta_minutes=0)
+            add_eta_poll(eastern(day, 18, 5), bus_id=32, eta_minutes=0)
+        add_eta_poll(eastern(held_out, 17), bus_id=9, eta_minutes=40)
+        add_eta_poll(eastern(held_out, 17, 40), bus_id=9, eta_minutes=0)
+        result = predictions.evaluate(stride=1, now=eastern(held_out, 23))
+
+        self.assertEqual(result["queries"], 1)  # the 17:47 ask had no next bus in reach
+        self.assertEqual(
+            result["by_countdown"]["30+"],
+            {"n": 1, "ours": 19.5, "history": 19.5, "official": 0.0},
+        )
+        self.assertNotIn("0-5", result["by_countdown"])
 
     def test_ours_is_the_countdown_the_fit_corrects(self):
         # The training days teach one correction: a countdown of 8-12 (any

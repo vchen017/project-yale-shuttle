@@ -33,6 +33,14 @@ size bucket. Beyond LIVE_MAX_AGE with no fresher poll, or once the
 countdown has run more than LIVE_EXPIRY past due, the countdown has
 nothing left to say.
 
+Far out, the layers answer together (#154): when the countdown AND the
+history's walk-up median both put the bus HISTORY_AT minutes out or more,
+the history answers — the one far regime the measured record has it ahead
+of the corrected countdown in. Nearer in, and wherever they disagree, the
+countdown rules: a countdown beats any usual wait once the bus is close,
+and the far promises history disagrees with are the ones the corrections
+fit was measured on.
+
 *History* is the fallback, for when nothing live is fresh enough (imports
 lag, the feed is down), the bus is overdue, or nothing is coming (service
 hours ended). How it learns: a poll with eta_minutes at or below
@@ -98,7 +106,11 @@ MAX_CONDITIONING = dt.timedelta(minutes=45)  # condition only on arrivals this
 MIN_BAND_SAMPLES = 8  # a residual point sampled fewer times defers to the buckets
 RAW_MAX = 5  # countdowns this small are answered untouched (#117): the
 # audit's imminent regime is near-perfect raw, and correcting it hurt
+HISTORY_AT = 30  # when the countdown AND the history median both say the
+# bus is this far out, the history answers (#154): measured over held-out
+# days, the one far regime where it edges the corrected countdown
 COUNTDOWN_BUCKETS = ((0, 5), (5, 10), (10, 15), (15, 20), (20, 30), (30, float("inf")))
+COUNTDOWN_LABELS = ("0-5", "5-10", "10-15", "15-20", "20-30", "30+")
 MIN_CALIBRATION_SAMPLES = 20  # a (route, bucket) with fewer residuals defers
 # to the all-routes row for its bucket
 OVERALL_BUCKET = -1  # the Corrections row that covers every countdown
@@ -169,10 +181,12 @@ class Corrections:
         return _whole(_rung(self.late_by_route, self.late_by_bucket, self.late_overall, route_id, countdown))
 
     def correct(self, route_id, countdown):
-        """A live countdown as predict_minutes answers it: untouched at or
-        below RAW_MAX, corrected by delta() above it, never below zero; None
-        passes through. For a caller that loaded the corrections once and
-        mustn't read them again, like the trip watch (#29, #153)."""
+        """A live countdown corrected: untouched at or below RAW_MAX, shifted
+        by delta() above it, never below zero; None passes through. For a
+        caller holding a countdown but not the history answer — the followed
+        bus (#163). predict_minutes answers the far-out agreements through
+        _blended instead (#154), and the trip watch, which has the history
+        loaded, does the same."""
         return _fused_countdown(route_id, countdown, self)
 
 
@@ -264,26 +278,28 @@ def predict_minutes(route_id, stop_id, now=None, use_live_feed=True, current_by_
     now = now or timezone.now()
     corrections = stored_corrections()
     if asked_about_now and use_live_feed:
-        fused = _fused_countdown(route_id, _live_feed_minutes(route_id, stop_id), corrections)
-        if fused is not None:
-            return fused
-    fused = _fused_countdown(route_id, _live_minutes(route_id, stop_id, now), corrections)
-    if fused is not None:
-        return fused
-    rows = (
-        Eta.objects.filter(
-            route_id=route_id,
-            stop_id=stop_id,
-            eta_minutes__lte=ARRIVAL_ETA,
-            polled_at__gt=now - dt.timedelta(days=HISTORY_DAYS),
-            polled_at__lte=now,
+        countdown = _live_feed_minutes(route_id, stop_id)
+        answer = _blended(
+            route_id,
+            countdown,
+            corrections,
+            # The history is read only where the switch can matter: the
+            # board asks this route by route, and a feed-fresh answer under
+            # HISTORY_AT mustn't pay for it.
+            _history_answer(route_id, stop_id, now) if _far_off(countdown) else None,
         )
-        .order_by("polled_at", "bus_id")
-        .values_list("polled_at", "bus_id", "eta_minutes")
+        if answer is not None:
+            return answer
+    countdown = _live_minutes(route_id, stop_id, now)
+    answer = _blended(
+        route_id,
+        countdown,
+        corrections,
+        _history_answer(route_id, stop_id, now) if _far_off(countdown) else None,
     )
-    arrivals = _arrival_events(rows)
-    profile = _learn(arrivals)
-    return _predict_history(profile, now, _last_arrival_before(arrivals, now))
+    if answer is not None:
+        return answer
+    return _history_answer(route_id, stop_id, now)
 
 
 class HistoryPredictor:
@@ -347,6 +363,46 @@ def _fused_countdown(route_id, countdown, corrections):
     if countdown <= RAW_MAX:
         return round(float(countdown), 1)
     return round(max(countdown + corrections.delta(route_id, countdown), 0.0), 1)
+
+
+def _far_off(countdown):
+    """True when a countdown is far enough out that the history's agreement
+    could change the answer (#154)."""
+    return countdown is not None and countdown >= HISTORY_AT
+
+
+def _blended(route_id, countdown, corrections, history):
+    """The rider's answer when a countdown is in hand (#154): where the
+    countdown and the history agree the bus is far out — both HISTORY_AT
+    minutes or more — the history median answers, the one far regime the
+    measured record has it ahead of the corrected countdown in (17.96 vs
+    18.79 minutes there, over held-out days). Everywhere else the fused
+    countdown does: a countdown beats any usual wait once the bus is close,
+    and the far promises history disagrees with are the ones the fit was
+    measured on (a blind switch to history past HISTORY_AT scored 19.83
+    against the countdown's 16.59 there). None passes through."""
+    if _far_off(countdown) and history is not None and history >= HISTORY_AT:
+        return history
+    return _fused_countdown(route_id, countdown, corrections)
+
+
+def _history_answer(route_id, stop_id, now):
+    """The history layer's answer for one pair, from data no newer than
+    `now`: predict_minutes' fallback, and its far-off agreement answer
+    (#154)."""
+    rows = (
+        Eta.objects.filter(
+            route_id=route_id,
+            stop_id=stop_id,
+            eta_minutes__lte=ARRIVAL_ETA,
+            polled_at__gt=now - dt.timedelta(days=HISTORY_DAYS),
+            polled_at__lte=now,
+        )
+        .order_by("polled_at", "bus_id")
+        .values_list("polled_at", "bus_id", "eta_minutes")
+    )
+    arrivals = _arrival_events(rows)
+    return _predict_history(_learn(arrivals), now, _last_arrival_before(arrivals, now))
 
 
 def _rung(by_route, by_bucket, overall, route_id, countdown):
@@ -678,6 +734,10 @@ def evaluate(holdout_modulus=3, stride=2, days=HISTORY_DAYS, now=None):
     the whole QUERY_OFFSET; it overstated the official's error by minutes
     (17.3 vs 13.5 on the recorded history), and it is kept only so numbers
     quoted before #116 stay reproducible.
+
+    Everything is also broken down by how far away the bus was (by_countdown,
+    #154): the countdown buckets the rider asking saw, ours, history and the
+    official each averaged inside the bucket that query landed in.
     """
     now = now or timezone.now()
     since = now - dt.timedelta(days=days)
@@ -705,6 +765,10 @@ def evaluate(holdout_modulus=3, stride=2, days=HISTORY_DAYS, now=None):
     queries = no_prediction = not_served = 0
     history_queries = official_answered = 0
     ours_error = official_error = official_aged_error = history_error = 0.0
+    # The same error, broken down by how far away the bus is (#154): the
+    # countdown the rider asking sees, or, without one, our answer's.
+    by_distance = defaultdict(lambda: defaultdict(float))  # label -> predictor -> error sum
+    distance_n = defaultdict(lambda: defaultdict(int))  # label -> predictor -> count
     for day in sorted(test_days):
         day_start = dt.datetime.combine(day, dt.time(0), tzinfo=ET)
         # Just the held-out day's polls: an arrival after midnight is found
@@ -744,22 +808,22 @@ def evaluate(holdout_modulus=3, stride=2, days=HISTORY_DAYS, now=None):
                 if next_arrival is None or next_arrival > query_at + HORIZON:
                     continue  # no measurable arrival: neither side gets scored
                 actual = (next_arrival - query_at).total_seconds() / 60
-                ours = _fused_countdown(
+                last_arrival = _last_arrival_before(moments, query_at)
+                # The history layer's answer, scored on its own further down:
+                # it is what runs when no poll is fresh, and, where it agrees
+                # a countdown the bus is far out, what ours is (#154).
+                history = _predict_history(profiles.get(pair), query_at, last_arrival)
+                ours = _blended(
                     pair[0],
                     _shown_fresh(shown_times.get(pair, []), shown_values.get(pair, []), query_at),
                     corrections,
+                    history,
                 )
-                last_arrival = _last_arrival_before(moments, query_at)
-                if ours is None:
-                    ours = _predict_history(profiles.get(pair), query_at, last_arrival)
                 if ours is None:
                     no_prediction += 1
                     continue
                 queries += 1
                 ours_error += abs(ours - actual)
-                # The history layer is also scored on its own, even where the
-                # live layer answered: it is what runs when no poll is fresh.
-                history = _predict_history(profiles.get(pair), query_at, last_arrival)
                 if history is not None:
                     history_queries += 1
                     history_error += abs(history - actual)
@@ -775,6 +839,17 @@ def evaluate(holdout_modulus=3, stride=2, days=HISTORY_DAYS, now=None):
                 official_implied = polled_at + dt.timedelta(minutes=min(etas))
                 official_aged = max((official_implied - query_at).total_seconds() / 60, 0.0)
                 official_aged_error += abs(official_aged - actual)
+                # The distance breakdown: every predictor that answered this
+                # query is scored inside the bucket the rider asking saw.
+                label = COUNTDOWN_LABELS[countdown_bucket(official if official is not None else ours)]
+                by_distance[label]["ours"] += abs(ours - actual)
+                distance_n[label]["ours"] += 1
+                if history is not None:
+                    by_distance[label]["history"] += abs(history - actual)
+                    distance_n[label]["history"] += 1
+                if official is not None:
+                    by_distance[label]["official"] += abs(official - actual)
+                    distance_n[label]["official"] += 1
 
     return {
         "test_days": sorted(test_days),
@@ -790,6 +865,30 @@ def evaluate(holdout_modulus=3, stride=2, days=HISTORY_DAYS, now=None):
             round(official_error / official_answered, 2) if official_answered else None
         ),
         "official_aged_mae": round(official_aged_error / queries, 2) if queries else None,
+        # Error by how far away the bus was (#154), the countdown the rider
+        # asking saw; a predictor that didn't answer there is None.
+        "by_countdown": {
+            label: {
+                "n": distance_n[label]["ours"],
+                "ours": (
+                    round(by_distance[label]["ours"] / distance_n[label]["ours"], 2)
+                    if distance_n[label]["ours"]
+                    else None
+                ),
+                "history": (
+                    round(by_distance[label]["history"] / distance_n[label]["history"], 2)
+                    if distance_n[label]["history"]
+                    else None
+                ),
+                "official": (
+                    round(by_distance[label]["official"] / distance_n[label]["official"], 2)
+                    if distance_n[label]["official"]
+                    else None
+                ),
+            }
+            for label in COUNTDOWN_LABELS
+            if label in distance_n
+        },
     }
 
 

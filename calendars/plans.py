@@ -152,6 +152,14 @@ def plan_event(event, home, *, now, stops, routes_by_id, running_at=None):
         row = board.rows[0] if board and board.rows else None  # rows come soonest first
         minutes, countdown = catchable(row.ours, row.official, plan.walk_to_stop) if row else (None, None)
         if minutes is not None:
+            # The cushion rides on the countdown the rider saw (#155), even
+            # where the history answers the far-out agreement (#154): sized
+            # for that countdown, it carries the history's answer too —
+            # replayed over the held-out days, leaving by the bare history
+            # median got only 66% of far-out riders to the bus, with the
+            # countdown's cushion 87% (the review of #186). Without a
+            # countdown — the feed lists no bus — there's nothing to size
+            # it with, and "Leave by" is the answer as it stands.
             cushion = row.cushions.get(countdown, 0) if countdown is not None else 0
             spare = spare_minutes(cushion, minutes, plan.walk_to_stop)
             return EventPlan(
