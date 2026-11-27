@@ -483,6 +483,39 @@ class RouteHistoryTests(TestCase):
         self.assertEqual(RouteStopList.objects.count(), 5)
         self.assertEqual(RouteStopChange.objects.count(), 3)
 
+    def test_two_commits_sharing_one_second_are_both_walked(self):
+        # Two routes.json commits in the same second: a time-only resume
+        # skipped the second one forever, so its stop change never showed
+        # (#187). The walk resumes by the state's sha instead.
+        same_second = AT_1035
+        pair = [("d" * 40, same_second), ("e" * 40, same_second)]
+        payloads = {
+            "d" * 40: routes_payload(ROUTE_3_STOPS, ROUTE_19_STOPS),
+            "e" * 40: routes_payload([1] + ROUTE_3_STOPS[:-1], ROUTE_19_STOPS),
+        }
+
+        stats = importer.import_route_history(pair, lambda sha: payloads[sha])
+
+        self.assertEqual(stats.commits_seen, 2)
+        self.assertEqual(stats.versions_added, 3)  # route 3 twice, route 19 once
+        self.assertEqual(stats.changes_added, 1)
+        self.assertEqual(RouteStopChange.objects.get(route_id=3).added_stop_ids, [1])
+        state = RouteSyncState.objects.get()
+        self.assertEqual(state.last_commit_sha, "e" * 40)
+        self.assertEqual(state.last_commit_at, same_second)
+
+        # And a re-run walks nothing: the resume is by the sha's place, not
+        # by time, so the same-second pair isn't re-fetched either.
+        refetched = []
+
+        again = importer.import_route_history(
+            pair, lambda sha: refetched.append(sha) or payloads[sha]
+        )
+
+        self.assertEqual(again.commits_seen, 0)
+        self.assertEqual(again.versions_added, 0)
+        self.assertEqual(refetched, [])
+
     def test_commits_at_or_before_the_state_are_never_fetched(self):
         fetched = []
         importer.import_route_history(

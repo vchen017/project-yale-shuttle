@@ -130,22 +130,32 @@ def import_route_history(commits, fetch_routes):
     route's distinct stop list and every change between versions (#57).
 
     `commits` is [(sha, committed_at)]; `fetch_routes(sha)` returns the
-    parsed routes.json at that commit, one dict per route. Commits are only
-    fetched if newer than the last one the sync state processed, so a
-    re-run fetches nothing already walked. A commit whose stop lists all
-    match the latest known versions (an active-flag-only change, say)
-    records nothing. Each commit is processed inside one transaction and
-    only lists that differ from the route's latest version are stored, so
-    an interrupted walk reprocesses its last commit and adds nothing.
+    parsed routes.json at that commit, one dict per route. The walk resumes
+    after the last commit the sync state processed, by its sha's place in
+    the list, so a re-run fetches nothing already walked — and two commits
+    that share one committed_at second are both walked, where a time-only
+    filter skipped the second forever (#187). The recorder's history only
+    grows, so positions are stable; if the sha we stopped at is no longer
+    in the list (a rewritten history), the walk falls back to the
+    timestamp, re-fetching the last commit — which adds nothing. A commit
+    whose stop lists all match the latest known versions (an
+    active-flag-only change, say) records nothing. Each commit is processed
+    inside one transaction and only lists that differ from the route's
+    latest version are stored, so an interrupted walk reprocesses its last
+    commit and adds nothing.
     """
     state = RouteSyncState.objects.first()
     if state is None:
         state = RouteSyncState.objects.create()
-    pending = [
-        entry
-        for entry in commits
-        if state.last_commit_at is None or entry[1] > state.last_commit_at
-    ]
+    shas = [sha for sha, _ in commits]
+    if state.last_commit_sha and state.last_commit_sha in shas:
+        pending = commits[shas.index(state.last_commit_sha) + 1 :]
+    else:
+        pending = [
+            entry
+            for entry in commits
+            if state.last_commit_at is None or entry[1] >= state.last_commit_at
+        ]
     stats = RoutesStats(commits_seen=len(pending))
 
     latest = {}  # route_id -> its newest RouteStopList so far
