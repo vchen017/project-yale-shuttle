@@ -298,8 +298,13 @@ def meters_off_path(point, path):
     feed's flat [lat, lon, lat, lon, ...] list — measured to the nearest
     point on the nearest segment, not just the nearest corner. 0.0 for a
     path too thin to describe a line (nothing, or a single corner): with no
-    official path to leave, we never claim a detour."""
-    corners = [(path[i], path[i + 1]) for i in range(0, len(path) - 1, 2)]
+    official path to leave, we never claim a detour. A path carrying
+    anything that isn't a number is no path either (#192) — the feed has
+    never sent one, and guessing at it could only invent a detour."""
+    try:
+        corners = [(float(path[i]), float(path[i + 1])) for i in range(0, len(path) - 1, 2)]
+    except (TypeError, ValueError):
+        return 0.0
     if not corners:
         return 0.0
     if len(corners) == 1:

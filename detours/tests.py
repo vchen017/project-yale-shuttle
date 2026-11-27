@@ -551,6 +551,21 @@ class MetersOffPathTests(TestCase):
     def test_a_path_too_thin_to_be_a_line_measures_zero(self):
         self.assertEqual(detect.meters_off_path((41.31, -72.94), []), 0.0)
 
+    def test_a_path_with_a_coordinate_that_isnt_a_number_is_no_path(self):
+        # The feed has never sent one, but a null or nested value in the
+        # path must not crash the detour check: junk is no path, 0.0 (#192).
+        self.assertEqual(detect.meters_off_path((41.31, -72.94), [41.31, -72.94, None, None]), 0.0)
+        self.assertEqual(detect.meters_off_path((41.31, -72.94), [41.31, [72.94]]), 0.0)
+
+    def test_a_bus_on_a_junk_path_route_is_never_judged_off_it(self):
+        # The whole judgment stays up: every bus of a route whose path went
+        # junk reads as on it, so the route can never flag a detour.
+        routes = {1: {"id": 1, "path": [41.305, -72.94, None, -72.94]}}
+        with mock.patch("detours.detect.downtowner.routes", return_value=list(routes.values())):
+            off = detect._off_by_bus({1: {812: (41.31, OFF_LON)}})
+
+        self.assertEqual(off, {1: {812: False}})
+
 
 @mock.patch("transit.next_buses.predict_minutes", return_value=None)
 @mock.patch("transit.downtowner.urlopen")
