@@ -33,6 +33,7 @@ from .models import Eta, RiderReport, RouteStopList
 from .predictions import (
     ET,
     HORIZON,
+    ON_TIME_SLACK,
     QUERY_OFFSET,
     _arrivals_by_pair,
     _fit_corrections,
@@ -52,7 +53,6 @@ HOLDOUT_MODULUS = 3  # every third day is scored, the rest train on — as in ev
 STRIDE = 2  # every second poll stands for a rider asking
 SIDES = ("ours", "official", "history")
 MAX_RANGE_DAYS = 31  # the longest range a dashboard load or a scoring run covers
-ON_TIME_SLACK = 2  # minutes the bus may beat the time we gave and still be caught
 ON_TIME_BASELINE = 78  # % of our answers on time over Oct 26 - Nov 25 (#153's replay)
 ON_TIME_GOAL = 90  # % on time: the Sprint 4 goal (#155)
 
