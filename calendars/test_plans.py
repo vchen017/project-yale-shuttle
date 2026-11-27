@@ -210,6 +210,18 @@ class CushionTests(SimpleTestCase):
                 plan = plan_event(event(start=soon))
             self.assertEqual((plan.spare_minutes, plan.leave_by), (0, NOW + dt.timedelta(minutes=12)))
 
+    def test_the_far_out_history_answer_keeps_the_countdown_s_cushion(self):
+        # #154 + the review of #186: where the history answers a far-out
+        # agreement — ours is the usual wait, 44 minutes, against the feed's
+        # countdown of 33 — "Leave by" keeps the cushion that countdown's
+        # size earns. Bare, a third of far-out riders missed the bus.
+        soon = NOW + dt.timedelta(minutes=45)
+        rows = [row(ours=44, official=(33,), cushions={33: 5})]
+        with mock.patch("calendars.plans.next_buses", return_value=Board(running=True, rows=rows)):
+            plan = plan_event(event(start=soon))
+        self.assertEqual((plan.bus_minutes, plan.spare_minutes), (44, 5))
+        self.assertEqual(plan.leave_by, NOW + dt.timedelta(minutes=44 - 5))  # the stop is at Home's door
+
     def test_catchable_says_which_countdown_the_bus_came_from(self):
         self.assertEqual(catchable(14, [12, 30], walk=5), (14, 12))
         self.assertEqual(catchable(3, [3, 30], walk=5), (30, 30))

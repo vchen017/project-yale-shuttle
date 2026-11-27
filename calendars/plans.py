@@ -31,7 +31,6 @@ from django.utils import timezone
 
 from buildings.search import search as building_search
 from history.models import RouteStatus
-from history.predictions import HISTORY_AT
 from transit import downtowner, trips
 from transit.next_buses import next_buses
 
@@ -153,13 +152,15 @@ def plan_event(event, home, *, now, stops, routes_by_id, running_at=None):
         row = board.rows[0] if board and board.rows else None  # rows come soonest first
         minutes, countdown = catchable(row.ours, row.official, plan.walk_to_stop) if row else (None, None)
         if minutes is not None:
-            # The cushion is fitted for corrected countdowns (#155), and a
-            # countdown of HISTORY_AT or more means our answer is the history
-            # median's (#154): no cushion there, as when the feed lists no
-            # bus. (The rare disagreement — history under 30 while the
-            # countdown is past it — forfeits its cushion too; the board row
-            # can't tell the two cases apart.)
-            cushion = row.cushions.get(countdown, 0) if countdown is not None and countdown < HISTORY_AT else 0
+            # The cushion rides on the countdown the rider saw (#155), even
+            # where the history answers the far-out agreement (#154): sized
+            # for that countdown, it carries the history's answer too —
+            # replayed over the held-out days, leaving by the bare history
+            # median got only 66% of far-out riders to the bus, with the
+            # countdown's cushion 87% (the review of #186). Without a
+            # countdown — the feed lists no bus — there's nothing to size
+            # it with, and "Leave by" is the answer as it stands.
+            cushion = row.cushions.get(countdown, 0) if countdown is not None else 0
             spare = spare_minutes(cushion, minutes, plan.walk_to_stop)
             return EventPlan(
                 row=row,

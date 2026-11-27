@@ -145,9 +145,11 @@ class WatchData(DataSource):
     def spare_minutes(self, trip):
         """The minutes to spare at the stop that the time to leave builds in
         for that bus, as on the page (#155): the cushion for its countdown,
-        or as much as there's time for. 0 when the time came from history —
-        no bus in the feed, or the far-out agreement (#154) — since the
-        cushion is a countdown's tool."""
+        or as much as there's time for. The far-out history answer keeps the
+        countdown it replaced (#154), so its spare is that countdown's
+        cushion too (the review of #186). 0 when the time came from history
+        alone — the feed lists no bus, and there's no countdown to size a
+        cushion with."""
         minutes, countdown = self._ours(trip)
         if minutes is None or countdown is None:
             return 0
@@ -157,8 +159,11 @@ class WatchData(DataSource):
     def _ours(self, trip):
         """(minutes, countdown) for the route's soonest catchable bus, timed
         the way the page times it (#153). The countdown is the feed's for the
-        bus picked — what the spare cushion looks up (#155) — and None when
-        the answer came from history, whose cushion is nothing."""
+        bus picked — what the spare cushion looks up (#155) — and it stays
+        with the answer even where the history answers the far-out agreement
+        (#154), the cushion sized for that countdown carrying the history's
+        answer too (the review of #186). None only when the feed lists no
+        bus and the history answers alone, which has no cushion."""
         try:
             countdowns = self._countdowns(trip)
         except FeedUnavailable:
@@ -173,7 +178,11 @@ class WatchData(DataSource):
                 and history >= HISTORY_AT
                 and history >= trip.walking_minutes
             ):
-                return round(history), None
+                # The history answer keeps the countdown it replaced, so
+                # "Leave by" keeps the cushion that countdown's size earns
+                # (#155): bare, about a third of far-out riders missed the
+                # bus (the review of #186).
+                return round(history), countdowns[0]
         if countdowns:
             ours = self.corrections.correct(trip.route_id, countdowns[0])
         else:

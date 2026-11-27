@@ -319,8 +319,13 @@ class WatchTests(TestCase):
 
     def test_a_far_off_countdown_is_historys_where_history_agrees(self, network, plan_event, webpush):
         """#154: the feed counts a bus 33 minutes out and the usual wait
-        agrees it's far (50): the history times the trip, and the time to
-        leave keeps no countdown cushion — that is a countdown's tool."""
+        agrees it's far (50): the history times the trip — with the
+        countdown's cushion riding along (the review of #186), sized by the
+        countdown the rider saw. Bare, a third of far-out riders miss the
+        bus."""
+        Calibration.objects.create(
+            route_id=1, bucket=countdown_bucket(33), delta_minutes=0.0, samples=40, cushion_minutes=4.0
+        )
         self.lecture(minutes_away=100)
         loaded = trips.load_trips(START)
         data = trips.watch_data(loaded, START)
@@ -328,8 +333,8 @@ class WatchTests(TestCase):
         with mock.patch.object(trips.downtowner, "etas", side_effect=bus.etas), \
              mock.patch.object(data.history, "minutes", return_value=50.0):
             request, leave_by = trips._request(loaded[0], data)
-            self.assertEqual((data.predicted_minutes(request), data.spare_minutes(request)), (50, 0))
-        self.assertEqual(leave_by, START + dt.timedelta(minutes=50 - WALK))
+            self.assertEqual((data.predicted_minutes(request), data.spare_minutes(request)), (50, 4))
+        self.assertEqual(leave_by, START + dt.timedelta(minutes=50 - WALK - 4))
 
     def test_a_far_off_countdown_stays_when_history_disagrees(self, network, plan_event, webpush):
         # The feed says 33 minutes and the usual wait is 12: the countdown
