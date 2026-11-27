@@ -26,15 +26,17 @@ a separate headless one, with a throwaway profile.
 """
 
 import datetime as dt
+import importlib
 import json
 import os
+import sys
 import time
 import unittest
 from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
-from django.test import override_settings
+from django.test import SimpleTestCase, override_settings
 from django.utils import timezone
 
 from calendars.models import Calendar, Event
@@ -50,6 +52,10 @@ try:
     from playwright.sync_api import expect, sync_playwright
 except ImportError:  # not installed: requirements-dev.txt has it
     sync_playwright = None
+    # The skip below catches this name too, and it must resolve whether or not
+    # the import above did — otherwise a machine without Playwright got a
+    # NameError out of the guard that was skipping the test for exactly that.
+    PlaywrightError = RuntimeError
 
 User = get_user_model()
 REQUIRED = os.environ.get("E2E") == "1"
@@ -189,3 +195,25 @@ class WhenToLeaveInABrowserTests(StaticLiveServerTestCase):
 
         self.assertEqual(errors, [])  # no script failed on the page
         self.assertEqual([url for url in self.refused if not url.startswith(HARMLESS)], [])
+
+
+class WithoutPlaywrightTests(SimpleTestCase):
+    """The skip itself: a machine without Playwright gets a skip, not a crash."""
+
+    def test_the_browser_test_skips_cleanly_without_playwright(self):
+        """setUpClass's guard catches PlaywrightError, which only exists when
+        the import succeeded. Without the fallback, hiding Playwright here
+        made the guard raise NameError — the very case it exists to skip."""
+        module = importlib.import_module(__name__)
+        hidden = {"playwright": None, "playwright.sync_api": None}
+        with mock.patch.dict(sys.modules, hidden):
+            # The reloaded module reads E2E at import: with it set (CI runs
+            # the suite with E2E=1), the guard re-raises instead of skipping
+            # and this test fails on the machine that has Playwright.
+            with mock.patch.dict(os.environ, {"E2E": ""}):
+                importlib.reload(module)
+            try:
+                with self.assertRaises(unittest.SkipTest):
+                    module.WhenToLeaveInABrowserTests.setUpClass()
+            finally:
+                importlib.reload(module)  # the module as this run knows it again
