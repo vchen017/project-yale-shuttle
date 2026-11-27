@@ -483,6 +483,39 @@ class RouteHistoryTests(TestCase):
         self.assertEqual(RouteStopList.objects.count(), 5)
         self.assertEqual(RouteStopChange.objects.count(), 3)
 
+    def test_two_commits_sharing_one_second_are_both_walked(self):
+        # Two routes.json commits in the same second: a time-only resume
+        # skipped the second one forever, so its stop change never showed
+        # (#187). The walk resumes by the state's sha instead.
+        same_second = AT_1035
+        pair = [("d" * 40, same_second), ("e" * 40, same_second)]
+        payloads = {
+            "d" * 40: routes_payload(ROUTE_3_STOPS, ROUTE_19_STOPS),
+            "e" * 40: routes_payload([1] + ROUTE_3_STOPS[:-1], ROUTE_19_STOPS),
+        }
+
+        stats = importer.import_route_history(pair, lambda sha: payloads[sha])
+
+        self.assertEqual(stats.commits_seen, 2)
+        self.assertEqual(stats.versions_added, 3)  # route 3 twice, route 19 once
+        self.assertEqual(stats.changes_added, 1)
+        self.assertEqual(RouteStopChange.objects.get(route_id=3).added_stop_ids, [1])
+        state = RouteSyncState.objects.get()
+        self.assertEqual(state.last_commit_sha, "e" * 40)
+        self.assertEqual(state.last_commit_at, same_second)
+
+        # And a re-run walks nothing: the resume is by the sha's place, not
+        # by time, so the same-second pair isn't re-fetched either.
+        refetched = []
+
+        again = importer.import_route_history(
+            pair, lambda sha: refetched.append(sha) or payloads[sha]
+        )
+
+        self.assertEqual(again.commits_seen, 0)
+        self.assertEqual(again.versions_added, 0)
+        self.assertEqual(refetched, [])
+
     def test_commits_at_or_before_the_state_are_never_fetched(self):
         fetched = []
         importer.import_route_history(
@@ -596,6 +629,38 @@ class RouteSourcesTests(TestCase):
         self.assertEqual(commits[0], ("a" * 40, dt.datetime(2026, 11, 9, tzinfo=UTC)))
         dates = [committed_at for _, committed_at in commits]
         self.assertEqual(dates, sorted(dates))
+
+    def test_a_same_second_pair_keeps_the_api_s_order_not_sha_order(self):
+        # Two commits in one second: the API lists them newest first, and
+        # that is the history's real order. Sorting the pair by sha instead
+        # — what (time, sha) did — walks the newer commit first, records the
+        # stale list as the latest, and the position resume would then skip
+        # the newer commit forever (#187, the review of #195). The shas sort
+        # opposite to the real order on purpose.
+        second = dt.datetime(2026, 11, 13, 10, 35, tzinfo=UTC)
+        older, newer = "f" * 40, "3" * 40
+        page = [
+            {"sha": newer, "commit": {"author": {"date": "2026-11-13T10:35:00Z"}}},
+            {"sha": older, "commit": {"author": {"date": "2026-11-13T10:35:00Z"}}},
+        ]
+        payloads = {
+            older: routes_payload(ROUTE_3_STOPS, ROUTE_19_STOPS),
+            newer: routes_payload([1] + ROUTE_3_STOPS[:-1], ROUTE_19_STOPS),
+        }
+        with mock.patch(
+            "history.sources._text_stream", return_value=StringIO(json.dumps(page))
+        ):
+            commits = sources.list_route_commits()
+
+        self.assertEqual(commits, [(older, second), (newer, second)])
+
+        stats = importer.import_route_history(commits, lambda sha: payloads[sha])
+
+        self.assertEqual(stats.commits_seen, 2)
+        self.assertEqual(stats.changes_added, 1)
+        newest = RouteStopList.objects.filter(route_id=3).order_by("-first_seen", "-id").first()
+        self.assertEqual(newest.commit_sha, newer)
+        self.assertEqual(newest.stop_ids, [1] + ROUTE_3_STOPS[:-1])
 
     def test_read_routes_json_fetches_the_version_at_that_commit(self):
         payload = routes_payload(ROUTE_3_STOPS, ROUTE_19_STOPS)

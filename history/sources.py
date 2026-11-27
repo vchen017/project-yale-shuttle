@@ -188,7 +188,14 @@ def list_route_commits():
         if len(entries) < 100:
             break
         page += 1
-    commits.sort(key=lambda item: (item[1], item[0]))
+    # The API lists newest first; reversing gives oldest first, and the
+    # stable sort only undoes page splits, keeping the API's own order for
+    # commits that share a timestamp. Sorting by (time, sha) instead would
+    # order a same-second pair alphabetically by sha, which is not the
+    # history's order — and the walk and its resume-by-position both
+    # depend on that order (#187, the review of #195).
+    commits.reverse()
+    commits.sort(key=lambda item: item[1])
     return commits
 
 

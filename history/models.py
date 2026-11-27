@@ -187,9 +187,10 @@ class RouteStopChange(models.Model):
 
 
 class RouteSyncState(models.Model):
-    """How far the routes.json walk has run, one row (#57). Re-imports fetch
-    only commits newer than last_commit_at, so a walk that processed
-    hundreds of commits once never refetches them."""
+    """How far the routes.json walk has run, one row (#57). Re-imports resume
+    after the commit this row names, by its place in the walk's list, so a
+    walk that processed hundreds of commits once never refetches them — and
+    two commits sharing one committed_at second are both walked (#187)."""
 
     last_commit_sha = models.CharField(max_length=40, blank=True, default="")
     last_commit_at = models.DateTimeField(null=True, blank=True)
