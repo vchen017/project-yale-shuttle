@@ -99,13 +99,21 @@ def accuracy(since, until):
 
     for day in sorted(test_days):
         day_start_utc = dt.datetime.combine(day, dt.time(0), tzinfo=ET).astimezone(dt.UTC)
-        polls = Eta.objects.filter(
-            polled_at__gte=day_start_utc,
-            polled_at__lt=day_start_utc + dt.timedelta(days=1),
-        ).values_list(
-            "polled_at", "route_id", "route_name", "stop_id", "stop_name", "eta_minutes"
+        polls = (
+            Eta.objects.filter(
+                polled_at__gte=day_start_utc,
+                polled_at__lt=day_start_utc + dt.timedelta(days=1),
+            )
+            .order_by("polled_at", "id")
+            .values_list(
+                "polled_at", "route_id", "route_name", "stop_id", "stop_name", "eta_minutes"
+            )
         )
         by_poll = defaultdict(lambda: defaultdict(list))
+        # Ordered by polled_at, so setdefault keeps the first name the pair
+        # was known by in the window — the same name every run, even where
+        # the feed renamed it mid-window; unordered rows made that pick
+        # arbitrary on PostgreSQL (#190).
         for polled_at, route_id, route_name, stop_id, stop_name, eta_minutes in polls:
             names.setdefault(("route", route_id), route_name)
             names.setdefault(("stop", (route_id, stop_id)), stop_name)
