@@ -630,6 +630,38 @@ class RouteSourcesTests(TestCase):
         dates = [committed_at for _, committed_at in commits]
         self.assertEqual(dates, sorted(dates))
 
+    def test_a_same_second_pair_keeps_the_api_s_order_not_sha_order(self):
+        # Two commits in one second: the API lists them newest first, and
+        # that is the history's real order. Sorting the pair by sha instead
+        # — what (time, sha) did — walks the newer commit first, records the
+        # stale list as the latest, and the position resume would then skip
+        # the newer commit forever (#187, the review of #195). The shas sort
+        # opposite to the real order on purpose.
+        second = dt.datetime(2026, 11, 13, 10, 35, tzinfo=UTC)
+        older, newer = "f" * 40, "3" * 40
+        page = [
+            {"sha": newer, "commit": {"author": {"date": "2026-11-13T10:35:00Z"}}},
+            {"sha": older, "commit": {"author": {"date": "2026-11-13T10:35:00Z"}}},
+        ]
+        payloads = {
+            older: routes_payload(ROUTE_3_STOPS, ROUTE_19_STOPS),
+            newer: routes_payload([1] + ROUTE_3_STOPS[:-1], ROUTE_19_STOPS),
+        }
+        with mock.patch(
+            "history.sources._text_stream", return_value=StringIO(json.dumps(page))
+        ):
+            commits = sources.list_route_commits()
+
+        self.assertEqual(commits, [(older, second), (newer, second)])
+
+        stats = importer.import_route_history(commits, lambda sha: payloads[sha])
+
+        self.assertEqual(stats.commits_seen, 2)
+        self.assertEqual(stats.changes_added, 1)
+        newest = RouteStopList.objects.filter(route_id=3).order_by("-first_seen", "-id").first()
+        self.assertEqual(newest.commit_sha, newer)
+        self.assertEqual(newest.stop_ids, [1] + ROUTE_3_STOPS[:-1])
+
     def test_read_routes_json_fetches_the_version_at_that_commit(self):
         payload = routes_payload(ROUTE_3_STOPS, ROUTE_19_STOPS)
         with mock.patch(
