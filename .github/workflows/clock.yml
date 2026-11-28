@@ -5,16 +5,24 @@ name: job clock
 # on time. Each run stays up about 5 hours: in each minute that a cron line in
 # jobs.yml fires, jobs/clock.py starts a "scheduled jobs" run for that line.
 # Then this queues the next clock run, which starts as this one ends, when no
-# job is due for 15 minutes. It never touches the database.
+# job is due for 15 minutes. It hands that run the first minute this one didn't
+# keep, so a run GitHub starts late still starts what came due while it
+# waited, late, rather than skip it (#189). It never touches the database.
 #
 # The cron below is a backup in case the chain breaks: GitHub starts it late
 # too, but it gets the clock going again. The concurrency group keeps at most
 # one clock running and one waiting. To start it by hand: Actions → job clock
-# → Run workflow. To stop it: disable this workflow, then cancel its run.
+# → Run workflow, with "since" left blank. To stop it: disable this workflow,
+# then cancel its run.
 on:
   schedule:
     - cron: "7 * * * *"
   workflow_dispatch:
+    inputs:
+      since:
+        description: The first minute the last clock run didn't keep (UTC), which that run fills in. Leave it blank to start at the next minute.
+        required: false
+        default: ""
 
 concurrency:
   group: job-clock
@@ -34,9 +42,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Start each job on time
-        run: python3 jobs/clock.py --minutes 290
+        id: clock
+        env:
+          SINCE: ${{ inputs.since }}
+        run: python3 jobs/clock.py --minutes 290 --since "$SINCE"
       # Even after a start failed, so the clock keeps going; but not when
-      # someone cancelled this run.
+      # someone cancelled this run. If the step above never got to say where
+      # it handed over, the next run starts at its next minute.
       - name: Queue the next clock run
         if: ${{ !cancelled() }}
-        run: gh workflow run clock.yml --ref main
+        env:
+          HANDOVER: ${{ steps.clock.outputs.handover }}
+        run: gh workflow run clock.yml --ref main -f since="$HANDOVER"
