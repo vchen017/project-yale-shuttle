@@ -4,8 +4,9 @@ Downtowner feed at transit.downtowner.urlopen, so no test reaches the network.
 In its own file, so it doesn't collide with other pull requests."""
 
 import json
+import time
 from unittest import mock
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlsplit
 
 from django.core.cache import cache
@@ -110,13 +111,34 @@ class PlaceSearchTests(SimpleTestCase):
         with self.assertLogs("transit.places", "WARNING"):
             self.assertEqual([place["name"] for place in places.search("union", SERVED)], ["Union Station"])
         urlopen.side_effect = None
-        places.search("union", SERVED)  # not cached while it was down: asked again
+        failed_at = time.time()
+        # For a minute it's left alone, whatever is typed, and the stops still answer (#188).
+        with mock.patch("time.time", return_value=failed_at + places.REST_SECONDS - 1):
+            self.assertEqual([place["name"] for place in places.search("science", SERVED)], ["Science Hill"])
+        self.assertEqual(urlopen.call_count, 1)
+        # Then it's asked again, and nothing was cached for the query that failed.
+        with mock.patch("time.time", return_value=failed_at + places.REST_SECONDS + 1):
+            places.search("union", SERVED)
         self.assertEqual(urlopen.call_count, 2)
+
+    def test_a_rate_limit_leaves_photon_alone_too(self, urlopen):
+        urlopen.side_effect = HTTPError(places.PHOTON_URL, 429, "Too Many Requests", {}, None)
+        with self.assertLogs("transit.places", "WARNING"):
+            places.search("sterling", SERVED)
+        places.search("chapel", SERVED)
+        self.assertEqual(urlopen.call_count, 1)
+
+    def test_an_answer_keeps_photon_asked(self, urlopen):
+        places.search("sterling", SERVED)
+        places.search("chapel", SERVED)
+        self.assertEqual(urlopen.call_count, 2)
+        self.assertIsNone(cache.get(places.RESTING))
 
     def test_an_answer_we_cant_read_gives_no_places(self, urlopen):
         urlopen.return_value.read.return_value = b'{"features": [{"geometry": {}}]}'
         with self.assertLogs("transit.places", "WARNING"):
             self.assertEqual(places.search("sterling", SERVED), [])
+        self.assertTrue(cache.get(places.RESTING))  # a broken answer is Photon failing too
 
     def test_a_single_letter_asks_nobody(self, urlopen):
         self.assertEqual(places.search(" s ", SERVED), [])
