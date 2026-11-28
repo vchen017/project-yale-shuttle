@@ -92,8 +92,11 @@ recorded and safe to repeat ([#40](https://github.com/vchen017/project-yale-shut
   scheduled runs hours late or not at all: 8 to 9 hours late in November 2026.
   So the job clock (`.github/workflows/clock.yml`, `jobs/clock.py`) keeps time
   instead. Each clock run stays up about 5 hours, starts each cron line's run
-  in its minute, then queues the next clock run. GitHub's own schedule stays as
-  the backup, and steps aside while the clock is working.
+  in its minute, then queues the next clock run, handing it the first minute
+  it didn't keep, so a run that starts late catches up instead of skipping a
+  start ([#189](https://github.com/vchen017/project-yale-shuttle/issues/189)).
+  GitHub's own schedule stays as the backup, and steps aside while the clock
+  is working.
 - **Handling failure:**
   - Every run is recorded with its start, end, trigger and summary or
     traceback. A failed job also fails its workflow run in the Actions tab.

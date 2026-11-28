@@ -9,7 +9,11 @@ that a cron line in jobs.yml fires, it starts a "scheduled jobs" run with that
 line as its `schedule` input, which runs the same jobs GitHub's schedule would.
 It never touches the database.
 
-    python3 jobs/clock.py --minutes 290    # what clock.yml runs
+Each run hands the next one the first minute it didn't keep, and the next run
+starts from there: anything that came due while it waited to start, it starts
+at once, late, instead of skipping it (#189).
+
+    python3 jobs/clock.py --minutes 290 --since 2026-11-27T22:46Z    # what clock.yml runs
     python3 jobs/clock.py --dry-run        # print the runs instead of starting them
 
 Standard library only, so the workflow needs no pip install.
@@ -17,6 +21,7 @@ Standard library only, so the workflow needs no pip install.
 
 import argparse
 import datetime as dt
+import os
 import re
 import subprocess
 import sys
@@ -30,6 +35,10 @@ ONE_MINUTE = dt.timedelta(minutes=1)
 QUIET = dt.timedelta(minutes=15)
 # Stop by then, whatever is due: clock.yml gives a run 355 minutes.
 LONGEST = dt.timedelta(minutes=340)
+# A run that starts late looks back this far for what came due meanwhile.
+# Older starts are left to GitHub's own schedule, whose runs do the jobs once
+# no run the clock started has succeeded for two hours (jobs.yml).
+CATCH_UP = dt.timedelta(hours=2)
 # Each cron field's name and range. In the day of the week, 0 and 7 are Sunday.
 FIELDS = (("minute", 0, 59), ("hour", 0, 23), ("day", 1, 31), ("month", 1, 12), ("weekday", 0, 7))
 
@@ -114,35 +123,91 @@ def utcnow():
     return dt.datetime.now(dt.timezone.utc)
 
 
-def keep_time(lines, minutes, dry_run=False, now=utcnow, sleep=time.sleep):
+def missed(lines, since, first):
+    """The lines that came due from `since` until `first`: between the last
+    clock run's handover and this run's first minute. Each line once, with the
+    last minute it came due, oldest first. None without a `since`."""
+    if since is None:
+        return []
+    last_due = {}
+    minute = max(since, first - CATCH_UP)
+    while minute < first:
+        for line in due(lines, minute):
+            last_due[line] = minute
+        minute += ONE_MINUTE
+    return sorted(last_due.items(), key=lambda item: item[1])
+
+
+def _start(line, dry_run, at, came_due=None):
+    """Start a line's jobs and say so in the log; True if GitHub took it."""
+    started = start(line, dry_run)
+    outcome = "started" if started else "couldn't start"
+    late = f", late: it came due at {came_due:%H:%M}" if came_due else ""
+    print(f"{at:%Y-%m-%d %H:%M} UTC: {outcome} the jobs for {line}{late}", flush=True)
+    return started
+
+
+def keep_time(lines, minutes, dry_run=False, now=utcnow, sleep=time.sleep, since=None):
     """In each minute that one of `lines` fires, start its jobs. Keep at it for
     at least `minutes`, then until no job is due soon, but never past LONGEST.
     Minutes go one by one, so a slow start delays the next minute's starts
-    instead of skipping them. Returns how many runs couldn't be started."""
+    instead of skipping them.
+
+    `since` is the first minute the last clock run didn't keep. What came due
+    from then until this run's first minute starts at once, late, each line
+    once (#189). Without it, as when GitHub's schedule starts the clock, this
+    run keeps time from the next minute.
+
+    Returns how many runs couldn't be started, and the first minute this run
+    didn't keep: the next run's `since`."""
     began = now()
     least = dt.timedelta(minutes=minutes)
     minute = began.replace(second=0, microsecond=0) + ONE_MINUTE
     failures = 0
+    for line, came_due in missed(lines, since, minute):
+        if not _start(line, dry_run, now(), came_due):
+            failures += 1
     while True:
         ran = minute - began
         if ran > LONGEST or (ran >= least and not due_soon(lines, minute)):
             print(f"Handing over to the next clock run before {minute:%H:%M} UTC", flush=True)
-            return failures
+            return failures, minute
         wait = (minute - now()).total_seconds()
         if wait > 0:
             sleep(wait)
         for line in due(lines, minute):
-            started = start(line, dry_run)
-            if not started:
+            if not _start(line, dry_run, minute):
                 failures += 1
-            outcome = "started" if started else "couldn't start"
-            print(f"{minute:%Y-%m-%d %H:%M} UTC: {outcome} the jobs for {line}", flush=True)
         minute += ONE_MINUTE
+
+
+def parse_minute(text):
+    """A minute as clock.yml hands it on, "2026-11-27T22:46Z", in UTC. None
+    when it's blank, or isn't one, so the clock still keeps time."""
+    if not text:
+        return None
+    try:
+        return dt.datetime.strptime(text, "%Y-%m-%dT%H:%MZ").replace(tzinfo=dt.timezone.utc)
+    except ValueError:
+        print(f"::warning::{text!r} isn't a minute like 2026-11-27T22:46Z: keeping time from the next one", flush=True)
+        return None
+
+
+def hand_on(name, value):
+    """Give the workflow's later steps a value, when a workflow runs this."""
+    path = os.environ.get("GITHUB_OUTPUT")
+    if path:
+        with open(path, "a") as output:
+            output.write(f"{name}={value}\n")
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Start each scheduled job's run on time (#40).")
     parser.add_argument("--minutes", type=int, default=290, help="keep time for at least this long")
+    parser.add_argument(
+        "--since", default="",
+        help="the first minute the last clock run didn't keep, like 2026-11-27T22:46Z (#189)",
+    )
     parser.add_argument(
         "--dry-run", action="store_true", help="print the runs instead of starting them"
     )
@@ -153,7 +218,8 @@ def main(argv=None):
     for line in lines:
         matches(line, utcnow())  # a line it can't read stops it now, not hours in
     print(f"Keeping time for: {', '.join(lines)}", flush=True)
-    failures = keep_time(lines, args.minutes, args.dry_run)
+    failures, handover = keep_time(lines, args.minutes, args.dry_run, since=parse_minute(args.since))
+    hand_on("handover", f"{handover:%Y-%m-%dT%H:%MZ}")  # the next clock run's --since
     if failures:
         sys.exit(f"{failures} run(s) couldn't be started: see the warnings above")
 

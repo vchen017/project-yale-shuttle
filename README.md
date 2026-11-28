@@ -193,9 +193,11 @@ jobs in its own `jobs.py`, and `python manage.py run_job --list` shows them all.
   hours without a run. So `.github/workflows/clock.yml` keeps time instead, the
   way the recorder does. Each clock run stays up about 5 hours, starts a
   `jobs.yml` run in each minute one of its cron lines fires
-  (`jobs/clock.py`), then queues the next clock run. GitHub's own late runs are
-  the backup: they do nothing while a run the clock started has succeeded in
-  the last two hours. To stop the clock, disable the "job clock" workflow in
+  (`jobs/clock.py`), then queues the next clock run and hands it the first
+  minute it didn't keep: if GitHub starts that run late, it starts what came
+  due meanwhile at once instead of skipping it (#189). GitHub's own late runs
+  are the backup: they do nothing while a run the clock started has succeeded
+  in the last two hours. To stop the clock, disable the "job clock" workflow in
   the Actions tab and cancel its run.
 - **The run log** is at `/admin/` → Scheduled jobs: when each run started and
   ended, what started it (`job clock`, `schedule` for GitHub's own, or a
