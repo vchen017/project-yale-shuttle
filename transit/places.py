@@ -19,7 +19,9 @@ which works locally but not on Render.
                                    "lat": 41.3112, "lon": -72.9290}, ...]
 
 Photon's answers are cached for a day, kept to New Haven and the towns around
-it, and nearer campus first. When Photon fails, our stops still come back.
+it, and nearer campus first. When Photon fails, our stops still come back, and
+Photon is left alone for a minute, so the lookups in that minute don't each
+wait on it, or add to a rate limit (#188).
 """
 
 import hashlib
@@ -40,6 +42,8 @@ AREA = "-73.05,41.24,-72.83,41.40"  # west, south, east, north: New Haven and it
 USER_AGENT = "YaleShuttle/1.0 (a Yale class project)"
 TIMEOUT_SECONDS = 3
 CACHE_SECONDS = 24 * 60 * 60
+REST_SECONDS = 60  # after Photon fails, how long to leave it alone (#188)
+RESTING = "photon:resting"  # the cache key that says it failed under REST_SECONDS ago
 SHORTEST_QUERY = 2  # characters
 MOST_STOPS = 3
 MOST_PLACES = 5
@@ -90,6 +94,8 @@ def _photon(query):
     places = cache.get(key)
     if places is not None:
         return places
+    if cache.get(RESTING):
+        return []  # it failed under a minute ago: our stops answer without waiting on it again
     params = {"q": query, "limit": 10, "lang": "en", "lat": CAMPUS[0], "lon": CAMPUS[1], "zoom": CAMPUS_ZOOM, "bbox": AREA}
     try:
         request = Request(f"{PHOTON_URL}?{urlencode(params)}", headers={"User-Agent": USER_AGENT})
@@ -98,7 +104,10 @@ def _photon(query):
         places = _distinct([_place(feature) for feature in features])[:MOST_PLACES]
     except (OSError, ValueError, HTTPException, LookupError, TypeError) as error:
         # Timeouts, HTTP errors and answers we can't read: the stops still work.
+        # A timeout, a rate limit or Render's refusal is Photon's, not this
+        # query's, so every query rests, not only this one (#188).
         logger.warning("The place search is unavailable (%s: %s)", error.__class__.__name__, error)
+        cache.set(RESTING, True, REST_SECONDS)
         return []
     cache.set(key, places, CACHE_SECONDS)
     return places

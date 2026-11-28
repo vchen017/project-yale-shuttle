@@ -15,6 +15,14 @@ window.placeSearch = (() => {
   const PHOTON_URL = "https://photon.komoot.io/api/";
   const PHOTON_AREA = { lat: "41.3111", lon: "-72.9267", zoom: "14", bbox: "-73.05,41.24,-72.83,41.40" };
   const MOST_PLACES = 5;
+  // After Photon answers with an error, or with something we can't read, this
+  // page leaves it alone for a minute (#188). A rider typing would otherwise
+  // ask again at every pause, each time failing the same way, and a rate
+  // limit only lasts longer for being asked. Our own places still come
+  // meanwhile. A request that never got an answer (the rider's connection
+  // dropping, say) isn't Photon's doing, so the next pause tries again.
+  const PHOTON_REST_MS = 60 * 1000;
+  let photonRestsUntil = 0;
 
   // Ours, then Photon's without the ones we already named (#98). Either can
   // fail without taking the other with it.
@@ -45,10 +53,17 @@ window.placeSearch = (() => {
   }
 
   async function photon(query, signal) {
+    if (Date.now() < photonRestsUntil) return [];
     const params = new URLSearchParams({ q: query, limit: "10", lang: "en", ...PHOTON_AREA });
     const response = await fetch(`${PHOTON_URL}?${params}`, { signal });
-    if (!response.ok) throw new Error(`Photon answered ${response.status}`);
-    return distinct((await response.json()).features.map(photonPlace)).slice(0, MOST_PLACES);
+    try {
+      if (!response.ok) throw new Error(`Photon answered ${response.status}`);
+      return distinct((await response.json()).features.map(photonPlace)).slice(0, MOST_PLACES);
+    } catch (error) {
+      // Typing on cancels the last question: that isn't Photon failing.
+      if (error.name !== "AbortError") photonRestsUntil = Date.now() + PHOTON_REST_MS;
+      throw error;
+    }
   }
 
   // One of Photon's results as a place: "Sterling Library", "York Street, New Haven".
